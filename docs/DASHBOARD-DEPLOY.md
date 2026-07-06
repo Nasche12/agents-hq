@@ -65,3 +65,17 @@ Agent gerade tut, und `waiting`, wenn er auf dein Go wartet.
 `status.json` → `agents.<id>`: `status` (idle|running|ok|waiting|error),
 `phase`, `progress` 0–100, `message` (Sprechblase, ≤34 Zeichen),
 `details[]`, `outputs[]`, `last_run`, `next_run`, `log_tail`.
+
+## Mission-Control-API (optional, empfohlen)
+
+Das Dashboard funktioniert statisch (status.json). Für ▶ START, Live-Log und
+Reports-Liste muss zusätzlich der kleine Node-Server laufen:
+
+```bash
+node dashboard/server.js 8788        # lokal testen: http://localhost:8788
+```
+
+Am Plesk-Server: als Node.js-App anlegen (Startdatei dashboard/server.js) oder
+per Cron/`nohup` starten und die Subdomain per Reverse-Proxy auf den Port leiten.
+Endpoints: POST /api/run/<agent>, GET /api/log/<agent>, /api/reports, /api/file?p=…
+Der Server nutzt bin/run-agent.sh mit denselben Prompts wie die Cronjobs.

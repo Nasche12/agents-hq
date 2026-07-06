@@ -2,7 +2,8 @@
 # Aufruf: status-update.sh <agent-id> <status> <phase> <progress> <message> [details_json] [outputs_json]
 BASE="$(cd "$(dirname "$0")/.." && pwd)"
 WEBDIR="$BASE/httpdocs"; [ -d "$WEBDIR" ] || WEBDIR="$BASE/dashboard"
-python3 - "$WEBDIR/status.json" "$@" << 'PY'
+PYBIN="$(command -v python3 || command -v python)"
+"$PYBIN" - "$WEBDIR/status.json" "$@" << 'PY'
 import json,sys,datetime,os
 f,agent,st,phase,prog,msg=sys.argv[1:7]
 det=sys.argv[7] if len(sys.argv)>7 else ""
