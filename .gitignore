@@ -7,3 +7,4 @@ reports/
 content/
 httpdocs/status.json
 *.log
+agents-hq-upload.zip
