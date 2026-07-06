@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Belege-Dashboard</title>
+<style>
+  :root{--bg:#0f172a;--card:#1e293b;--txt:#e2e8f0;--mut:#94a3b8;--grn:#34d399;--red:#f87171;--amb:#fbbf24;--acc:#60a5fa}
+  *{box-sizing:border-box;margin:0}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--txt);padding:24px;max-width:1100px;margin:0 auto}
+  h1{font-size:1.4rem;margin-bottom:4px} .stand{color:var(--mut);font-size:.85rem;margin-bottom:20px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:22px}
+  .card{background:var(--card);border-radius:12px;padding:16px}
+  .kpi .lbl{color:var(--mut);font-size:.8rem;text-transform:uppercase;letter-spacing:.05em}
+  .kpi .val{font-size:1.6rem;font-weight:700;margin-top:6px}
+  h2{font-size:1.05rem;margin:26px 0 10px}
+  .bar-row{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:.85rem}
+  .bar-row .m{width:64px;color:var(--mut)}
+  .bar{height:14px;border-radius:7px}
+  .proj{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+  .badge{font-size:.75rem;padding:3px 10px;border-radius:99px;font-weight:600}
+  .ok{background:rgba(52,211,153,.15);color:var(--grn)} .warn{background:rgba(251,191,36,.15);color:var(--amb)}
+  table{width:100%;border-collapse:collapse;font-size:.85rem;margin-top:8px}
+  td,th{padding:6px 8px;text-align:left;border-bottom:1px solid #334155}
+  th{color:var(--mut);font-weight:600} .neg{color:var(--red)} .pos{color:var(--grn)}
+  .empty{color:var(--mut);font-style:italic;padding:8px 0}
+  ul.fehl{margin:6px 0 0 18px;color:var(--amb);font-size:.85rem}
+</style>
+</head>
+<body>
+<h1>Belege-Dashboard</h1>
+<div class="stand" id="stand"></div>
+<div class="grid" id="kpis"></div>
+<h2>Einnahmen / Ausgaben pro Monat</h2>
+<div class="card" id="monate"></div>
+<h2>Website-Projekte (Verkaufs-Status)</h2>
+<div id="projekte"></div>
+<h2>Offene / unklare Belege</h2>
+<div class="card" id="unklar"></div>
+<script src="daten.js"></script>
+<script>
+const D=window.BELEGE_DATA||{monate:[],projekte:[],unklar:[]};
+const eur=n=>n.toLocaleString('de-AT',{style:'currency',currency:'EUR'});
+document.getElementById('stand').textContent='Stand: '+(D.stand||'–');
+const ein=D.monate.reduce((s,m)=>s+m.einnahmen,0), aus=D.monate.reduce((s,m)=>s+m.ausgaben,0);
+document.getElementById('kpis').innerHTML=[
+ ['Einnahmen gesamt',eur(ein),'pos'],['Ausgaben gesamt',eur(aus),'neg'],
+ ['Saldo',eur(ein-aus),ein-aus>=0?'pos':'neg'],['Unklare Belege',String((D.unklar||[]).length),(D.unklar||[]).length?'neg':'pos']
+].map(([l,v,c])=>`<div class="card kpi"><div class="lbl">${l}</div><div class="val ${c}">${v}</div></div>`).join('');
+const mx=Math.max(1,...D.monate.flatMap(m=>[m.einnahmen,m.ausgaben]));
+document.getElementById('monate').innerHTML=D.monate.length?D.monate.map(m=>
+ `<div class="bar-row"><span class="m">${m.monat}</span>
+  <div class="bar" style="width:${m.einnahmen/mx*60}%;background:var(--grn)" title="Einnahmen ${eur(m.einnahmen)}"></div>
+  <span class="pos">${eur(m.einnahmen)}</span></div>
+  <div class="bar-row"><span class="m"></span>
+  <div class="bar" style="width:${m.ausgaben/mx*60}%;background:var(--red)" title="Ausgaben ${eur(m.ausgaben)}"></div>
+  <span class="neg">${eur(m.ausgaben)}</span></div>`).join(''):'<div class="empty">Noch keine Daten – Belege in belege/inbox/ legen und den belege-buchhaltung-Agent starten.</div>';
+document.getElementById('projekte').innerHTML=D.projekte.length?D.projekte.map(p=>`
+ <div class="card" style="margin-bottom:12px">
+  <div class="proj"><strong>${p.name}</strong>
+   <span class="badge ${p.verkaufsfertig?'ok':'warn'}">${p.verkaufsfertig?'verkaufsfertig – Paket möglich':'Unterlagen unvollständig'}</span></div>
+  ${p.fehlend&&p.fehlend.length?`<ul class="fehl">${p.fehlend.map(f=>`<li>${f}</li>`).join('')}</ul>`:''}
+  <table><tr><th>Datum</th><th>Aussteller</th><th>Nr.</th><th>Typ</th><th style="text-align:right">Betrag</th></tr>
+  ${(p.belege||[]).map(b=>`<tr><td>${b.datum}</td><td>${b.aussteller}</td><td>${b.nummer||'–'}</td><td>${b.typ}</td><td style="text-align:right" class="${b.typ==='Einnahme'?'pos':'neg'}">${eur(b.betrag)}</td></tr>`).join('')}
+  <tr><th colspan="4">Saldo Projekt</th><th style="text-align:right">${eur((p.einnahmen||0)-(p.ausgaben||0))}</th></tr></table>
+ </div>`).join(''):'<div class="card empty">Noch keine Projekte erfasst.</div>';
+document.getElementById('unklar').innerHTML=(D.unklar||[]).length?
+ '<table><tr><th>Datei</th><th>Problem</th></tr>'+D.unklar.map(u=>`<tr><td>${u.datei}</td><td>${u.problem}</td></tr>`).join('')+'</table>'
+ :'<div class="empty">Nichts offen. 👍</div>';
+</script>
+</body>
+</html>

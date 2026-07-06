@@ -1,0 +1,43 @@
+{
+ "updated": "2026-07-06T12:43:59+02:00",
+ "agents": {
+  "wochenreport": {
+   "name": "Wochenreport",
+   "status": "idle",
+   "phase": "Bereit",
+   "progress": 0,
+   "message": "Warte auf Freitag 08:00…",
+   "last_run": null,
+   "next_run": "Fr 08:00",
+   "details": [
+    "Noch kein Lauf auf diesem Server"
+   ],
+   "outputs": [],
+   "log_tail": "(noch kein Lauf)"
+  },
+  "belege-buchhaltung": {
+   "name": "Belege & Buchhaltung",
+   "status": "idle",
+   "phase": "Bereit",
+   "progress": 0,
+   "message": "Warte auf Montag 09:00…",
+   "last_run": null,
+   "next_run": "Mo 09:00",
+   "details": [],
+   "outputs": [],
+   "log_tail": "(noch kein Lauf)"
+  },
+  "content-recherche": {
+   "name": "Content-Recherche",
+   "status": "idle",
+   "phase": "Bereit",
+   "progress": 0,
+   "message": "Warte auf Sonntag 17:00…",
+   "last_run": null,
+   "next_run": "So 17:00",
+   "details": [],
+   "outputs": [],
+   "log_tail": "(noch kein Lauf)"
+  }
+ }
+}

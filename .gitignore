@@ -1,0 +1,9 @@
+.env
+logs/
+belege/inbox/
+belege/archiv/
+belege/pakete/
+reports/
+content/
+httpdocs/status.json
+*.log
