@@ -23,7 +23,7 @@ oder API-Key setzen: `export ANTHROPIC_API_KEY=sk-ant-...` (in ~/.bashrc).
 ## Schritt 2: Projektordner anlegen
 
 ```bash
-mkdir -p ~/agents && cd ~/agents
+mkdir -p /var/www/vhosts/naschberger.info/agents.naschberger.info && cd /var/www/vhosts/naschberger.info/agents.naschberger.info
 # Kompletten Ordner hochladen (scp/SFTP/Plesk-Dateimanager) ODER: git clone/pull.
 # Nötig: .claude/agents/  bin/  dashboard/  config/  templates/  belege/  docs/  deploy.sh  .env.example
 cp .env.example .env && nano .env   # Umami-Zugang + Discord-Webhooks eintragen
@@ -36,25 +36,33 @@ nano config/sites.json              # echte Kunden-URLs für uptime-waechter + s
 Am saubersten über den Wrapper `bin/run-agent.sh <id> "<prompt>"` – der pflegt
 Logs UND `status.json` fürs Dashboard (sonst zeigt das Dashboard den Lauf nicht an).
 
+**Wichtig:** Cron startet mit minimalem PATH und findet `claude`/`node` sonst nicht.
+Deshalb ganz oben in die Crontab (Ergebnis von `dirname $(command -v claude)` bzw.
+`dirname $(command -v node)` einsetzen, oft `/usr/bin` oder ein nvm-Pfad):
+
+```cron
+PATH=/usr/local/bin:/usr/bin:/bin
+```
+
 ```cron
 # Freitag 08:00 – Wochenreport (ein HTML-Gesamtreport aller Kundenseiten)
-0 8 * * 5  cd ~/agents && bin/run-agent.sh wochenreport "Nutze den Subagent wochenreport und erstelle den Wochenreport für die abgelaufene Woche." >> logs/wochenreport.cron.log 2>&1
+0 8 * * 5  cd /var/www/vhosts/naschberger.info/agents.naschberger.info && bin/run-agent.sh wochenreport "Nutze den Subagent wochenreport und erstelle den Wochenreport für die abgelaufene Woche." >> logs/wochenreport.cron.log 2>&1
 
 # Montag 09:00 – Belege verarbeiten
-0 9 * * 1  cd ~/agents && bin/run-agent.sh belege-buchhaltung "Nutze den Subagent belege-buchhaltung und verarbeite alle neuen Belege in belege/inbox/." >> logs/belege.cron.log 2>&1
+0 9 * * 1  cd /var/www/vhosts/naschberger.info/agents.naschberger.info && bin/run-agent.sh belege-buchhaltung "Nutze den Subagent belege-buchhaltung und verarbeite alle neuen Belege in belege/inbox/." >> logs/belege.cron.log 2>&1
 
 # Sonntag 17:00 – Contentplan für die Folgewoche
-0 17 * * 0 cd ~/agents && bin/run-agent.sh content-recherche "Nutze den Subagent content-recherche und erstelle den Contentplan für die kommende Woche." >> logs/content.cron.log 2>&1
+0 17 * * 0 cd /var/www/vhosts/naschberger.info/agents.naschberger.info && bin/run-agent.sh content-recherche "Nutze den Subagent content-recherche und erstelle den Contentplan für die kommende Woche." >> logs/content.cron.log 2>&1
 
 # Alle 15 Minuten – Uptime-Wächter (pingt config/sites.json)
-*/15 * * * * cd ~/agents && bin/run-agent.sh uptime-waechter "Nutze den Subagent uptime-waechter und prüfe jetzt alle Sites aus config/sites.json." >> logs/uptime.cron.log 2>&1
+*/15 * * * * cd /var/www/vhosts/naschberger.info/agents.naschberger.info && bin/run-agent.sh uptime-waechter "Nutze den Subagent uptime-waechter und prüfe jetzt alle Sites aus config/sites.json." >> logs/uptime.cron.log 2>&1
 
 # Mittwoch 06:00 – SEO-Audit
-0 6 * * 3  cd ~/agents && bin/run-agent.sh seo-audit "Nutze den Subagent seo-audit und auditiere alle Sites aus config/sites.json." >> logs/seo.cron.log 2>&1
+0 6 * * 3  cd /var/www/vhosts/naschberger.info/agents.naschberger.info && bin/run-agent.sh seo-audit "Nutze den Subagent seo-audit und auditiere alle Sites aus config/sites.json." >> logs/seo.cron.log 2>&1
 
 # Optional, alle 30 Min – Master/Kommandant: Lage aktualisieren + fällige Läufe abstimmen
 # (nicht nötig, wenn die Einzel-Crons schon alles starten – dient v. a. master/lage.md)
-*/30 * * * * cd ~/agents && bin/run-agent.sh master "Nutze den Subagent kommandant: Überblick aus status.json, Zeitplan aus config/schedule.json abstimmen, fällige Läufe anstoßen, master/lage.md aktualisieren." >> logs/master.cron.log 2>&1
+*/30 * * * * cd /var/www/vhosts/naschberger.info/agents.naschberger.info && bin/run-agent.sh master "Nutze den Subagent kommandant: Überblick aus status.json, Zeitplan aus config/schedule.json abstimmen, fällige Läufe anstoßen, master/lage.md aktualisieren." >> logs/master.cron.log 2>&1
 
 # rechnungssteller: KEIN Cron – läuft nur auf Abruf (Dashboard-START-Button oder von Hand).
 ```
@@ -86,7 +94,7 @@ Entwürfe, bis du in Discord Go gibst.
 ## Schritt 5: Testlauf von Hand
 
 ```bash
-cd ~/agents && claude -p "Nutze den Subagent wochenreport ..." 
+cd /var/www/vhosts/naschberger.info/agents.naschberger.info && claude -p "Nutze den Subagent wochenreport ..." 
 tail -f logs/wochenreport.log
 ```
 
