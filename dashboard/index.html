@@ -102,6 +102,21 @@ button{font-family:inherit}
 .repitem:hover,.repitem:focus-visible{border-color:var(--line-dim);outline:none}
 .repitem .d{color:var(--mut);font-size:.62rem;font-family:Consolas,monospace}
 .repitem .p{color:var(--mut);font-size:.62rem;font-family:Consolas,monospace;grid-column:1/-1}
+.mcounts{display:flex;flex-wrap:wrap;gap:14px;font-size:.72rem;font-family:Consolas,monospace;margin-bottom:6px}
+.mcounts i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;box-shadow:0 0 6px currentColor;vertical-align:baseline}
+.mflag{font-size:.76rem;border:1px solid;padding:9px 11px;margin:10px 0;line-height:1.55}
+.mflag b{letter-spacing:.04em}
+.mflag.err{color:var(--red);border-color:oklch(52% 0.14 25/.6);background:oklch(24% 0.07 25/.22)}
+.mflag.wait{color:var(--amb);border-color:oklch(56% 0.11 85/.5);background:oklch(24% 0.06 85/.16)}
+.mtable{display:flex;flex-direction:column;gap:2px}
+.mrow{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;text-align:left;
+ background:oklch(16% 0.02 280/.5);border:1px solid transparent;border-left:3px solid var(--line-dim);
+ color:var(--txt);padding:8px 11px;cursor:pointer}
+.mrow:hover,.mrow:focus-visible{border-color:var(--line-dim);outline:none}
+.mrow .mn{font-size:.82rem}
+.mrow .mn small{display:block;color:var(--mut);font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;margin-top:1px}
+.mrow .mp{color:var(--cyan);font-size:.72rem}
+.mrow .mnext{color:var(--mut);font-size:.66rem;min-width:64px;text-align:right}
 #apibar{padding:8px 20px;border-top:1px solid var(--line-dim);font-size:.6rem;letter-spacing:.12em;
  text-transform:uppercase;color:var(--mut);display:flex;justify-content:space-between}
 #apibar b{font-weight:400}
@@ -150,9 +165,12 @@ button{font-family:inherit}
    ================================================================ */
 const COLORS={running:'#53e0ff',ok:'#5df2b4',idle:'#8ea0bd',waiting:'#ffcf5c',error:'#ff7b6b'};
 const LABELS={running:'läuft',ok:'fertig',idle:'freizeit',waiting:'wartet auf dein go',error:'fehler'};
-const BOT_IDS=['wochenreport','belege-buchhaltung','content-recherche'];
-const ROOT_OF={'wochenreport':'reports','belege-buchhaltung':'belege','content-recherche':'content'};
-const NAME_OF={'wochenreport':'REPORT','belege-buchhaltung':'FINANZ','content-recherche':'CONTENT'};
+const BOT_IDS=['master','wochenreport','belege-buchhaltung','content-recherche','uptime-waechter','seo-audit','rechnungssteller'];
+const ROOT_OF={'master':'master','wochenreport':'reports','belege-buchhaltung':'belege','content-recherche':'content',
+ 'uptime-waechter':'uptime','seo-audit':'seo','rechnungssteller':'rechnungen'};
+const NAME_OF={'master':'MASTER','wochenreport':'REPORT','belege-buchhaltung':'FINANZ','content-recherche':'CONTENT',
+ 'uptime-waechter':'UPTIME','seo-audit':'SEO','rechnungssteller':'RECHNUNG'};
+const FLEET_IDS=BOT_IDS.filter(id=>id!=='master'); // die vom Master überwachten Agents
 
 const DEMO={updated:new Date().toISOString(),agents:{
  'wochenreport':{name:'Wochenreport',status:'running',phase:'Analytics laden',progress:45,message:'Umami-Daten für 3 Kunden…',
@@ -160,7 +178,13 @@ const DEMO={updated:new Date().toISOString(),agents:{
  'belege-buchhaltung':{name:'Belege & Buchhaltung',status:'waiting',phase:'Rückfrage offen',progress:80,message:'2 Belege unklar – dein Go?',
   last_run:new Date().toISOString(),next_run:'Mo 09:00',details:['Canva-Beleg: Rechnungsnummer fehlt'],outputs:['belege/dashboard.html'],log_tail:'3 Belege archiviert.'},
  'content-recherche':{name:'Content-Recherche',status:'ok',phase:'Contentplan fertig',progress:100,message:'7 Ideen verifiziert ✓',
-  last_run:new Date().toISOString(),next_run:'So 17:00',details:['7-Tage-Plan mit Hooks'],outputs:['content/2026-KW28/contentplan.md'],log_tail:'Fertig ☕'}
+  last_run:new Date().toISOString(),next_run:'So 17:00',details:['7-Tage-Plan mit Hooks'],outputs:['content/2026-KW28/contentplan.md'],log_tail:'Fertig ☕'},
+ 'uptime-waechter':{name:'Uptime-Wächter',status:'running',phase:'Sites prüfen',progress:60,message:'2 Sites gepingt…',
+  last_run:new Date().toISOString(),next_run:'alle 15 min',details:['ferienhaus-tirol.at: 200 · 0.4 s','SSL 74 Tage'],outputs:['uptime/status.js'],log_tail:'mueller-gmbh.at: 200 ok'},
+ 'seo-audit':{name:'SEO-Audit',status:'error',phase:'Crawl',progress:30,message:'Sitemap 404 bei 1 Site',
+  last_run:new Date().toISOString(),next_run:'Mi 06:00',details:['mueller-gmbh.at: sitemap.xml fehlt'],outputs:[],log_tail:'ferienhaus-tirol.at: title zu lang'},
+ 'rechnungssteller':{name:'Rechnungssteller',status:'idle',phase:'Bereit',progress:0,message:'Warte auf Positionen…',
+  last_run:null,next_run:'auf Abruf',details:[],outputs:[],log_tail:'(noch kein Lauf)'}
 }};
 
 let DATA=null,SEL=null,API=false,TAB='info',REPORTS=null;
@@ -210,19 +234,26 @@ const ROOM_LABELS=[
 
 /* Spots: Zielkacheln (Fußpunkt), face = Blickrichtung dort */
 const SPOTS={
+ command:  {x:22,y:11,face:'up'},
  office:   {x:7, y:5, face:'up'},
  vaultdoor:{x:22,y:8, face:'up', },
  goldroom: {x:26,y:4, face:'up'},
+ invoice:  {x:18,y:5, face:'up'},
  studio:   {x:37,y:5, face:'up'},
  coffee:   {x:4, y:16,face:'up', chip:'☕ kaffee'},
+ pause:    {x:6, y:16,face:'up', chip:'☕ pause'},
  arcade:   {x:13,y:16,face:'up', chip:'🕹 arcade'},
  couch:    {x:8, y:20,face:'down',chip:'⏾ chillen'},
+ scope:    {x:22,y:16,face:'up'},
  gaze:     {x:23,y:18,face:'up', chip:'✦ sterne'},
- server:   {x:31,y:16,face:'up'}
+ gaze2:    {x:25,y:20,face:'up', chip:'✦ sterne'},
+ server:   {x:36,y:16,face:'up'}
 };
-const WORK={'wochenreport':'office','belege-buchhaltung':'goldroom','content-recherche':'studio'};
-const WAIT={'wochenreport':'office','belege-buchhaltung':'vaultdoor','content-recherche':'studio'};
-const LEISURE=['coffee','arcade','couch','gaze'];
+const WORK={'master':'command','wochenreport':'office','belege-buchhaltung':'goldroom','content-recherche':'studio',
+ 'uptime-waechter':'server','seo-audit':'scope','rechnungssteller':'invoice'};
+const WAIT={'master':'command','wochenreport':'office','belege-buchhaltung':'vaultdoor','content-recherche':'studio',
+ 'uptime-waechter':'server','seo-audit':'scope','rechnungssteller':'invoice'};
+const LEISURE=['coffee','pause','arcade','couch','gaze','gaze2'];
 
 /* ================= Möbel (Kachelkoordinaten) ================= */
 /* blockierende Kacheln je Prop werden unten registriert */
@@ -253,11 +284,13 @@ const FURN=[
  // Observatorium
  {t:'telescope',x:23,y:15},
  {t:'starwindow',x:20,y:17,w:6,h:4,nb:true}, // nicht blockierend (Glasboden)
- // Serverraum
- {t:'racks',x:30,y:14,w:13,h:1},
+ // Serverraum (obere Reihe mit Gang für die Tür bei x33/34)
+ {t:'racks',x:30,y:14,w:3,h:1},
+ {t:'racks',x:35,y:14,w:8,h:1},
  {t:'racks',x:30,y:17,w:13,h:1},
  {t:'racks',x:30,y:20,w:13,h:1},
  // Korridor
+ {t:'console',x:21,y:10,w:3,h:1,nb:true}, // Kommando-Konsole des Masters (nicht blockierend)
  {t:'vending',x:43,y:10},
  {t:'sign',x:7,y:9,label:'01'},{t:'sign',x:22,y:9,label:'02'},{t:'sign',x:37,y:9,label:'03'},
  {t:'sign',x:9,y:13,label:'04'},{t:'sign',x:22,y:13,label:'05'},{t:'sign',x:33,y:13,label:'06'}
@@ -387,7 +420,11 @@ function makeSprites(accent,accent2){
 const SPRITES={
  'wochenreport':makeSprites('#53e0ff'),
  'belege-buchhaltung':makeSprites('#ffcf5c'),
- 'content-recherche':makeSprites('#c99cff')
+ 'content-recherche':makeSprites('#c99cff'),
+ 'uptime-waechter':makeSprites('#5df2b4'),
+ 'seo-audit':makeSprites('#ff9d5c'),
+ 'rechnungssteller':makeSprites('#ffd24a'),
+ 'master':makeSprites('#ff5ca8')
 };
 
 /* ================= Statische Ebene ================= */
@@ -581,6 +618,12 @@ function drawFurnStatic(f){
    px('#7c90c9',-5,-20,10,32);px('#9fb2e9',-5,-20,10,4);px('#3a4568',-6,6,12,6);
    sx.restore();
    break;
+  case 'console':{ // Kommando-Konsole (nicht blockierend) – Master steht davor
+   const cy=Y+14;
+   px('#161d33',X-2,cy,W+4,U-14);px('#2a3660',X-2,cy-6,W+4,8);px('#3a4a7a',X-2,cy-6,W+4,3);
+   for(let i=0;i<3;i++){px('#0a0e1e',X+3+i*U,Y-2,U-8,16);px('#3a4568',X+2+i*U,Y-4,U-6,3);}
+   px('#5468c4',X+W/2-3,cy+2,6,U-18);
+   break;}
   case 'racks':break; // komplett animiert
   case 'starwindow':
    px('#06081a',X,Y,W,H);
@@ -630,7 +673,8 @@ function think(b,now){
  const a=DATA&&DATA.agents[b.id];if(!a)return;
  const st=a.status||'idle';
  let s;
- if(st==='running')s=WORK[b.id];
+ if(b.id==='master')s='command'; // Master bleibt immer an der Kommandostation
+ else if(st==='running')s=WORK[b.id];
  else if(st==='waiting')s=WAIT[b.id];
  else if(st==='error')s=WORK[b.id];
  else s=freeLeisure(b);
@@ -760,6 +804,19 @@ function draw(t){
   ctx.fillStyle=`rgba(120,160,255,${.05+Math.sin(s*2+lx)*.02})`;
   ctx.beginPath();ctx.ellipse(lx*U+U,11.5*U,U*2.4,U*1.3,0,0,7);ctx.fill();
  }
+ // Kommando-Konsole: Holo-Ring in Master-Statusfarbe + Bildschirm-Flackern
+ {const cons=FURN.find(f=>f.t==='console');
+  if(cons){
+   const mst=(DATA&&DATA.agents.master&&DATA.agents.master.status)||'idle';
+   const col=COLORS[mst]||COLORS.idle;
+   ctx.strokeStyle=col;ctx.globalAlpha=.45+Math.sin(s*3)*.28;ctx.lineWidth=2;
+   ctx.beginPath();ctx.ellipse(cons.x*U+cons.w*U/2,cons.y*U-6,28,10,0,0,7);ctx.stroke();
+   ctx.globalAlpha=.2+Math.sin(s*3+1)*.15;
+   ctx.beginPath();ctx.ellipse(cons.x*U+cons.w*U/2,cons.y*U-6,18,6,0,0,7);ctx.stroke();
+   ctx.globalAlpha=1;
+   for(let i=0;i<3;i++){ctx.fillStyle=Math.sin(s*2+i*1.7)>0?'rgba(255,120,190,.5)':'rgba(120,80,140,.3)';
+    ctx.fillRect(cons.x*U+5+i*U,cons.y*U-2,U-8,16);}
+  }}
  // Kaffeemaschinen-LED
  ctx.fillStyle=Math.sin(s*2.4)>0?'#5df2b4':'#1f4a38';
  ctx.fillRect(4*U+22,14*U-6,4,4);
@@ -864,7 +921,31 @@ cv.addEventListener('click',e=>{
 });
 
 /* ================= Mission Control ================= */
+/* Master = Live-Rollup über die Flotte. Immer aktuell, ohne eigenen Lauf.
+   Ein echter Master-Eintrag (Kommandant läuft gerade) überschreibt den Rollup. */
+function computeMaster(){
+ const list=FLEET_IDS.map(id=>DATA.agents[id]).filter(Boolean);
+ const cnt={running:0,ok:0,idle:0,waiting:0,error:0};
+ list.forEach(a=>{cnt[a.status]=(cnt[a.status]||0)+1;});
+ let status='idle';
+ if(cnt.error)status='error';else if(cnt.running)status='running';
+ else if(cnt.waiting)status='waiting';else if(cnt.ok&&!cnt.idle)status='ok';
+ const parts=[];
+ if(cnt.running)parts.push(cnt.running+' läuft');
+ if(cnt.waiting)parts.push(cnt.waiting+' wartet');
+ if(cnt.error)parts.push(cnt.error+' Fehler');
+ if(!parts.length)parts.push('alles ruhig');
+ const run=list.filter(a=>a.status==='running');
+ const progress=run.length?Math.round(run.reduce((s,a)=>s+(a.progress||0),0)/run.length):(status==='ok'?100:0);
+ const real=DATA.agents.master||{};
+ const synth={name:'Kommandozentrale',status,phase:cnt.running?('koordiniert '+cnt.running+' Lauf'+(cnt.running>1?'e':'')):(cnt.waiting?'wartet auf dein Go':cnt.error?'Fehler im Blick':'Alle im Blick'),
+  progress,message:parts.join(' · '),_counts:cnt,
+  last_run:real.last_run||null,next_run:real.next_run||'laufend',outputs:real.outputs||[],log_tail:real.log_tail||'(Kommandant noch nicht gelaufen)'};
+ if(real.status==='running'){synth.status='running';synth.phase=real.phase||synth.phase;synth.progress=real.progress??synth.progress;synth.message=real.message||synth.message;}
+ DATA.agents.master=synth;
+}
 function applyData(){
+ computeMaster();
  BOT_IDS.forEach(id=>{
   const b=bots[id];const a=DATA.agents[id]||{};
   const st=a.status||'idle';
@@ -915,9 +996,33 @@ document.querySelectorAll('#tabs button').forEach(b=>b.addEventListener('click',
  document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on',x===b));
  renderTab();
 }));
+function renderMaster(body){
+ const chip=(k,label)=>{const n=(DATA.agents.master._counts||{})[k]||0;
+  return n?`<span style="color:${COLORS[k]}"><i style="background:${COLORS[k]}"></i>${n} ${label}</span>`:'';};
+ const flagged=st=>FLEET_IDS.filter(id=>(DATA.agents[id]||{}).status===st);
+ const errs=flagged('error'),waits=flagged('waiting');
+ const line=id=>{const a=DATA.agents[id]||{};return esc(a.name||id)+' — '+esc(a.message||a.phase||'');};
+ body.innerHTML=`
+  <div class="plbl">Flotte · ${FLEET_IDS.length} Agents</div>
+  <div class="mcounts">${['running','waiting','error','ok','idle'].map(k=>chip(k,{running:'laufen',waiting:'warten',error:'Fehler',ok:'fertig',idle:'ruhen'}[k])).filter(Boolean).join('')||'–'}</div>
+  ${errs.length?`<div class="mflag err"><b>⚠ Fehler</b><br>${errs.map(line).join('<br>')}</div>`:''}
+  ${waits.length?`<div class="mflag wait"><b>? Wartet auf dein Go</b><br>${waits.map(line).join('<br>')}</div>`:''}
+  <div class="plbl">Alle Agents im Detail</div>
+  <div class="mtable">${FLEET_IDS.map(id=>{const a=DATA.agents[id]||{};const c=COLORS[a.status]||COLORS.idle;
+    return `<button class="mrow" data-id="${id}" style="border-left-color:${c}">
+      <span class="mn">${esc(a.name||id)}<small>${LABELS[a.status]||esc(a.status)} · ${esc(a.phase||'–')}</small></span>
+      <span class="mp mono">${a.progress!=null?a.progress+'%':''}</span>
+      <span class="mnext mono">${esc(a.next_run||'–')}</span>
+    </button>`;}).join('')}</div>
+  <div class="plbl">Kommandant-Log</div>
+  <pre style="max-height:22vh">${esc(DATA.agents.master.log_tail||'–')}</pre>
+  <p class="hint">Klick auf eine Zeile öffnet den Agent. „▶ START" oben lässt den Kommandant jetzt koordinieren.</p>`;
+ body.querySelectorAll('.mrow').forEach(el=>el.addEventListener('click',()=>select(el.dataset.id)));
+}
 function renderTab(){
  const body=$('#tabbody');
  if(TAB==='reports')return renderReports(body);
+ if(SEL==='master'&&TAB==='info')return renderMaster(body);
  if(!SEL){body.innerHTML='<p class="hint">Agent wählen: Klick auf einen Roboter in der Welt oder eine Zeile oben.</p>';return;}
  const a=DATA.agents[SEL];if(!a)return;
  if(TAB==='info'){

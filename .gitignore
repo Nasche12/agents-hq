@@ -5,6 +5,11 @@ belege/archiv/
 belege/pakete/
 reports/
 content/
+uptime/
+seo/
+rechnungen/
+master/
 httpdocs/status.json
 *.log
 agents-hq-upload.zip
+.idea/

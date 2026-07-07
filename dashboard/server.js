@@ -13,12 +13,16 @@ const WEB = __dirname;
 const PORT = parseInt(process.argv[2] || '8788', 10);
 
 const AGENTS = {
-  'wochenreport': 'Nutze den Subagent wochenreport und erstelle die Wochenreports für die abgelaufene Woche.',
+  'master': 'Nutze den Subagent kommandant: verschaffe dir den Gesamtüberblick über alle Agents (dashboard/status.json), stimme den Zeitplan (config/schedule.json) ab und stoße fällige Läufe an. Nichts nach außen senden.',
+  'wochenreport': 'Nutze den Subagent wochenreport und erstelle den Wochenreport für die abgelaufene Woche.',
   'belege-buchhaltung': 'Nutze den Subagent belege-buchhaltung und verarbeite alle neuen Belege in belege/inbox/.',
-  'content-recherche': 'Nutze den Subagent content-recherche und erstelle den Contentplan für die kommende Woche.'
+  'content-recherche': 'Nutze den Subagent content-recherche und erstelle den Contentplan für die kommende Woche.',
+  'uptime-waechter': 'Nutze den Subagent uptime-waechter und prüfe jetzt alle Sites aus config/sites.json.',
+  'seo-audit': 'Nutze den Subagent seo-audit und auditiere alle Sites aus config/sites.json.',
+  'rechnungssteller': 'Nutze den Subagent rechnungssteller. Falls keine Positionen genannt sind, frage nach, statt zu raten.'
 };
 /* Report-Wurzeln: nur diese Ordner sind über /api lesbar */
-const REPORT_ROOTS = ['reports', 'content', 'belege'];
+const REPORT_ROOTS = ['reports', 'content', 'belege', 'uptime', 'seo', 'rechnungen'];
 const REPORT_EXT = new Set(['.md', '.html', '.pdf', '.csv', '.txt', '.json']);
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.md': 'text/plain; charset=utf-8',

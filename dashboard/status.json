@@ -38,6 +38,42 @@
    "details": [],
    "outputs": [],
    "log_tail": "(noch kein Lauf)"
+  },
+  "uptime-waechter": {
+   "name": "Uptime-Wächter",
+   "status": "idle",
+   "phase": "Bereit",
+   "progress": 0,
+   "message": "Warte auf nächsten Check…",
+   "last_run": null,
+   "next_run": "alle 15 min",
+   "details": [],
+   "outputs": [],
+   "log_tail": "(noch kein Lauf)"
+  },
+  "seo-audit": {
+   "name": "SEO-Audit",
+   "status": "idle",
+   "phase": "Bereit",
+   "progress": 0,
+   "message": "Warte auf Mittwoch 06:00…",
+   "last_run": null,
+   "next_run": "Mi 06:00",
+   "details": [],
+   "outputs": [],
+   "log_tail": "(noch kein Lauf)"
+  },
+  "rechnungssteller": {
+   "name": "Rechnungssteller",
+   "status": "idle",
+   "phase": "Bereit",
+   "progress": 0,
+   "message": "Warte auf Positionen…",
+   "last_run": null,
+   "next_run": "auf Abruf",
+   "details": [],
+   "outputs": [],
+   "log_tail": "(noch kein Lauf)"
   }
  }
 }

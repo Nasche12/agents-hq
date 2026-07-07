@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Wochenreport · Agent HQ</title>
+<style>
+:root{
+ --bg:oklch(13% 0.03 290);--bg2:oklch(9% 0.02 290);
+ --panel:oklch(17% 0.03 280);--line:oklch(38% 0.05 250);--line2:oklch(30% 0.04 260);
+ --txt:oklch(93% 0.02 250);--mut:oklch(66% 0.03 260);--dim:oklch(52% 0.03 260);
+ --cyan:oklch(80% 0.14 200);--grn:oklch(80% 0.17 160);--amb:oklch(83% 0.15 85);
+ --red:oklch(70% 0.19 25);--vio:oklch(75% 0.14 300);
+}
+*{box-sizing:border-box;margin:0}
+body{font-family:"Segoe UI",system-ui,sans-serif;color:var(--txt);line-height:1.5;
+ background:radial-gradient(1100px 700px at 80% -10%,oklch(22% 0.07 300/.4),transparent 60%),
+  radial-gradient(900px 700px at 0% 110%,oklch(19% 0.06 220/.4),transparent 60%),
+  linear-gradient(var(--bg),var(--bg2));min-height:100vh;padding:32px 20px 64px}
+.wrap{max-width:1040px;margin:0 auto}
+.mono{font-family:Consolas,"Cascadia Mono",monospace}
+a{color:var(--cyan)}
+
+/* header */
+header{border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:28px}
+.kick{font-size:.66rem;letter-spacing:.32em;text-transform:uppercase;color:var(--cyan)}
+.kick::after{content:"";display:inline-block;width:46px;height:1px;margin:0 0 4px 10px;
+ background:linear-gradient(90deg,var(--cyan),transparent);vertical-align:middle}
+h1{font-size:1.7rem;font-weight:600;letter-spacing:.01em;margin:8px 0 4px}
+.range{color:var(--mut);font-size:.86rem}
+.range b{color:var(--txt);font-weight:600}
+
+/* section */
+section{margin-top:38px}
+.slbl{font-size:.7rem;letter-spacing:.24em;text-transform:uppercase;color:var(--mut);
+ margin-bottom:14px;display:flex;align-items:center;gap:10px}
+.slbl::before{content:"";width:6px;height:6px;background:var(--cyan);
+ box-shadow:0 0 8px var(--cyan);flex:0 0 auto}
+
+/* comparison leaderboard */
+.cmp{border:1px solid var(--line2);background:oklch(15% 0.02 280/.7)}
+.cmprow{display:grid;grid-template-columns:22px 1fr 108px 132px 88px;gap:14px;align-items:center;
+ padding:12px 16px;border-top:1px solid var(--line2)}
+.cmprow:first-child{border-top:0}
+.cmprow.head{color:var(--mut);font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;padding:9px 16px}
+.cmprow .rk{color:var(--dim);font-family:Consolas,monospace;font-size:.82rem;text-align:right}
+.cmprow .nm{font-weight:600;font-size:.92rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmprow .nm small{display:block;color:var(--mut);font-weight:400;font-size:.68rem;letter-spacing:.02em}
+.cmprow .val{font-family:Consolas,monospace;font-size:1.02rem;text-align:right}
+.barcell{position:relative;height:9px;background:oklch(12% 0.02 280);border:1px solid var(--line2)}
+.barcell span{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,var(--cyan),var(--vio))}
+.delta{font-family:Consolas,monospace;font-size:.82rem;text-align:right;white-space:nowrap}
+.up{color:var(--grn)} .down{color:var(--red)} .flat{color:var(--mut)}
+
+/* per-site cards */
+.site{border:1px solid var(--line2);background:var(--panel);margin-top:18px}
+.site>.top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+ padding:16px 20px;border-bottom:1px solid var(--line2)}
+.site>.top h2{font-size:1.12rem;font-weight:600}
+.site>.top .u{color:var(--mut);font-size:.74rem}
+.site>.top .rank{font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);
+ border:1px solid var(--line2);padding:3px 9px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line2)}
+.kpi{background:var(--panel);padding:15px 18px}
+.kpi .k{font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--mut)}
+.kpi .v{font-family:Consolas,monospace;font-size:1.5rem;margin:5px 0 3px;letter-spacing:-.01em}
+.kpi .d{font-size:.74rem;font-family:Consolas,monospace}
+.lists{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line2)}
+.lst{background:var(--panel);padding:16px 18px}
+.lst h3{font-size:.64rem;letter-spacing:.14em;text-transform:uppercase;color:var(--mut);margin-bottom:12px}
+.li{margin-bottom:10px}
+.li .lbl{display:flex;justify-content:space-between;gap:10px;font-size:.8rem;margin-bottom:4px}
+.li .lbl .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt)}
+.li .lbl .n{color:var(--mut);font-family:Consolas,monospace;flex:0 0 auto}
+.mini{height:6px;background:oklch(12% 0.02 280)}
+.mini span{display:block;height:100%;background:linear-gradient(90deg,var(--cyan),var(--vio))}
+.note{padding:14px 20px;border-top:1px solid var(--line2);font-size:.84rem;color:var(--txt);
+ background:oklch(20% 0.04 85/.14)}
+.note b{color:var(--amb)}
+.note.none{color:var(--mut);background:none}
+
+footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--line2);
+ color:var(--dim);font-size:.7rem;letter-spacing:.04em;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+
+.empty{color:var(--mut);padding:40px;text-align:center;border:1px dashed var(--line2)}
+
+@media(max-width:720px){
+ .kpis{grid-template-columns:repeat(2,1fr)}
+ .lists{grid-template-columns:1fr}
+ .cmprow{grid-template-columns:20px 1fr 90px 74px;gap:10px}
+ .cmprow .barcell{display:none}
+ h1{font-size:1.4rem}
+}
+@media print{body{background:#fff;color:#111;padding:0}.site,.cmp{break-inside:avoid}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><p class="empty">Lade Daten… (report-data.js fehlt)</p></div>
+
+<!-- Der Agent schreibt report-data.js daneben: window.REPORT_DATA = {...} -->
+<script src="report-data.js"></script>
+<script>
+'use strict';
+const D = window.REPORT_DATA;
+const app = document.getElementById('app');
+const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const nf = new Intl.NumberFormat('de-AT');
+const num = n => (n==null || isNaN(n)) ? '–' : nf.format(Math.round(n));
+const dur = s => { if(s==null||isNaN(s))return '–'; const m=Math.floor(s/60),r=Math.round(s%60);
+ return m ? `${m}:${String(r).padStart(2,'0')} min` : `${r}s`; };
+
+/* WoW-Delta: liefert {cls,txt} — Richtung + Prozent, eine Nachkommastelle.
+   invert=true für Kennzahlen, bei denen "weniger = besser" (Bounce). */
+function delta(now, prev, invert=false){
+ if(prev==null || now==null || prev===0) return {cls:'flat', txt:'—'};
+ const pct = (now-prev)/prev*100;
+ const good = invert ? pct<0 : pct>0;
+ const cls = Math.abs(pct)<0.05 ? 'flat' : (good ? 'up' : 'down');
+ const arr = pct>0.05 ? '▲' : (pct<-0.05 ? '▼' : '·');
+ return {cls, txt:`${arr} ${pct>=0?'+':''}${pct.toFixed(1)} %`};
+}
+function barRow(item, max){
+ const w = max>0 ? Math.max(2, item.n/max*100) : 0;
+ return `<div class="li"><div class="lbl"><span class="t">${esc(item.t||'–')}</span>
+   <span class="n">${num(item.n)}</span></div><div class="mini"><span style="width:${w}%"></span></div></div>`;
+}
+
+function render(){
+ if(!D || !Array.isArray(D.sites) || !D.sites.length){
+  app.innerHTML = `<p class="empty">Keine Report-Daten vorhanden.<br>
+   Der wochenreport-Agent hat für diesen Zeitraum nichts geschrieben.</p>`;
+  return;
+ }
+ const sites = [...D.sites].sort((a,b)=>(b.visitors||0)-(a.visitors||0));
+ const maxV = Math.max(...sites.map(s=>s.visitors||0), 1);
+
+ /* Vergleichs-Leaderboard über alle Seiten */
+ const cmp = `<section>
+  <div class="slbl">Vergleich · alle Kundenseiten</div>
+  <div class="cmp">
+   <div class="cmprow head"><span>#</span><span>Website</span><span style="text-align:right">Besucher</span><span>Anteil</span><span style="text-align:right">z. Vorw.</span></div>
+   ${sites.map((s,i)=>{
+     const d = delta(s.visitors, s.prev&&s.prev.visitors);
+     return `<div class="cmprow">
+       <span class="rk">${i+1}</span>
+       <span class="nm">${esc(s.name)}<small>${num(s.pageviews)} Aufrufe · ${dur(s.avg_duration)} Ø</small></span>
+       <span class="val">${num(s.visitors)}</span>
+       <span class="barcell"><span style="width:${(s.visitors||0)/maxV*100}%"></span></span>
+       <span class="delta ${d.cls}">${d.txt}</span>
+     </div>`;
+   }).join('')}
+  </div>
+ </section>`;
+
+ /* Detailkarte je Seite */
+ const cards = sites.map((s,i)=>{
+  const p = s.prev || {};
+  const kpi = [
+   ['Besucher', num(s.visitors), delta(s.visitors, p.visitors)],
+   ['Seitenaufrufe', num(s.pageviews), delta(s.pageviews, p.pageviews)],
+   ['Ø Besuchsdauer', dur(s.avg_duration), delta(s.avg_duration, p.avg_duration)],
+   ['Absprungrate', s.bounce_rate!=null?s.bounce_rate.toFixed(1)+' %':'–', delta(s.bounce_rate, p.bounce_rate, true)],
+  ];
+  const pages = s.top_pages||[], srcs = s.top_sources||[];
+  const maxP = Math.max(...pages.map(x=>x.n||0), 1), maxS = Math.max(...srcs.map(x=>x.n||0), 1);
+  const note = s.outlier
+   ? `<div class="note"><b>Auffällig:</b> ${esc(s.outlier)}</div>`
+   : `<div class="note none">Keine Ausreißer über 30 % gegenüber der Vorwoche.</div>`;
+  return `<div class="site">
+   <div class="top">
+    <div><h2>${esc(s.name)}</h2>${s.url?`<div class="u">${esc(s.url)}</div>`:''}</div>
+    <span class="rank">Rang ${i+1} / ${sites.length}</span>
+   </div>
+   <div class="kpis">${kpi.map(([k,v,d])=>`<div class="kpi"><div class="k">${k}</div>
+     <div class="v">${v}</div><div class="d ${d.cls}">${d.txt}</div></div>`).join('')}</div>
+   <div class="lists">
+    <div class="lst"><h3>Top-Seiten</h3>${pages.length?pages.slice(0,5).map(x=>barRow(x,maxP)).join(''):'<p style="color:var(--mut);font-size:.8rem">Keine Daten.</p>'}</div>
+    <div class="lst"><h3>Top-Quellen</h3>${srcs.length?srcs.slice(0,5).map(x=>barRow(x,maxS)).join(''):'<p style="color:var(--mut);font-size:.8rem">Keine Daten.</p>'}</div>
+   </div>
+   ${note}
+  </div>`;
+ }).join('');
+
+ app.innerHTML = `
+  <header>
+   <div class="kick">Wochenreport</div>
+   <h1>${sites.length} Kundenseite${sites.length===1?'':'n'} im Überblick</h1>
+   <div class="range">Zeitraum <b>${esc(D.zeitraum||'–')}</b> · ${esc(D.woche||'')} · erstellt ${esc(D.erstellt||'')}</div>
+  </header>
+  ${cmp}
+  <section><div class="slbl">Detail je Website</div>${cards}</section>
+  <footer>
+   <span>Agent HQ · Wochenreport · Datenquelle Umami</span>
+   <span class="mono">${esc(D.quelle||'analytics.naschberger.info')}</span>
+  </footer>`;
+}
+render();
+</script>
+</body>
+</html>

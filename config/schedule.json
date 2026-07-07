@@ -1,0 +1,12 @@
+{
+  "_hinweis": "Zentraler Zeitplan aller Agents. Der Master/Kommandant pflegt diese Datei; der Cron am Server wird daraus erzeugt. next_run in status.json muss zu 'cadence' passen.",
+  "zeitzone": "Europe/Vienna",
+  "agents": {
+    "wochenreport":       { "cadence": "Fr 08:00",     "enabled": true,  "schwer": true },
+    "belege-buchhaltung": { "cadence": "Mo 09:00",     "enabled": true,  "schwer": false },
+    "content-recherche":  { "cadence": "So 17:00",     "enabled": true,  "schwer": true },
+    "uptime-waechter":    { "cadence": "alle 15 min",  "enabled": true,  "schwer": false },
+    "seo-audit":          { "cadence": "Mi 06:00",     "enabled": true,  "schwer": true },
+    "rechnungssteller":   { "cadence": "auf Abruf",    "enabled": true,  "schwer": false }
+  }
+}
