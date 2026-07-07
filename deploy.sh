@@ -7,8 +7,9 @@ BASE="$(cd "$(dirname "$0")" && pwd)"
 cd "$BASE"
 echo "== Agent HQ Setup in: $BASE"
 
-# 1) Ordner
-mkdir -p logs belege/inbox belege/archiv belege/pakete reports content httpdocs
+# 1) Ordner (inkl. Output-Ordner der neuen Agents)
+mkdir -p logs belege/inbox belege/archiv belege/pakete reports content \
+         uptime/alerts seo rechnungen master httpdocs
 
 # 2) Dashboard in den Web-Docroot (httpdocs) legen – NUR diese Dateien sind öffentlich
 cp -f dashboard/index.html httpdocs/index.html
