@@ -1,7 +1,8 @@
 {
   "_hinweis": "Kunden-Websites, die uptime-waechter und seo-audit prüfen. Von Hand pflegen: neue Kundenseite hier eintragen. name = Anzeigename, url = Live-URL (mit https).",
   "sites": [
-    { "name": "ferienhaus-tirol.at", "url": "https://ferienhaus-tirol.at" },
-    { "name": "mueller-gmbh.at", "url": "https://mueller-gmbh.at" }
+    { "name": "naschberger.info", "url": "https://naschberger.info" },
+    { "name": "sicherrestaurant.at", "url": "https://sicherrestaurant.at" },
+    { "name": "ursulakircher.at", "url": "https://ursulakircher.at" }
   ]
 }
