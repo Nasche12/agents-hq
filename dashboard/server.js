@@ -223,13 +223,37 @@ function dpost(chan, text) { dpy(['post', chan, text], () => {}); }
 
 const D_HELP = [
   '🤖 **HQ-Kommandos** (schreib sie einfach hier rein):',
-  '• `status` – Lage aller Agents',
-  '• `run <agent>` oder nur `<agent>` – Lauf starten',
+  '• `status` – Lage aller Agents · `offen` – nur Waits/Fehler',
+  '• `run <agent>` oder nur `<agent>` – Lauf starten (Aliase ok: report, belege, content, uptime, seo, rechnung)',
   '• `<agent>: <auftrag>` – Lauf mit eigenem Auftrag',
   '• `go [agent]` – Freigabe: wartenden Agent seine Aktion ausführen lassen',
-  '• `agents` – bekannte Agents auflisten',
-  '• `help` – diese Hilfe'
+  '• `agents` – bekannte Agents · `help` – diese Hilfe',
+  '• **Frage mit `?`** oder `master …` – der Master antwortet (nur das kostet Tokens)'
 ].join('\n');
+
+/* Aliase -> Agent-ID, damit lockere Formulierungen ohne LLM erkannt werden */
+const ALIAS = {
+  report: 'wochenreport', reports: 'wochenreport', wochenbericht: 'wochenreport', bericht: 'wochenreport',
+  beleg: 'belege-buchhaltung', belege: 'belege-buchhaltung', buchhaltung: 'belege-buchhaltung',
+  content: 'content-recherche', contentplan: 'content-recherche', recherche: 'content-recherche',
+  uptime: 'uptime-waechter', erreichbarkeit: 'uptime-waechter', monitoring: 'uptime-waechter',
+  seo: 'seo-audit', audit: 'seo-audit', rechnung: 'rechnungssteller', rechnungen: 'rechnungssteller'
+};
+function matchAgent(s) {
+  s = (s || '').toLowerCase().trim();
+  if (AGENTS[s]) return s;
+  if (ALIAS[s]) return ALIAS[s];
+  for (const id of Object.keys(AGENTS)) { if (id !== 'master' && s === id.split('-')[0]) return id; }
+  for (const [w, id] of Object.entries(ALIAS)) { if (new RegExp('\\b' + w + '\\b').test(s)) return id; }
+  return null;
+}
+function dOpenText() {
+  const a = readStatus().agents || {};
+  const open = Object.keys(a).filter(k => a[k].status === 'waiting' || a[k].status === 'error');
+  if (!open.length) return '✅ Nichts offen – keine Waits, keine Fehler.';
+  const ic = { waiting: '🟡', error: '🔴' };
+  return 'Offen:\n' + open.map(k => `${ic[a[k].status]} **${k}** – ${a[k].status}${a[k].message ? ': ' + a[k].message : ''}`).join('\n');
+}
 
 function dStatusText() {
   const a = readStatus().agents || {};
@@ -251,19 +275,34 @@ function dGo(id) {
   if (!id) return dpost(D.cmd, 'Kein Agent wartet gerade auf Go. Nenne einen, z. B. `go wochenreport`.');
   dRun(id, 'Sebastian hat GO gegeben. Führe die freigegebene Aktion des letzten Laufs jetzt aus (z. B. die abgelegten Entwürfe versenden). Liegt nichts zum Versenden bereit, sag das kurz.');
 }
+/* Filter-Kaskade: erst alles Deterministische (kostenlos), Master (LLM) nur als letzte Stufe
+   und nur bei echter Frage/Ansprache – so bleiben die Token-Kosten minimal. */
 function dHandle(text) {
   text = (text || '').trim();
   if (!text) return;
   const low = text.toLowerCase();
-  let m;
+  let m, id;
+
+  // 1) Exakte Kommandos – kein LLM
   if (low === 'help' || low === 'hilfe' || low === '?') return dpost(D.cmd, D_HELP);
-  if (low === 'status') return dpost(D.cmd, dStatusText());
   if (low === 'agents' || low === 'agent') return dpost(D.cmd, 'Agents: ' + Object.keys(AGENTS).join(', '));
-  if (m = low.match(/^(?:run|start|starte)\s+([a-z-]+)$/)) return dRun(m[1]);
-  if (m = low.match(/^go(?:\s+([a-z-]+))?$/)) return dGo(m[1]);
-  if (m = text.match(/^([a-z-]+)\s*:\s*([\s\S]+)/i)) { const id = m[1].toLowerCase(); if (AGENTS[id]) return dRun(id, m[2].trim()); }
-  if (AGENTS[low]) return dRun(low);
-  return dRunMaster(text);   // kein Kommando erkannt -> als Auftrag an den Master (Stabschef)
+  if (m = low.match(/^(?:run|start|starte)\s+(.+)$/)) { id = matchAgent(m[1]); return id ? dRun(id) : dpost(D.cmd, `❓ Kein Agent zu "${m[1].trim()}".`); }
+  if (m = low.match(/^go(?:\s+([a-z-]+))?$/)) return dGo(m[1] ? (matchAgent(m[1]) || m[1]) : null);
+  if (m = text.match(/^([a-zäöü-]+)\s*:\s*([\s\S]+)/i)) { id = matchAgent(m[1]); if (id) return dRun(id, m[2].trim()); }
+  if (id = (AGENTS[low] ? low : ALIAS[low])) return dRun(id);   // ganze Nachricht = Agentname/Alias
+
+  // 2) Explizite Master-Ansprache -> LLM (höchste Priorität, schlägt Keyword-Intents)
+  if (/^(master|hey master|kommandant)\b/i.test(low)) return dRunMaster(text);
+
+  // 3) Deterministische Intents – kein LLM
+  if (/^(danke|thx|thanks|merci|ok(ay)?|passt|super|top|läuft|👍|👌|🙏)[.! ]*$/i.test(low)) return;         // Bestätigung -> still
+  if (/\b(status|lage|stand|überblick|uebersicht)\b/.test(low) || /^was\s+(läuft|geht|los)/.test(low)) return dpost(D.cmd, dStatusText());
+  if (/\b(offen|wartet|warten|waits?|freigaben?|blockiert|hängt|fehler|errors?)\b/.test(low)) return dpost(D.cmd, dOpenText());
+  if (/\b(start|starte|lauf|laufen|mach|run|feuer|los|erstell|erstelle|prüf|pruef|check)\b/.test(low)) { id = matchAgent(low); if (id) return dRun(id); }
+
+  // 4) Offene Frage -> Master (LLM); alles andere -> billiger Hinweis, kein Token
+  if (/\?\s*$/.test(text)) return dRunMaster(text);
+  return dpost(D.cmd, 'Nicht als Kommando erkannt. `help`, `status` oder `offen` – oder stell dem Master eine **Frage mit `?`** bzw. beginne mit `master …`.');
 }
 function dRunMaster(text) {
   const st = readStatus();

@@ -123,9 +123,12 @@ Sobald der Service läuft, ist der HQ nicht mehr nur reaktiv:
   „⏳ fällig – starten?" und warten auf `run <agent>` (schützt den Server, du behältst die Kontrolle).
 - **Tägliche Lage:** Zur Uhrzeit `DISCORD_MASTER_DAILY` (Default 07:30) läuft der
   `kommandant` und postet die Gesamtlage (Ampel je Agent, offene Waits/Fehler) nach `#agent-logs`.
-- **Master-Chat:** Jede Nachricht in `#freigaben`, die **kein** bekanntes Kommando ist,
-  geht an den Master. Du kannst also normal schreiben – „was ist offen?", „starte den
-  Report nur für naschberger.info" – und er koordiniert und antwortet dir im Kanal.
+- **Master-Chat (token-sparsam):** Ein deterministischer Filter beantwortet zuerst alles,
+  was ohne LLM geht – `status`, `offen`, lockere Startbefehle mit Aliasen („mach die belege",
+  „prüf die erreichbarkeit", „starte den report"), Bestätigungen („danke" → still). Der
+  **Master (LLM, kostet Tokens) läuft nur**, wenn du eine echte **Frage mit `?`** stellst oder
+  die Nachricht mit `master …` / `kommandant …` beginnst. So bleibt der Chat natürlich, ohne
+  bei jedem Wort Tokens zu verbrennen.
 
 Umschalten (in `.env`):
 
