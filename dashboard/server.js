@@ -263,7 +263,17 @@ function dHandle(text) {
   if (m = low.match(/^go(?:\s+([a-z-]+))?$/)) return dGo(m[1]);
   if (m = text.match(/^([a-z-]+)\s*:\s*([\s\S]+)/i)) { const id = m[1].toLowerCase(); if (AGENTS[id]) return dRun(id, m[2].trim()); }
   if (AGENTS[low]) return dRun(low);
-  dpost(D.cmd, `❓ Verstehe "${text}" nicht. Tippe \`help\`.`);
+  return dRunMaster(text);   // kein Kommando erkannt -> als Auftrag an den Master (Stabschef)
+}
+function dRunMaster(text) {
+  const st = readStatus();
+  if (st.agents && st.agents.master && st.agents.master.status === 'running')
+    return dpost(D.cmd, '⏳ Der Master arbeitet noch – ich melde mich gleich.');
+  const prompt = `Nutze den Subagent kommandant. Sebastian schreibt dir via Discord (#${D.cmd}): "${text}". `
+    + `Erledige es als Koordinator: lies dashboard/status.json und config/schedule.json, stoße bei Bedarf Läufe via bin/run-agent.sh an, `
+    + `und antworte Sebastian knapp per bin/discord.py post ${D.cmd} "<antwort>". Nichts an Kunden senden.`;
+  try { runAgent('master', prompt); dpost(D.cmd, '🧠 Verstanden – der Master schaut sich das an…'); }
+  catch (e) { dpost(D.cmd, '❌ ' + (e.message || e)); }
 }
 let dBusy = false;
 function dPoll() {
@@ -292,6 +302,70 @@ if (D.on && D.token && D.guild) {
   dPoll();
 } else {
   console.log('Discord-Bridge aus (DISCORD_BOT_TOKEN/GUILD_ID fehlt oder DISCORD_BRIDGE=off).');
+}
+
+/* ---------- Scheduler (macht den HQ „lebendig" wie der Master) ----------
+   Feuert fällige Agents aus config/schedule.json und lässt den Master 1×/Tag die Lage posten.
+   Zeit = Serverzeit; setze TZ=Europe/Vienna im Service (install-service.sh tut das). */
+const SCHED_ON = (process.env.DISCORD_SCHEDULER || 'on') !== 'off';
+const MASTER_DAILY = (process.env.DISCORD_MASTER_DAILY ?? '07:30').trim();  // '' = aus
+const FIRES = path.join(WEB, '.sched-fires.json');
+let fires = {}; try { fires = JSON.parse(fs.readFileSync(FIRES, 'utf8')); } catch (e) { fires = {}; }
+function saveFires() { try { fs.writeFileSync(FIRES, JSON.stringify(fires)); } catch (e) {} }
+
+const WDAYS = { mo: 1, di: 2, mi: 3, do: 4, fr: 5, sa: 6, so: 0 };
+function isDue(cad, last, now) {
+  cad = (cad || '').toLowerCase().trim();
+  if (!cad || cad.includes('abruf')) return false;
+  let m;
+  if (m = cad.match(/alle\s+(\d+)\s*(min|minuten|h|std|stunde|stunden)/)) {
+    const iv = (+m[1]) * (m[2][0] === 'h' || m[2][0] === 's' ? 3600000 : 60000);
+    return (now - last) >= iv;
+  }
+  if (m = cad.match(/^(mo|di|mi|do|fr|sa|so)\s+(\d{1,2}):(\d{2})/)) {
+    const d = new Date(now);
+    if (d.getDay() !== WDAYS[m[1]]) return false;
+    const t = new Date(now); t.setHours(+m[2], +m[3], 0, 0);
+    return now >= t.getTime() && last < t.getTime();     // heute fällig, noch nicht gefeuert
+  }
+  if (m = cad.match(/(\d{1,2}):(\d{2})/)) {               // reine Uhrzeit -> täglich
+    const t = new Date(now); t.setHours(+m[1], +m[2], 0, 0);
+    return now >= t.getTime() && last < t.getTime();
+  }
+  return false;
+}
+function schedTick() {
+  const now = Date.now();
+  const sched = readSchedule().agents || {};
+  const st = readStatus().agents || {};
+  for (const [id, cfg] of Object.entries(sched)) {
+    if (!AGENTS[id] || !cfg || cfg.enabled === false) continue;
+    if (!isDue(cfg.cadence, fires[id] || 0, now)) continue;
+    if (st[id] && st[id].status === 'running') { fires[id] = now; saveFires(); continue; }  // läuft schon -> Fenster als erledigt markieren
+    fires[id] = now; saveFires();
+    if (cfg.schwer) {   // schwere Läufe nicht blind starten – nach Freigabe fragen
+      dpost(D.cmd, `⏳ **${id}** ist laut Plan fällig (${cfg.cadence}). Starten? Antworte \`run ${id}\`.`);
+    } else {
+      try { runAgent(id); dpost(D.log, `⏰ **${id}** automatisch gestartet (Plan: ${cfg.cadence}).`); } catch (e) {}
+    }
+  }
+  if (MASTER_DAILY && isDue(MASTER_DAILY, fires.__master__ || 0, now)) {
+    fires.__master__ = now; saveFires();
+    if (!(st.master && st.master.status === 'running')) {
+      try {
+        runAgent('master', 'Nutze den Subagent kommandant: verschaffe dir den Gesamtüberblick (dashboard/status.json), '
+          + 'stimme config/schedule.json ab und stoße fällige Läufe an. Poste danach eine kompakte Lage '
+          + '(Ampel je Agent, offene Waits/Fehler zuerst) nach Discord: bin/discord.py post ' + D.log + ' "<Lage>". Nichts an Kunden senden.');
+      } catch (e) {}
+    }
+  }
+}
+if (SCHED_ON) {
+  console.log(`Scheduler aktiv (Tick 30s)${MASTER_DAILY ? `, Master-Lage täglich ${MASTER_DAILY}` : ''}.`);
+  setInterval(schedTick, 30000);
+  schedTick();
+} else {
+  console.log('Scheduler aus (DISCORD_SCHEDULER=off).');
 }
 
 server.listen(PORT, HOST, () => console.log(`Agent HQ läuft auf http://${HOST}:${PORT}  (Basis: ${BASE})`));

@@ -29,6 +29,7 @@ Group=$GRP
 WorkingDirectory=$BASE
 Environment=PORT=$PORT
 Environment=HOST=127.0.0.1
+Environment=TZ=Europe/Vienna
 Environment=PATH=$BIN:/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=-$BASE/.env
 ExecStart=$NODE dashboard/server.js

@@ -112,3 +112,30 @@ python3 bin/discord.py read freigaben --limit 5 --json    # zeigt letzte Nachric
 
 Webhooks (oben) und Bot schließen sich nicht aus – der Bot kann alles, was die
 Webhooks können, plus Lesen. Wer nur Ergebnisse will, bleibt bei Webhooks.
+
+## Der Bot arbeitet wie der Master (Scheduler + Chat)
+
+Sobald der Service läuft, ist der HQ nicht mehr nur reaktiv:
+
+- **Auto-Scheduler:** `server.js` liest `config/schedule.json` und feuert fällige
+  Läufe von selbst. **Leichte** Agents (z. B. `uptime-waechter`) starten automatisch;
+  **schwere** (`wochenreport`, `content-recherche`, `seo-audit`) posten in `#freigaben`
+  „⏳ fällig – starten?" und warten auf `run <agent>` (schützt den Server, du behältst die Kontrolle).
+- **Tägliche Lage:** Zur Uhrzeit `DISCORD_MASTER_DAILY` (Default 07:30) läuft der
+  `kommandant` und postet die Gesamtlage (Ampel je Agent, offene Waits/Fehler) nach `#agent-logs`.
+- **Master-Chat:** Jede Nachricht in `#freigaben`, die **kein** bekanntes Kommando ist,
+  geht an den Master. Du kannst also normal schreiben – „was ist offen?", „starte den
+  Report nur für naschberger.info" – und er koordiniert und antwortet dir im Kanal.
+
+Umschalten (in `.env`):
+
+```
+DISCORD_SCHEDULER=off        # Auto-Feuern ganz aus
+DISCORD_MASTER_DAILY=        # keine tägliche Lage (leer)
+```
+
+**Schwere Läufe voll automatisch** statt Rückfrage: in `config/schedule.json` beim
+jeweiligen Agent `"schwer": false` setzen – dann startet der Scheduler ihn ohne Nachfrage.
+
+Zeit richtet sich nach der Serverzeit; `install-service.sh` setzt `TZ=Europe/Vienna`
+passend zur `zeitzone` in `schedule.json`.
