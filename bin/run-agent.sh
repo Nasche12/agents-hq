@@ -52,5 +52,8 @@ print('running' if a.get('status')=='running' else 'done')" | grep -q running &&
 else
   upd error "Abgebrochen (Exit $RC)" 0 "Fehler – Log prüfen!"
 fi
+
+# Dashboard-Datenfiles ins statische Docroot spiegeln (index.html liest sie ohne server.js)
+[ -f "$BASE/uptime/uptime.json" ] && cp -f "$BASE/uptime/uptime.json" "$WEBDIR/uptime.json" 2>/dev/null
 echo "=== $(date -Is) ENDE rc=$RC ===" >> "$LOG"
 exit $RC

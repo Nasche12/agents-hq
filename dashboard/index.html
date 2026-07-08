@@ -109,14 +109,83 @@ button{font-family:inherit}
 .mflag.err{color:var(--red);border-color:oklch(52% 0.14 25/.6);background:oklch(24% 0.07 25/.22)}
 .mflag.wait{color:var(--amb);border-color:oklch(56% 0.11 85/.5);background:oklch(24% 0.06 85/.16)}
 .mtable{display:flex;flex-direction:column;gap:2px}
-.mrow{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;text-align:left;
- background:oklch(16% 0.02 280/.5);border:1px solid transparent;border-left:3px solid var(--line-dim);
+.mrow{display:grid;grid-template-columns:9px 1fr auto auto;gap:11px;align-items:center;text-align:left;
+ background:oklch(16% 0.02 280/.5);border:1px solid var(--line2, var(--line-dim));
  color:var(--txt);padding:8px 11px;cursor:pointer}
-.mrow:hover,.mrow:focus-visible{border-color:var(--line-dim);outline:none}
+.mrow:hover,.mrow:focus-visible{border-color:var(--cyan);outline:none}
+.mrow .mdot{width:9px;height:9px;border-radius:50%;box-shadow:0 0 7px currentColor}
 .mrow .mn{font-size:.82rem}
 .mrow .mn small{display:block;color:var(--mut);font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;margin-top:1px}
 .mrow .mp{color:var(--cyan);font-size:.72rem}
 .mrow .mnext{color:var(--mut);font-size:.66rem;min-width:64px;text-align:right}
+/* ---- Nav-Struktur: Kommando-Button + Flotten-Label ---- */
+.navlabel{font-size:.58rem;letter-spacing:.22em;text-transform:uppercase;color:var(--mut);padding:12px 12px 2px}
+.cmdbtn{display:grid;grid-template-columns:11px 1fr auto;gap:11px;align-items:center;width:calc(100% - 16px);
+ margin:10px 8px 2px;padding:12px 13px;cursor:pointer;text-align:left;color:var(--txt);
+ background:linear-gradient(90deg,oklch(23% 0.06 330 / .55),oklch(18% 0.03 280 / .35));
+ border:1px solid var(--line-dim);transition:box-shadow .16s,border-color .16s}
+.cmdbtn:hover,.cmdbtn:focus-visible{border-color:var(--mc);box-shadow:inset 0 0 0 1px var(--mc);outline:none}
+.cmdbtn .cdot{width:10px;height:10px;border-radius:50%;box-shadow:0 0 9px currentColor}
+.cmdbtn .ctx b{font-size:.84rem;letter-spacing:.05em;display:block}
+.cmdbtn .ctx small{display:block;color:var(--mut);font-size:.64rem;margin-top:1px}
+.cmdbtn .cgo{font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;color:var(--mc);white-space:nowrap}
+
+/* ---- Kommandozentrale-Overlay ---- */
+#cmd{position:fixed;inset:0;z-index:40;display:none;overflow-y:auto;padding:26px;
+ background:oklch(6% 0.02 290 / .82);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+#cmd.on{display:block}
+.cmd-panel{max-width:1120px;margin:0 auto;background:var(--panel);border:1px solid var(--line-dim);
+ box-shadow:0 30px 90px oklch(4% 0.02 290 / .75)}
+.cmd-top{display:flex;align-items:center;gap:16px;padding:15px 22px;border-bottom:1px solid var(--line-dim);
+ position:sticky;top:0;z-index:3;background:var(--panel)}
+.cmd-top h2{font-size:.86rem;letter-spacing:.28em;text-transform:uppercase;color:var(--vio);white-space:nowrap}
+.cmd-top .up{font-size:.6rem;color:var(--mut);text-transform:uppercase;letter-spacing:.08em;white-space:nowrap}
+.pills{display:flex;gap:7px;flex-wrap:wrap;margin-left:auto}
+.pill{font-size:.64rem;font-family:Consolas,monospace;border:1px solid currentColor;padding:3px 9px;letter-spacing:.03em}
+.pill i{display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:5px;box-shadow:0 0 6px currentColor}
+.cmd-close{flex:0 0 auto;background:none;border:1px solid var(--line-dim);color:var(--txt);
+ width:34px;height:34px;cursor:pointer;font-size:1.05rem;line-height:1}
+.cmd-close:hover,.cmd-close:focus-visible{border-color:var(--red);color:var(--red);outline:none}
+.cmd-alert{padding:12px 22px;border-bottom:1px solid var(--line-dim);font-size:.8rem;line-height:1.6}
+.cmd-alert.err{color:var(--red);background:oklch(24% 0.07 25 / .2)}
+.cmd-alert.wait{color:var(--amb);background:oklch(24% 0.06 85 / .16)}
+.cmd-alert b{letter-spacing:.04em}
+.cmd-body{display:grid;grid-template-columns:320px 1fr}
+.cmd-fleet{padding:18px 20px;border-right:1px solid var(--line-dim)}
+.cmd-main{padding:18px 22px;display:flex;flex-direction:column;gap:24px;min-width:0}
+.sect h3{font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;color:var(--mut);
+ margin-bottom:11px;display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.sect h3 span{color:var(--dim,var(--mut));letter-spacing:.04em;text-transform:none;font-size:.68rem}
+.chart{width:100%;height:auto;display:block}
+.chart .gl{stroke:var(--line-dim);stroke-width:1;opacity:.45}
+.chart .gt,.chart .bv,.chart .thrt{fill:var(--mut);font:10px Consolas,monospace}
+.chart .bl{fill:var(--txt);font:11px Consolas,monospace}
+.chart .thr{stroke:var(--amb);stroke-dasharray:3 3;stroke-width:1;opacity:.75}
+.chart-empty{color:var(--mut);font-size:.78rem;font-style:italic;padding:26px;
+ border:1px dashed var(--line-dim);text-align:center}
+.legend2{display:flex;gap:16px;flex-wrap:wrap;margin-top:9px;font-size:.66rem;color:var(--mut)}
+.legend2 i{display:inline-block;width:12px;height:2px;margin-right:6px;vertical-align:middle}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:10px}
+.tile{border:1px solid var(--line-dim);padding:11px 13px;background:oklch(15% 0.02 280 / .5)}
+.tile .tn{font-size:.8rem;font-weight:600;display:flex;align-items:center;gap:7px}
+.tile .tn i{width:8px;height:8px;border-radius:50%;box-shadow:0 0 6px currentColor;flex:0 0 auto}
+.tile .tm{font-family:Consolas,monospace;font-size:.66rem;color:var(--mut);margin-top:7px;line-height:1.7}
+.tile .tm b{color:var(--txt);font-weight:400}
+.cmd-tab{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;text-align:left;width:100%;
+ background:oklch(16% 0.02 280 / .5);border:1px solid transparent;color:var(--txt);padding:9px 11px;margin-bottom:3px;cursor:pointer}
+.cmd-tab:hover,.cmd-tab:focus-visible{border-color:var(--line-dim);outline:none}
+.cmd-tab .cn{font-size:.82rem}
+.cmd-tab .cn small{display:block;color:var(--mut);font-size:.62rem;text-transform:uppercase;letter-spacing:.05em;margin-top:1px}
+.cmd-tab .cp{font-family:Consolas,monospace;font-size:.7rem}
+.cmd-tab .cnx{font-family:Consolas,monospace;font-size:.64rem;color:var(--mut)}
+.cmd-tab .cdt{width:8px;height:8px;border-radius:50%;box-shadow:0 0 6px currentColor}
+@media(max-width:820px){
+ #cmd{padding:0}
+ .cmd-body{grid-template-columns:1fr}
+ .cmd-fleet{border-right:0;border-bottom:1px solid var(--line-dim)}
+ .cmd-top{flex-wrap:wrap;gap:10px}
+ .pills{margin-left:0;order:3;flex-basis:100%}
+}
 #apibar{padding:8px 20px;border-top:1px solid var(--line-dim);font-size:.6rem;letter-spacing:.12em;
  text-transform:uppercase;color:var(--mut);display:flex;justify-content:space-between}
 #apibar b{font-weight:400}
@@ -158,6 +227,8 @@ button{font-family:inherit}
  </div>
 </aside>
 
+<div id="cmd" role="dialog" aria-modal="true" aria-label="Kommandozentrale" aria-hidden="true"></div>
+
 <script>
 'use strict';
 /* ================================================================
@@ -187,7 +258,26 @@ const DEMO={updated:new Date().toISOString(),agents:{
   last_run:null,next_run:'auf Abruf',details:[],outputs:[],log_tail:'(noch kein Lauf)'}
 }};
 
-let DATA=null,SEL=null,API=false,TAB='info',REPORTS=null;
+let DATA=null,SEL=null,API=false,TAB='info',REPORTS=null,UPTIME=null,CMD_OPEN=false;
+
+/* Demo-Uptime nur im DEMO-Modus (kein echtes uptime.json geladen) – zeigt, wie die Charts aussehen. */
+const DEMO_UPTIME=(()=>{
+ const names=['naschberger.info','sicherrestaurant.at','ursulakircher.at'];
+ const base={'naschberger.info':15,'sicherrestaurant.at':34,'ursulakircher.at':21};
+ const ssl={'naschberger.info':62,'sicherrestaurant.at':35,'ursulakircher.at':41};
+ const history=[];
+ for(let i=23;i>=0;i--){
+  history.push({t:'2026-07-08T'+String((i)%24).padStart(2,'0')+':00:00+02:00',
+   p:names.map((n,k)=>{
+    const jitter=[7,13,5,11,3,17,9][(i+k)%7]-8; // deterministisch, kein Math.random
+    const down=(n==='sicherrestaurant.at'&&i===9);
+    return {n,ms:down?null:Math.max(6,base[n]+jitter+(k*2)),ssl:ssl[n]-Math.floor(i/12),up:down?0:1};
+   })});
+ }
+ return {stand:'2026-07-08T08:26:29+02:00',
+  sites:names.map(n=>({name:n,url:'https://'+n,state:'ok',http:200,ms:base[n],ssl_days:ssl[n],checked:'2026-07-08T08:26:29+02:00'})),
+  history};
+})();
 const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
 const $=s=>document.querySelector(s);
 
@@ -954,9 +1044,16 @@ function applyData(){
  $('#meta').innerHTML='STAND '+new Date(DATA.updated).toLocaleString('de-AT')+
   '<span class="src">'+(DATA.demo?'DEMO':'LIVE')+(API?' · API':'')+'</span>';
  renderAgents();renderTab();
+ if(CMD_OPEN)renderCmd();
 }
 function renderAgents(){
- $('#agents').innerHTML=BOT_IDS.map(id=>{
+ const m=DATA.agents.master||{status:'idle'};
+ const mc=COLORS[m.status]||COLORS.idle;
+ const cmdBtn=`<button id="cmdopen" class="cmdbtn" style="--mc:${mc}" title="Kommandozentrale öffnen">
+   <span class="cdot" style="color:${mc}"></span>
+   <span class="ctx"><b>Kommandozentrale</b><small>${esc(m.message||'–')}</small></span>
+   <span class="cgo">▣ öffnen</span></button>`;
+ const rows=FLEET_IDS.map(id=>{
   const a=DATA.agents[id]||{name:id,status:'idle'};
   const c=COLORS[a.status]||COLORS.idle;
   const running=a.status==='running';
@@ -968,6 +1065,8 @@ function renderAgents(){
      title="${!API?'Nur mit laufendem server.js verfügbar (node dashboard/server.js)':(running?'Läuft gerade – Neustart wird abgewiesen':'Agent jetzt starten')}">▶ START</button></span>
   </button>`;
  }).join('');
+ $('#agents').innerHTML=cmdBtn+`<div class="navlabel">Flotte · ${FLEET_IDS.length} Agents</div>`+rows;
+ $('#cmdopen').addEventListener('click',()=>{SEL='master';openCmd();});
  document.querySelectorAll('.arow').forEach(el=>el.addEventListener('click',e=>{
   if(e.target.closest('.runbtn'))return;
   select(el.dataset.id);
@@ -989,7 +1088,10 @@ function renderAgents(){
  }));
 }
 function select(id){
- SEL=id;renderAgents();renderTab();
+ SEL=id;
+ if(id!=='master')closeCmd();
+ renderAgents();renderTab();
+ if(id==='master')openCmd();
 }
 document.querySelectorAll('#tabs button').forEach(b=>b.addEventListener('click',()=>{
  TAB=b.dataset.tab;
@@ -1003,13 +1105,17 @@ function renderMaster(body){
  const errs=flagged('error'),waits=flagged('waiting');
  const line=id=>{const a=DATA.agents[id]||{};return esc(a.name||id)+' — '+esc(a.message||a.phase||'');};
  body.innerHTML=`
+  <button class="cmdbtn" id="reopencmd" style="--mc:${COLORS[DATA.agents.master.status]||COLORS.idle};margin:0 0 12px;width:100%">
+   <span class="cdot" style="color:${COLORS[DATA.agents.master.status]||COLORS.idle}"></span>
+   <span class="ctx"><b>Kommandozentrale öffnen</b><small>Vollbild: Flotte, Charts, Uptime</small></span><span class="cgo">▣</span></button>
   <div class="plbl">Flotte · ${FLEET_IDS.length} Agents</div>
   <div class="mcounts">${['running','waiting','error','ok','idle'].map(k=>chip(k,{running:'laufen',waiting:'warten',error:'Fehler',ok:'fertig',idle:'ruhen'}[k])).filter(Boolean).join('')||'–'}</div>
   ${errs.length?`<div class="mflag err"><b>⚠ Fehler</b><br>${errs.map(line).join('<br>')}</div>`:''}
   ${waits.length?`<div class="mflag wait"><b>? Wartet auf dein Go</b><br>${waits.map(line).join('<br>')}</div>`:''}
   <div class="plbl">Alle Agents im Detail</div>
   <div class="mtable">${FLEET_IDS.map(id=>{const a=DATA.agents[id]||{};const c=COLORS[a.status]||COLORS.idle;
-    return `<button class="mrow" data-id="${id}" style="border-left-color:${c}">
+    return `<button class="mrow" data-id="${id}">
+      <span class="mdot" style="background:${c};color:${c}"></span>
       <span class="mn">${esc(a.name||id)}<small>${LABELS[a.status]||esc(a.status)} · ${esc(a.phase||'–')}</small></span>
       <span class="mp mono">${a.progress!=null?a.progress+'%':''}</span>
       <span class="mnext mono">${esc(a.next_run||'–')}</span>
@@ -1018,6 +1124,7 @@ function renderMaster(body){
   <pre style="max-height:22vh">${esc(DATA.agents.master.log_tail||'–')}</pre>
   <p class="hint">Klick auf eine Zeile öffnet den Agent. „▶ START" oben lässt den Kommandant jetzt koordinieren.</p>`;
  body.querySelectorAll('.mrow').forEach(el=>el.addEventListener('click',()=>select(el.dataset.id)));
+ const rc=body.querySelector('#reopencmd');if(rc)rc.addEventListener('click',openCmd);
 }
 function renderTab(){
  const body=$('#tabbody');
@@ -1075,6 +1182,86 @@ async function renderReports(body){
  }));
 }
 
+/* ================= Kommandozentrale (Overlay + Charts) ================= */
+function openCmd(){CMD_OPEN=true;const el=$('#cmd');el.classList.add('on');el.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';renderCmd();}
+function closeCmd(){if(!CMD_OPEN)return;CMD_OPEN=false;const el=$('#cmd');el.classList.remove('on');el.setAttribute('aria-hidden','true');document.body.style.overflow='';}
+
+/* Multi-Linien-Zeitchart (Inline-SVG, self-contained). series:[{name,color,pts:[num|null]}] */
+function svgLine(series,o){
+ o=o||{};const w=520,h=150,pl=40,pr=12,pt=12,pb=18;
+ const n=Math.max(0,...series.map(s=>s.pts.length));
+ const vals=series.flatMap(s=>s.pts).filter(v=>v!=null&&!isNaN(v));
+ if(n<2||vals.length<2)return `<div class="chart-empty">Sammelt Daten – Liniengrafik ab 2 Messpunkten.</div>`;
+ let max=Math.max(...vals),min=o.zero?0:Math.min(...vals);
+ if(max<=min)max=min+1;
+ const X=i=>pl+(i/(n-1))*(w-pl-pr), Y=v=>pt+(1-(v-min)/(max-min))*(h-pt-pb);
+ const grid=[max,(max+min)/2,min].map(v=>`<line class="gl" x1="${pl}" y1="${Y(v).toFixed(1)}" x2="${w-pr}" y2="${Y(v).toFixed(1)}"/><text class="gt" x="2" y="${(Y(v)+3).toFixed(1)}">${Math.round(v)}</text>`).join('');
+ const lines=series.map(s=>{let d='',pen=false;s.pts.forEach((v,i)=>{if(v==null||isNaN(v)){pen=false;return;}d+=(pen?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1)+' ';pen=true;});return d?`<path d="${d}" fill="none" stroke="${s.color}" stroke-width="1.6" stroke-linejoin="round"/>`:'';}).join('');
+ const dots=series.map(s=>{for(let i=s.pts.length-1;i>=0;i--){const v=s.pts[i];if(v!=null&&!isNaN(v))return `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="2.6" fill="${s.color}"/>`;}return '';}).join('');
+ return `<svg viewBox="0 0 ${w} ${h}" class="chart" role="img" aria-label="${esc(o.aria||'Verlauf')}">${grid}${lines}${dots}</svg>`;
+}
+/* Horizontale Balken mit Warnschwelle. rows:[{label,value}] */
+function svgBars(rows,o){
+ o=o||{};const w=520,pl=132,pr=48,rh=30,tp=6,thr=o.threshold||21;
+ const h=tp*2+rows.length*rh;
+ const max=Math.max(thr*1.25,...rows.map(r=>r.value||0),1);
+ const X=v=>pl+(v/max)*(w-pl-pr);
+ const bars=rows.map((r,i)=>{const y=tp+i*rh+5,v=r.value;
+   const col=v==null?'var(--mut)':(v<thr?'var(--red)':(v<thr*2?'var(--amb)':'var(--grn)'));
+   const bw=Math.max(2,X(v||0)-pl);
+   return `<text class="bl" x="0" y="${y+13}">${esc(r.label)}</text><rect x="${pl}" y="${y}" width="${bw.toFixed(1)}" height="16" rx="2" fill="${col}"/><text class="bv" x="${(X(v||0)+6).toFixed(1)}" y="${y+13}">${v==null?'?':v+'d'}</text>`;}).join('');
+ const tx=X(thr).toFixed(1);
+ return `<svg viewBox="0 0 ${w} ${h}" class="chart" role="img" aria-label="${esc(o.aria||'Balken')}"><line class="thr" x1="${tx}" y1="2" x2="${tx}" y2="${h-2}"/><text class="thrt" x="${(X(thr)+3).toFixed(1)}" y="12">${thr}d</text>${bars}</svg>`;
+}
+function renderCmd(){
+ if(!CMD_OPEN||!DATA)return;
+ const m=DATA.agents.master||{},cnt=m._counts||{};
+ const pills=[['running','läuft'],['waiting','wartet'],['error','Fehler'],['ok','fertig'],['idle','ruht']]
+  .filter(([k])=>cnt[k]).map(([k,l])=>`<span class="pill" style="color:${COLORS[k]}"><i></i>${cnt[k]} ${l}</span>`).join('')
+  ||`<span class="pill" style="color:var(--mut)">alles ruhig</span>`;
+ const al=(ids,cls,label)=>ids.length?`<div class="cmd-alert ${cls}"><b>${label}</b> · ${ids.map(id=>{const a=DATA.agents[id]||{};return esc(a.name||id)+' ('+esc(a.message||a.phase||'')+')';}).join(' · ')}</div>`:'';
+ const errs=FLEET_IDS.filter(id=>(DATA.agents[id]||{}).status==='error');
+ const waits=FLEET_IDS.filter(id=>(DATA.agents[id]||{}).status==='waiting');
+ const fleet=FLEET_IDS.map(id=>{const a=DATA.agents[id]||{},c=COLORS[a.status]||COLORS.idle;
+   return `<button class="cmd-tab" data-go="${id}"><span class="cn">${esc(a.name||id)}<small>${LABELS[a.status]||esc(a.status)} · ${esc(a.phase||'–')}</small></span><span class="cp mono" style="color:${c}">${a.progress!=null?a.progress+'%':''}</span><span class="cnx">${esc(a.next_run||'–')}</span></button>`;}).join('');
+ const up=UPTIME,sites=(up&&up.sites)||[],hist=(up&&up.history)||[];
+ const pal=['#53e0ff','#5df2b4','#ff9d5c','#c99cff','#ffcf5c','#ff5ca8'];
+ const series=sites.map((s,i)=>({name:s.name,color:pal[i%pal.length],
+   pts:hist.map(ptn=>{const q=(ptn.p||[]).find(x=>x.n===s.name);return q?q.ms:null;})}));
+ const legend=series.map(s=>`<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join('');
+ const avail=name=>{const rel=hist.map(ptn=>(ptn.p||[]).find(x=>x.n===name)).filter(Boolean);return rel.length?Math.round(rel.filter(x=>x.up===1).length/rel.length*100):null;};
+ const tiles=sites.map(s=>{const c=COLORS[s.state==='ok'?'ok':s.state==='slow'?'waiting':'error']||COLORS.idle,av=avail(s.name);
+   return `<div class="tile"><div class="tn" style="color:${c}"><i></i>${esc(s.name)}</div><div class="tm"><b>HTTP ${s.http||'–'}</b> · <b>${s.ms!=null?s.ms+' ms':'–'}</b><br>SSL <b>${s.ssl_days!=null?s.ssl_days+' Tage':'?'}</b>${s.ssl_days!=null&&s.ssl_days<21?' ⚠':''}<br>Verfügbar <b>${av!=null?av+' %':'–'}</b>${s.reason?'<br><span style="color:var(--red)">'+esc(s.reason)+'</span>':''}</div></div>`;}).join('');
+ const chartResp=series.length?svgLine(series,{zero:true,aria:'Antwortzeit-Verlauf je Website'}):`<div class="chart-empty">Noch keine Uptime-Daten. Starte den uptime-waechter.</div>`;
+ const chartSsl=sites.length?svgBars(sites.map(s=>({label:s.name,value:s.ssl_days})),{threshold:21,aria:'SSL-Restlaufzeit je Website'}):`<div class="chart-empty">Noch keine SSL-Daten.</div>`;
+ const upNote=up?`Stand ${new Date(up.stand).toLocaleString('de-AT')} · ${hist.length} Messpunkte`:'keine Daten';
+ $('#cmd').innerHTML=`<div class="cmd-panel">
+   <div class="cmd-top"><h2>Kommandozentrale</h2>
+    <span class="up">${DATA.updated?new Date(DATA.updated).toLocaleString('de-AT'):'–'} · ${DATA.demo?'DEMO':'LIVE'}</span>
+    <div class="pills">${pills}</div>
+    <button class="runbtn" id="cmdrun" ${!API?'disabled':''} title="${API?'Kommandant jetzt koordinieren lassen':'Nur mit laufendem server.js'}">▶ KOORDINIEREN</button>
+    <button class="cmd-close" aria-label="Kommandozentrale schließen">✕</button></div>
+   ${al(errs,'err','⚠ Fehler')}${al(waits,'wait','? Wartet auf dein Go')}
+   <div class="cmd-body">
+    <div class="cmd-fleet"><div class="sect"><h3>Flotte <span>${FLEET_IDS.length} Agents</span></h3>${fleet}</div></div>
+    <div class="cmd-main">
+     <div class="sect"><h3>Antwortzeit <span>ms · je Website</span></h3>${chartResp}<div class="legend2">${legend}</div></div>
+     <div class="sect"><h3>SSL-Restlaufzeit <span>Tage bis Ablauf · Warnschwelle 21</span></h3>${chartSsl}</div>
+     <div class="sect"><h3>Websites <span>${esc(upNote)}</span></h3><div class="tiles">${tiles||'<div class="chart-empty">Keine Sites.</div>'}</div></div>
+    </div>
+   </div></div>`;
+ $('#cmd').querySelector('.cmd-close').addEventListener('click',closeCmd);
+ $('#cmd').querySelectorAll('.cmd-tab').forEach(el=>el.addEventListener('click',()=>select(el.dataset.go)));
+ const rb=$('#cmdrun');
+ if(rb)rb.addEventListener('click',async()=>{rb.disabled=true;rb.textContent='…';
+  try{const r=await fetch('/api/run/master',{method:'POST'});const j=await r.json();if(!r.ok)throw new Error(j.error||r.status);
+   if(DATA.agents.master){DATA.agents.master.status='running';DATA.agents.master.message='Ich koordiniere…';}applyData();
+  }catch(err){rb.textContent=String(err.message||'').includes('läuft')?'LÄUFT SCHON':'FEHLER';setTimeout(renderCmd,2200);}});
+}
+/* Backdrop-Klick + ESC schließen */
+$('#cmd').addEventListener('click',e=>{if(e.target.id==='cmd')closeCmd();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeCmd();});
+
 /* ================= Laden ================= */
 (function legend(){
  $('#legend').innerHTML=Object.keys(LABELS).map(k=>`<span style="color:${COLORS[k]}"><i></i>${LABELS[k]}</span>`).join('');
@@ -1089,6 +1276,9 @@ async function load(){
   DATA=DEMO;DATA.demo=true;
   $('#demo').style.display='block';
  }
+ /* Uptime-Daten (vom Wrapper nach httpdocs gespiegelt) – best effort */
+ try{const ur=await fetch('uptime.json?ts='+Date.now(),{cache:'no-store'});UPTIME=ur.ok?await ur.json():null;}catch(e){UPTIME=null;}
+ if(!UPTIME&&DATA.demo)UPTIME=DEMO_UPTIME;
  applyData();
  const anyRunning=Object.values(DATA.agents||{}).some(a=>a.status==='running');
  $('#foot2').textContent='refresh '+(anyRunning?'5 s':'30 s');
