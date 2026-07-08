@@ -5,7 +5,7 @@
     "wochenreport":       { "cadence": "Fr 08:00",     "enabled": true,  "schwer": true },
     "belege-buchhaltung": { "cadence": "Mo 09:00",     "enabled": true,  "schwer": false },
     "content-recherche":  { "cadence": "So 17:00",     "enabled": true,  "schwer": true },
-    "uptime-waechter":    { "cadence": "alle 15 min",  "enabled": true,  "schwer": false },
+    "uptime-waechter":    { "cadence": "alle 90 min",  "enabled": true,  "schwer": false, "quiet": true },
     "seo-audit":          { "cadence": "Mi 06:00",     "enabled": true,  "schwer": true },
     "rechnungssteller":   { "cadence": "auf Abruf",    "enabled": true,  "schwer": false }
   }

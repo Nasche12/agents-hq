@@ -50,8 +50,13 @@ tmp=f+".tmp"; json.dump(d,open(tmp,"w"),ensure_ascii=False,indent=1); os.replace
 PY
 }
 
+# quiet-Flag aus schedule.json: leise Agents (z. B. uptime) melden Routine-Erfolge nicht,
+# nur Fehler/Waits. Spart Discord-Spam bei häufigen Läufen.
+QUIET=$(python3 -c "import json
+try: print('1' if json.load(open('$BASE/config/schedule.json'))['agents'].get('$AGENT',{}).get('quiet') else '')
+except Exception: print('')" 2>/dev/null)
+
 upd running "Gestartet" 5 "Ich lege los…"
-dpost "$LOG_CH" "▶️ $AGENT gestartet"
 echo "=== $(date -Is) START $AGENT (Modell: $MODEL) ===" >> "$LOG"
 
 cd "$BASE"
@@ -86,7 +91,9 @@ FSTATUS="${FINAL%%$'\t'*}"; FMSG="${FINAL#*$'\t'}"
 case "$FSTATUS" in
   waiting) dpost "$CMD_CH" "⏳ $AGENT wartet auf dein Go: ${FMSG:-siehe Dashboard}. Antworte mit \`go $AGENT\`." ;;
   error)   dpost "$LOG_CH" "❌ $AGENT: Fehler – Log prüfen. ${FMSG}" ;;
-  *)       [ $RC -eq 0 ] && dpost "$LOG_CH" "✅ $AGENT fertig: ${FMSG:-Lauf abgeschlossen}" || dpost "$LOG_CH" "❌ $AGENT abgebrochen (Exit $RC)" ;;
+  *)       if [ $RC -eq 0 ]; then
+             [ -n "$QUIET" ] || dpost "$LOG_CH" "✅ $AGENT fertig: ${FMSG:-Lauf abgeschlossen}"
+           else dpost "$LOG_CH" "❌ $AGENT abgebrochen (Exit $RC)"; fi ;;
 esac
 
 # Dashboard-Datenfiles ins statische Docroot spiegeln (index.html liest sie ohne server.js)

@@ -348,6 +348,16 @@ if (D.on && D.token && D.guild) {
    Zeit = Serverzeit; setze TZ=Europe/Vienna im Service (install-service.sh tut das). */
 const SCHED_ON = (process.env.DISCORD_SCHEDULER || 'on') !== 'off';
 const MASTER_DAILY = (process.env.DISCORD_MASTER_DAILY ?? '07:30').trim();  // '' = aus
+const HEARTBEAT = (process.env.DISCORD_HEARTBEAT ?? '08:00,14:00,20:00').split(',').map(s => s.trim()).filter(Boolean);
+function heartbeatText() {
+  let d; try { d = JSON.parse(fs.readFileSync(path.join(BASE, 'uptime', 'uptime.json'), 'utf8')); } catch (e) { return '💓 HQ aktiv – Scheduler & Bridge laufen (noch keine Uptime-Daten).'; }
+  const sites = d.sites || [];
+  const down = sites.filter(s => !['ok', 'slow'].includes(s.state));
+  const stand = (d.stand || '').slice(11, 16);
+  if (!sites.length) return '💓 HQ aktiv – Scheduler & Bridge laufen.';
+  if (!down.length) return `💓 Alles aktiv: ${sites.length}/${sites.length} Seiten oben (Stand ${stand}). Scheduler & Bridge laufen.`;
+  return `⚠️ Nur ${sites.length - down.length}/${sites.length} Seiten oben – DOWN: ${down.map(s => s.name).join(', ')} (Stand ${stand}).`;
+}
 const FIRES = path.join(WEB, '.sched-fires.json');
 let fires = {}; try { fires = JSON.parse(fs.readFileSync(FIRES, 'utf8')); } catch (e) { fires = {}; }
 function saveFires() { try { fs.writeFileSync(FIRES, JSON.stringify(fires)); } catch (e) {} }
@@ -385,8 +395,12 @@ function schedTick() {
     if (cfg.schwer) {   // schwere Läufe nicht blind starten – nach Freigabe fragen
       dpost(D.cmd, `⏳ **${id}** ist laut Plan fällig (${cfg.cadence}). Starten? Antworte \`run ${id}\`.`);
     } else {
-      try { runAgent(id); dpost(D.log, `⏰ **${id}** automatisch gestartet (Plan: ${cfg.cadence}).`); } catch (e) {}
+      try { runAgent(id); if (!cfg.quiet) dpost(D.log, `⏰ **${id}** automatisch gestartet (Plan: ${cfg.cadence}).`); } catch (e) {}
     }
+  }
+  for (const hb of HEARTBEAT) {   // 3×/Tag Lebenszeichen „alles aktiv" (still gezählt via fires)
+    const key = '__hb_' + hb;
+    if (isDue(hb, fires[key] || 0, now)) { fires[key] = now; saveFires(); dpost(D.log, heartbeatText()); }
   }
   if (MASTER_DAILY && isDue(MASTER_DAILY, fires.__master__ || 0, now)) {
     fires.__master__ = now; saveFires();
@@ -400,7 +414,7 @@ function schedTick() {
   }
 }
 if (SCHED_ON) {
-  console.log(`Scheduler aktiv (Tick 30s)${MASTER_DAILY ? `, Master-Lage täglich ${MASTER_DAILY}` : ''}.`);
+  console.log(`Scheduler aktiv (Tick 30s)${MASTER_DAILY ? `, Master-Lage täglich ${MASTER_DAILY}` : ''}${HEARTBEAT.length ? `, Heartbeat ${HEARTBEAT.join('/')}` : ''}.`);
   setInterval(schedTick, 30000);
   schedTick();
 } else {
