@@ -54,10 +54,10 @@ function findBash() {
   return 'bash'; // PATH-Versuch
 }
 
-function runAgent(id) {
+function runAgent(id, prompt) {
   const script = path.join(BASE, 'bin', 'run-agent.sh');
   const log = fs.openSync(path.join(BASE, 'logs', id + '.server.log'), 'a');
-  const child = spawn(findBash(), [script, id, AGENTS[id]], {
+  const child = spawn(findBash(), [script, id, prompt || AGENTS[id]], {
     cwd: BASE, detached: true, stdio: ['ignore', log, log]
   });
   child.unref();
@@ -107,6 +107,17 @@ function tailLog(id) {
   } catch (e) { return { exists: false, text: '(noch kein Log vorhanden)' }; }
 }
 
+/* Body einer POST-Anfrage als JSON lesen (Limit 1 MB); cb(obj|null) */
+function readJson(req, cb) {
+  let data = '', too = false;
+  req.on('data', c => { data += c; if (data.length > 1e6) { too = true; req.destroy(); } });
+  req.on('end', () => { if (too) return cb(null); if (!data) return cb({}); try { cb(JSON.parse(data)); } catch (e) { cb(null); } });
+  req.on('error', () => cb(null));
+}
+
+const SCHEDULE_FILE = path.join(BASE, 'config', 'schedule.json');
+function readSchedule() { try { return JSON.parse(fs.readFileSync(SCHEDULE_FILE, 'utf8')); } catch (e) { return { agents: {} }; } }
+
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x');
   const p = u.pathname;
@@ -120,10 +131,35 @@ const server = http.createServer((req, res) => {
     const st = readStatus();
     if (st.agents && st.agents[id] && st.agents[id].status === 'running')
       return send(res, 409, { error: 'läuft bereits' });
-    try {
-      const pid = runAgent(id);
-      return send(res, 200, { ok: true, pid });
-    } catch (e) { return send(res, 500, { error: String(e.message || e) }); }
+    return readJson(req, body => {
+      const prompt = body && typeof body.prompt === 'string' && body.prompt.trim() ? body.prompt.slice(0, 4000) : null;
+      try {
+        const pid = runAgent(id, prompt);
+        return send(res, 200, { ok: true, pid });
+      } catch (e) { return send(res, 500, { error: String(e.message || e) }); }
+    });
+  }
+
+  /* Zeitplan lesen / speichern (config/schedule.json) */
+  if (p === '/api/schedule') {
+    if (req.method === 'GET') return send(res, 200, readSchedule());
+    if (req.method === 'POST') return readJson(req, body => {
+      if (!body || typeof body !== 'object' || !body.agents) return send(res, 400, { error: 'agents fehlt' });
+      const cur = readSchedule(); cur.agents = cur.agents || {};
+      for (const [id, patch] of Object.entries(body.agents)) {
+        if (!AGENTS[id] || id === 'master' || !patch || typeof patch !== 'object') continue;
+        cur.agents[id] = Object.assign({}, cur.agents[id], {
+          enabled: patch.enabled !== false,
+          cadence: typeof patch.cadence === 'string' ? patch.cadence.slice(0, 40) : (cur.agents[id] || {}).cadence
+        });
+      }
+      try {
+        const tmp = SCHEDULE_FILE + '.tmp';
+        fs.writeFileSync(tmp, JSON.stringify(cur, null, 2)); fs.renameSync(tmp, SCHEDULE_FILE);
+        return send(res, 200, { ok: true, schedule: cur });
+      } catch (e) { return send(res, 500, { error: String(e.message || e) }); }
+    });
+    return send(res, 405, { error: 'methode nicht erlaubt' });
   }
 
   if (p.startsWith('/api/log/')) {

@@ -38,6 +38,7 @@ Du überwachst die Erreichbarkeit von Sebastians Kunden-Websites. Du misst echte
 3. **Nie an der Website selbst herumprobieren** (kein Login, kein Formular-Absenden, keine Last-Tests). Nur GET/HEAD.
 4. **Keine Alarm-Flut:** Pro Site und Lauf höchstens ein Alert-Entwurf. Kein Versand, egal wie kritisch – Eskalation läuft über Sebastian.
 5. **Unklarer Messwert** (widersprüchliche curl-Ausgabe, kein TLS lesbar): `state` als `unklar` setzen (in der sites-json an den Recorder) und im Bericht benennen, nicht als `ok` durchwinken.
+6. **Dashboard-Status:** Wenn du `bin/status-update.sh` mit einem Details-Array aufrufst, sind die Einträge **kurze Strings** (z. B. `"naschberger.info: 200, 15 ms, SSL 62 T"`), niemals JSON-Objekte – sonst zeigt das Dashboard „[object Object]".
 
 # Akzeptanzkriterien (Selbstprüfung vor „fertig")
 

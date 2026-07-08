@@ -179,6 +179,20 @@ button{font-family:inherit}
 .cmd-tab .cp{font-family:Consolas,monospace;font-size:.7rem}
 .cmd-tab .cnx{font-family:Consolas,monospace;font-size:.64rem;color:var(--mut)}
 .cmd-tab .cdt{width:8px;height:8px;border-radius:50%;box-shadow:0 0 6px currentColor}
+/* Steuerung */
+.ctltable{display:flex;flex-direction:column;gap:5px}
+.ctlrow{display:grid;grid-template-columns:1fr auto 92px 34px;gap:9px;align-items:center;
+ padding:6px 8px;background:oklch(16% 0.02 280 / .5);border:1px solid var(--line-dim)}
+.ctlrow .cn{font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tgl{display:flex;align-items:center;gap:5px;font-size:.62rem;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;cursor:pointer}
+.tgl input{accent-color:var(--cyan);cursor:pointer}
+.cad,.cmdinput{background:oklch(11% 0.02 280);border:1px solid var(--line-dim);color:var(--txt);
+ font-family:Consolas,monospace;font-size:.72rem;padding:5px 7px;width:100%}
+.cad:focus,.cmdinput:focus{outline:none;border-color:var(--cyan)}
+.ctlrow .crun{padding:5px 0;text-align:center}
+.ctlbar{display:flex;align-items:center;gap:12px;margin-top:9px;flex-wrap:wrap}
+.cmdinput{resize:vertical;line-height:1.5}
+.ctlmsg{font-size:.7rem;color:var(--mut)}
 @media(max-width:820px){
  #cmd{padding:0}
  .cmd-body{grid-template-columns:1fr}
@@ -258,7 +272,7 @@ const DEMO={updated:new Date().toISOString(),agents:{
   last_run:null,next_run:'auf Abruf',details:[],outputs:[],log_tail:'(noch kein Lauf)'}
 }};
 
-let DATA=null,SEL=null,API=false,TAB='info',REPORTS=null,UPTIME=null,CMD_OPEN=false;
+let DATA=null,SEL=null,API=false,TAB='info',REPORTS=null,UPTIME=null,CMD_OPEN=false,SCHEDULE=null;
 
 /* Demo-Uptime nur im DEMO-Modus (kein echtes uptime.json geladen) – zeigt, wie die Charts aussehen. */
 const DEMO_UPTIME=(()=>{
@@ -279,6 +293,10 @@ const DEMO_UPTIME=(()=>{
   history};
 })();
 const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+/* Detail-Eintrag robust zu Text machen (Agent schreibt manchmal Objekte statt Strings) */
+const dstr=d=>typeof d==='string'?d:(d&&typeof d==='object'
+ ?Object.entries(d).map(([k,v])=>k+': '+(v==null?'–':(typeof v==='object'?JSON.stringify(v):v))).join(', ')
+ :String(d));
 const $=s=>document.querySelector(s);
 
 /* ================= Welt / Karte =================
@@ -1139,8 +1157,9 @@ function renderTab(){
    <div class="plbl">Aktuelle Phase</div><div>${esc(a.phase||'–')}</div>
    <div class="plbl">Fortschritt</div><div class="pbar"><div style="width:${Math.max(0,Math.min(100,a.progress||0))}%"></div></div>
    <div class="plbl">Meldung</div><div>${esc(a.message||'–')}</div>
+   ${SEL==='uptime-waechter'?'<div class="plbl">Live-Charts</div>'+uptimeBlock():''}
    <div class="plbl">Was zuletzt passiert ist</div>
-   ${(a.details&&a.details.length)?'<ul>'+a.details.map(d=>'<li>'+esc(d)+'</li>').join('')+'</ul>':'<span class="hint">–</span>'}
+   ${(a.details&&a.details.length)?'<ul>'+a.details.map(d=>'<li>'+esc(dstr(d))+'</li>').join('')+'</ul>':'<span class="hint">–</span>'}
    <div class="plbl">Ergebnisse</div>
    ${(a.outputs&&a.outputs.length)?'<ul>'+a.outputs.map(o=>'<li><code>'+esc(o)+'</code></li>').join('')+'</ul>':'<span class="hint">noch keine</span>'}
    <div class="plbl">Letzter / Nächster Lauf</div>
@@ -1183,7 +1202,9 @@ async function renderReports(body){
 }
 
 /* ================= Kommandozentrale (Overlay + Charts) ================= */
-function openCmd(){CMD_OPEN=true;const el=$('#cmd');el.classList.add('on');el.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';renderCmd();}
+function openCmd(){CMD_OPEN=true;const el=$('#cmd');el.classList.add('on');el.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';
+ if(API&&!SCHEDULE)loadSchedule().then(()=>{if(CMD_OPEN)renderCmd();});
+ renderCmd();}
 function closeCmd(){if(!CMD_OPEN)return;CMD_OPEN=false;const el=$('#cmd');el.classList.remove('on');el.setAttribute('aria-hidden','true');document.body.style.overflow='';}
 
 /* Multi-Linien-Zeitchart (Inline-SVG, self-contained). series:[{name,color,pts:[num|null]}] */
@@ -1213,6 +1234,41 @@ function svgBars(rows,o){
  const tx=X(thr).toFixed(1);
  return `<svg viewBox="0 0 ${w} ${h}" class="chart" role="img" aria-label="${esc(o.aria||'Balken')}"><line class="thr" x1="${tx}" y1="2" x2="${tx}" y2="${h-2}"/><text class="thrt" x="${(X(thr)+3).toFixed(1)}" y="12">${thr}d</text>${bars}</svg>`;
 }
+async function loadSchedule(){try{const r=await fetch('/api/schedule?ts='+Date.now(),{cache:'no-store'});SCHEDULE=r.ok?await r.json():null;}catch(e){SCHEDULE=null;}}
+/* Uptime-Charts + Tiles – in Datacenter UND im Uptime-Agent-Panel verwendet */
+function uptimeBlock(){
+ const up=UPTIME,sites=(up&&up.sites)||[],hist=(up&&up.history)||[];
+ if(!sites.length)return '<div class="chart-empty">Noch keine Uptime-Daten. Starte den uptime-waechter.</div>';
+ const pal=['#53e0ff','#5df2b4','#ff9d5c','#c99cff','#ffcf5c','#ff5ca8'];
+ const series=sites.map((s,i)=>({name:s.name,color:pal[i%pal.length],
+   pts:hist.map(ptn=>{const q=(ptn.p||[]).find(x=>x.n===s.name);return q?q.ms:null;})}));
+ const legend=series.map(s=>`<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join('');
+ const avail=name=>{const rel=hist.map(ptn=>(ptn.p||[]).find(x=>x.n===name)).filter(Boolean);return rel.length?Math.round(rel.filter(x=>x.up===1).length/rel.length*100):null;};
+ const tiles=sites.map(s=>{const c=COLORS[s.state==='ok'?'ok':s.state==='slow'?'waiting':'error']||COLORS.idle,av=avail(s.name);
+   return `<div class="tile"><div class="tn" style="color:${c}"><i></i>${esc(s.name)}</div><div class="tm"><b>HTTP ${s.http||'–'}</b> · <b>${s.ms!=null?s.ms+' ms':'–'}</b><br>SSL <b>${s.ssl_days!=null?s.ssl_days+' Tage':'?'}</b>${s.ssl_days!=null&&s.ssl_days<21?' ⚠':''}<br>Verfügbar <b>${av!=null?av+' %':'–'}</b>${s.reason?'<br><span style="color:var(--red)">'+esc(s.reason)+'</span>':''}</div></div>`;}).join('');
+ const upNote=up?`${hist.length} Messpunkte · Stand ${new Date(up.stand).toLocaleString('de-AT')}`:'';
+ return `<div class="sect"><h3>Antwortzeit <span>ms · je Website</span></h3>${svgLine(series,{zero:true,aria:'Antwortzeit-Verlauf'})}<div class="legend2">${legend}</div></div>
+  <div class="sect"><h3>SSL-Restlaufzeit <span>Tage · Warnschwelle 21</span></h3>${svgBars(sites.map(s=>({label:s.name,value:s.ssl_days})),{threshold:21,aria:'SSL'})}</div>
+  <div class="sect"><h3>Websites <span>${esc(upNote)}</span></h3><div class="tiles">${tiles}</div></div>`;
+}
+/* Steuerung: pro Agent aktiv/Zeitplan/Run + freies Eingabefeld an den Kommandant (braucht server.js) */
+function controlsBlock(){
+ const sched=(SCHEDULE&&SCHEDULE.agents)||{};
+ const rows=FLEET_IDS.map(id=>{const a=DATA.agents[id]||{},s=sched[id]||{};
+   return `<div class="ctlrow" data-id="${id}">
+     <span class="cn">${esc(a.name||id)}</span>
+     <label class="tgl"><input type="checkbox" class="cen" ${s.enabled!==false?'checked':''} ${API?'':'disabled'}><span>aktiv</span></label>
+     <input class="cad" value="${esc(s.cadence!=null?s.cadence:(a.next_run||''))}" placeholder="z. B. Fr 08:00" ${API?'':'disabled'} aria-label="Zeitplan ${esc(a.name||id)}">
+     <button class="runbtn crun" title="Jetzt starten" ${API?'':'disabled'}>▶</button>
+   </div>`;}).join('');
+ return `<div class="sect"><h3>Steuerung <span>${API?'live · Änderungen wirken sofort':'nur mit server.js'}</span></h3>
+   <div class="ctltable">${rows}</div>
+   <div class="ctlbar"><button class="runbtn" id="schedsave" ${API?'':'disabled'}>Zeitplan speichern</button><span id="schedmsg" class="ctlmsg"></span></div>
+   <div class="plbl" style="margin-top:16px">Auftrag an den Kommandant</div>
+   <textarea id="cmdinput" class="cmdinput" rows="2" ${API?'':'disabled'} placeholder="${API?'z. B. Starte seo-audit, danach wochenreport. Melde mir SSL unter 30 Tagen.':'Nur mit laufendem server.js'}"></textarea>
+   <div class="ctlbar"><button class="runbtn" id="cmdsend" ${API?'':'disabled'}>▶ An Kommandant senden</button><span id="cmdmsg" class="ctlmsg"></span></div>
+   ${API?'':'<p class="hint" style="margin-top:8px">Einstellen &amp; koordinieren braucht den laufenden <code>server.js</code>. Statisch ist alles nur Anzeige.</p>'}`;
+}
 function renderCmd(){
  if(!CMD_OPEN||!DATA)return;
  const m=DATA.agents.master||{},cnt=m._counts||{};
@@ -1224,39 +1280,41 @@ function renderCmd(){
  const waits=FLEET_IDS.filter(id=>(DATA.agents[id]||{}).status==='waiting');
  const fleet=FLEET_IDS.map(id=>{const a=DATA.agents[id]||{},c=COLORS[a.status]||COLORS.idle;
    return `<button class="cmd-tab" data-go="${id}"><span class="cn">${esc(a.name||id)}<small>${LABELS[a.status]||esc(a.status)} · ${esc(a.phase||'–')}</small></span><span class="cp mono" style="color:${c}">${a.progress!=null?a.progress+'%':''}</span><span class="cnx">${esc(a.next_run||'–')}</span></button>`;}).join('');
- const up=UPTIME,sites=(up&&up.sites)||[],hist=(up&&up.history)||[];
- const pal=['#53e0ff','#5df2b4','#ff9d5c','#c99cff','#ffcf5c','#ff5ca8'];
- const series=sites.map((s,i)=>({name:s.name,color:pal[i%pal.length],
-   pts:hist.map(ptn=>{const q=(ptn.p||[]).find(x=>x.n===s.name);return q?q.ms:null;})}));
- const legend=series.map(s=>`<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join('');
- const avail=name=>{const rel=hist.map(ptn=>(ptn.p||[]).find(x=>x.n===name)).filter(Boolean);return rel.length?Math.round(rel.filter(x=>x.up===1).length/rel.length*100):null;};
- const tiles=sites.map(s=>{const c=COLORS[s.state==='ok'?'ok':s.state==='slow'?'waiting':'error']||COLORS.idle,av=avail(s.name);
-   return `<div class="tile"><div class="tn" style="color:${c}"><i></i>${esc(s.name)}</div><div class="tm"><b>HTTP ${s.http||'–'}</b> · <b>${s.ms!=null?s.ms+' ms':'–'}</b><br>SSL <b>${s.ssl_days!=null?s.ssl_days+' Tage':'?'}</b>${s.ssl_days!=null&&s.ssl_days<21?' ⚠':''}<br>Verfügbar <b>${av!=null?av+' %':'–'}</b>${s.reason?'<br><span style="color:var(--red)">'+esc(s.reason)+'</span>':''}</div></div>`;}).join('');
- const chartResp=series.length?svgLine(series,{zero:true,aria:'Antwortzeit-Verlauf je Website'}):`<div class="chart-empty">Noch keine Uptime-Daten. Starte den uptime-waechter.</div>`;
- const chartSsl=sites.length?svgBars(sites.map(s=>({label:s.name,value:s.ssl_days})),{threshold:21,aria:'SSL-Restlaufzeit je Website'}):`<div class="chart-empty">Noch keine SSL-Daten.</div>`;
- const upNote=up?`Stand ${new Date(up.stand).toLocaleString('de-AT')} · ${hist.length} Messpunkte`:'keine Daten';
  $('#cmd').innerHTML=`<div class="cmd-panel">
-   <div class="cmd-top"><h2>Kommandozentrale</h2>
-    <span class="up">${DATA.updated?new Date(DATA.updated).toLocaleString('de-AT'):'–'} · ${DATA.demo?'DEMO':'LIVE'}</span>
+   <div class="cmd-top"><h2>Datacenter</h2>
+    <span class="up">${DATA.updated?new Date(DATA.updated).toLocaleString('de-AT'):'–'} · ${DATA.demo?'DEMO':(API?'LIVE · API':'LIVE · statisch')}</span>
     <div class="pills">${pills}</div>
-    <button class="runbtn" id="cmdrun" ${!API?'disabled':''} title="${API?'Kommandant jetzt koordinieren lassen':'Nur mit laufendem server.js'}">▶ KOORDINIEREN</button>
-    <button class="cmd-close" aria-label="Kommandozentrale schließen">✕</button></div>
+    <button class="runbtn" id="cmdrun" ${!API?'disabled':''} title="${API?'Kommandant koordiniert die Flotte':'Nur mit laufendem server.js'}">▶ KOORDINIEREN</button>
+    <button class="cmd-close" aria-label="Datacenter schließen">✕</button></div>
    ${al(errs,'err','⚠ Fehler')}${al(waits,'wait','? Wartet auf dein Go')}
    <div class="cmd-body">
-    <div class="cmd-fleet"><div class="sect"><h3>Flotte <span>${FLEET_IDS.length} Agents</span></h3>${fleet}</div></div>
-    <div class="cmd-main">
-     <div class="sect"><h3>Antwortzeit <span>ms · je Website</span></h3>${chartResp}<div class="legend2">${legend}</div></div>
-     <div class="sect"><h3>SSL-Restlaufzeit <span>Tage bis Ablauf · Warnschwelle 21</span></h3>${chartSsl}</div>
-     <div class="sect"><h3>Websites <span>${esc(upNote)}</span></h3><div class="tiles">${tiles||'<div class="chart-empty">Keine Sites.</div>'}</div></div>
+    <div class="cmd-fleet">
+     <div class="sect"><h3>Flotte <span>${FLEET_IDS.length} Agents</span></h3>${fleet}</div>
+     ${controlsBlock()}
     </div>
+    <div class="cmd-main">${uptimeBlock()}</div>
    </div></div>`;
  $('#cmd').querySelector('.cmd-close').addEventListener('click',closeCmd);
  $('#cmd').querySelectorAll('.cmd-tab').forEach(el=>el.addEventListener('click',()=>select(el.dataset.go)));
- const rb=$('#cmdrun');
- if(rb)rb.addEventListener('click',async()=>{rb.disabled=true;rb.textContent='…';
-  try{const r=await fetch('/api/run/master',{method:'POST'});const j=await r.json();if(!r.ok)throw new Error(j.error||r.status);
-   if(DATA.agents.master){DATA.agents.master.status='running';DATA.agents.master.message='Ich koordiniere…';}applyData();
-  }catch(err){rb.textContent=String(err.message||'').includes('läuft')?'LÄUFT SCHON':'FEHLER';setTimeout(renderCmd,2200);}});
+ const post=async(url,body)=>{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.status);return j;};
+ const flash=(el,txt,ok)=>{if(!el)return;el.textContent=txt;el.style.color=ok?'var(--grn)':'var(--red)';setTimeout(()=>{if(el)el.textContent='';},3000);};
+ const cmdRun=async(id,btn,extra)=>{const t=btn.textContent;btn.disabled=true;btn.textContent='…';
+   try{await post('/api/run/'+id,extra);const a=DATA.agents[id];if(a){a.status='running';a.phase='Gestartet';a.progress=2;a.message='Läuft…';}applyData();}
+   catch(err){btn.textContent=String(err.message||'').includes('läuft')?'LÄUFT':'FEHLER';setTimeout(()=>{btn.disabled=!API;btn.textContent=t;},2000);}};
+ const rb=$('#cmdrun');if(rb)rb.addEventListener('click',()=>cmdRun('master',rb));
+ $('#cmd').querySelectorAll('.ctlrow .crun').forEach(btn=>btn.addEventListener('click',()=>cmdRun(btn.closest('.ctlrow').dataset.id,btn)));
+ const save=$('#schedsave');
+ if(save)save.addEventListener('click',async()=>{save.disabled=true;
+   const agents={};$('#cmd').querySelectorAll('.ctlrow').forEach(row=>{agents[row.dataset.id]={enabled:row.querySelector('.cen').checked,cadence:row.querySelector('.cad').value.trim()};});
+   try{const j=await post('/api/schedule',{agents});SCHEDULE=j.schedule||SCHEDULE;flash($('#schedmsg'),'Zeitplan gespeichert ✓',true);}
+   catch(err){flash($('#schedmsg'),'Fehler: '+err.message,false);}finally{save.disabled=false;}});
+ const send=$('#cmdsend'),inp=$('#cmdinput');
+ if(send)send.addEventListener('click',async()=>{const txt=(inp.value||'').trim();if(!txt){flash($('#cmdmsg'),'Bitte einen Auftrag eintippen.',false);return;}
+   send.disabled=true;send.textContent='…';
+   try{await post('/api/run/master',{prompt:'Nutze den Subagent kommandant. Sebastians Auftrag für diesen Lauf: '+txt+' — koordiniere entsprechend, halte dich an deine Regeln, sende nichts nach außen ohne Go.'});
+     if(DATA.agents.master){DATA.agents.master.status='running';DATA.agents.master.message='Auftrag läuft…';}inp.value='';flash($('#cmdmsg'),'An Kommandant übergeben ✓',true);applyData();}
+   catch(err){flash($('#cmdmsg'),String(err.message||'').includes('läuft')?'Kommandant läuft schon':'Fehler: '+err.message,false);}
+   finally{send.disabled=!API;send.textContent='▶ An Kommandant senden';}});
 }
 /* Backdrop-Klick + ESC schließen */
 $('#cmd').addEventListener('click',e=>{if(e.target.id==='cmd')closeCmd();});
