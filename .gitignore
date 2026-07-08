@@ -14,3 +14,4 @@ httpdocs/uptime.json
 *.log
 agents-hq-upload.zip
 .idea/
+__pycache__/
