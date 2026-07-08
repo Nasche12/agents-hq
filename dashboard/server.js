@@ -10,7 +10,10 @@ const { spawn } = require('child_process');
 
 const BASE = path.resolve(__dirname, '..');
 const WEB = __dirname;
-const PORT = parseInt(process.argv[2] || '8788', 10);
+const PORT = parseInt(process.env.PORT || process.argv[2] || '8788', 10);
+/* Als Service hinter Plesk-Reverse-Proxy nur auf localhost lauschen (nicht welt-offen).
+   HOST=0.0.0.0 nur, wenn du bewusst direkt exponierst. */
+const HOST = process.env.HOST || '127.0.0.1';
 
 const AGENTS = {
   'master': 'Nutze den Subagent kommandant: verschaffe dir den Gesamtüberblick über alle Agents (dashboard/status.json), stimme den Zeitplan (config/schedule.json) ab und stoße fällige Läufe an. Nichts nach außen senden.',
@@ -180,6 +183,10 @@ const server = http.createServer((req, res) => {
   /* ---------- statisch ---------- */
   let rel = p === '/' ? '/index.html' : p;
   if (rel === '/status.json') return send(res, 200, fs.readFileSync(statusPath()), MIME['.json']);
+  if (rel === '/uptime.json') {
+    const f = path.join(BASE, 'uptime', 'uptime.json');
+    try { return send(res, 200, fs.readFileSync(f), MIME['.json']); } catch (e) { return send(res, 200, { sites: [], history: [] }); }
+  }
   const abs = path.resolve(WEB, '.' + rel);
   if (!abs.startsWith(WEB) || !fs.existsSync(abs) || !fs.statSync(abs).isFile())
     return send(res, 404, 'not found', 'text/plain');
@@ -187,4 +194,4 @@ const server = http.createServer((req, res) => {
 });
 
 fs.mkdirSync(path.join(BASE, 'logs'), { recursive: true });
-server.listen(PORT, () => console.log(`Agent HQ: http://localhost:${PORT}  (Basis: ${BASE})`));
+server.listen(PORT, HOST, () => console.log(`Agent HQ läuft auf http://${HOST}:${PORT}  (Basis: ${BASE})`));
