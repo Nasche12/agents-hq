@@ -9,6 +9,11 @@ ab / posten sie in Discord. Basis ist Claude Code (headless) auf dem Server.
 - Node.js ≥ 18 auf dem Server (in Plesk unter "Node.js" aktivierbar oder via nvm)
 - Ein Anthropic-API-Key (console.anthropic.com) ODER Claude-Abo-Login
 
+> **NICHT als root laufen lassen.** Claude Code verweigert `--dangerously-skip-permissions`
+> als root. Alles läuft unter dem Plesk-Subscription-User (Ordner-Eigentümer). User finden:
+> `stat -c '%U' .` — dann Projekt übergeben (`chown -R <user>:psacln .`) und als dieser User
+> arbeiten. Plesks "Geplante Aufgaben" laufen ohnehin als dieser User, nicht als root.
+
 ## Schritt 1: Claude Code installieren
 
 ```bash
