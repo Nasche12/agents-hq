@@ -10,6 +10,20 @@ AGENT="$1"; PROMPT="$2"
 LOG="$LOGDIR/$AGENT.log"
 set -a; [ -f "$BASE/.env" ] && . "$BASE/.env"; set +a
 
+# Modellwahl = Tokenkosten. Leichte Agents laufen auf Haiku (5x billiger als Opus),
+# schwere auf Sonnet (3x billiger), der Kommandant/Master auf Opus.
+# Steuersignal ist das "schwer"-Flag in config/schedule.json; überschreibbar via AGENT_MODEL.
+# ponytail: schwer-Flag als Proxy, per-Agent-Override in schedule.json wenn's mal feiner sein muss.
+MODEL="${AGENT_MODEL:-$(python3 - "$BASE/config/schedule.json" "$AGENT" << 'PY'
+import json,sys
+f,agent=sys.argv[1:3]
+if agent in ("master","kommandant"): print("opus"); sys.exit()
+try: a=json.load(open(f))["agents"].get(agent,{})
+except Exception: a={}
+print("sonnet" if a.get("schwer") else "haiku")
+PY
+)}"
+
 LOG_CH="${DISCORD_LOG_CHANNEL:-agent-logs}"
 CMD_CH="${DISCORD_COMMAND_CHANNEL:-freigaben}"
 dpost() { # dpost <kanal> <text> – nur wenn Bot konfiguriert; Fehler schlucken
@@ -38,7 +52,7 @@ PY
 
 upd running "Gestartet" 5 "Ich lege los…"
 dpost "$LOG_CH" "▶️ $AGENT gestartet"
-echo "=== $(date -Is) START $AGENT ===" >> "$LOG"
+echo "=== $(date -Is) START $AGENT (Modell: $MODEL) ===" >> "$LOG"
 
 cd "$BASE"
 claude -p "$PROMPT
@@ -52,7 +66,7 @@ ZUSÄTZLICH (Status fürs Dashboard): Rufe während der Arbeit bei jedem größe
   $BASE/bin/status-update.sh $AGENT running \"<Phase>\" <Fortschritt 0-100> \"<kurze Sprechblasen-Nachricht, max 34 Zeichen>\"
 und ganz am Ende mit Status ok (oder waiting, falls du auf Sebastians Go wartest) inkl. Details/Outputs:
   $BASE/bin/status-update.sh $AGENT ok \"Fertig\" 100 \"<Kurzfazit>\" '<json-array details>' '<json-array outputs>'" \
-  --dangerously-skip-permissions < /dev/null >> "$LOG" 2>&1
+  --model "$MODEL" --dangerously-skip-permissions < /dev/null >> "$LOG" 2>&1
 RC=$?
 
 if [ $RC -eq 0 ]; then
