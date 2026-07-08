@@ -39,7 +39,7 @@ ZUSÄTZLICH (Status fürs Dashboard): Rufe während der Arbeit bei jedem größe
   $BASE/bin/status-update.sh $AGENT running \"<Phase>\" <Fortschritt 0-100> \"<kurze Sprechblasen-Nachricht, max 34 Zeichen>\"
 und ganz am Ende mit Status ok (oder waiting, falls du auf Sebastians Go wartest) inkl. Details/Outputs:
   $BASE/bin/status-update.sh $AGENT ok \"Fertig\" 100 \"<Kurzfazit>\" '<json-array details>' '<json-array outputs>'" \
-  --dangerously-skip-permissions >> "$LOG" 2>&1
+  --dangerously-skip-permissions < /dev/null >> "$LOG" 2>&1
 RC=$?
 
 if [ $RC -eq 0 ]; then
