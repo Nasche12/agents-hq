@@ -194,4 +194,104 @@ const server = http.createServer((req, res) => {
 });
 
 fs.mkdirSync(path.join(BASE, 'logs'), { recursive: true });
+
+/* ---------- Discord-Bridge (Discord -> HQ) ----------
+   Pollt den Kommando-Kanal, mappt deine Nachrichten auf Agent-Läufe und antwortet.
+   Reine Wiederverwendung von bin/discord.py (stdlib) – kein Websocket, keine Deps. */
+const DPY = path.join(BASE, 'bin', 'discord.py');
+const PY = process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+const D = {
+  token: process.env.DISCORD_BOT_TOKEN || '',
+  guild: process.env.DISCORD_GUILD_ID || '',
+  cmd: process.env.DISCORD_COMMAND_CHANNEL || 'freigaben',
+  log: process.env.DISCORD_LOG_CHANNEL || 'agent-logs',
+  poll: Math.max(5, parseInt(process.env.DISCORD_POLL_SECONDS || '12', 10)),
+  on: (process.env.DISCORD_BRIDGE || 'on') !== 'off'
+};
+const DSTATE = path.join(WEB, '.discord-last.json');
+function dLastId() { try { return JSON.parse(fs.readFileSync(DSTATE, 'utf8')).id || null; } catch (e) { return null; } }
+function dSetLast(id) { try { fs.writeFileSync(DSTATE, JSON.stringify({ id })); } catch (e) {} }
+function dpy(args, cb) {
+  const out = [], err = [];
+  const c = spawn(PY, [DPY, ...args], { cwd: BASE, env: process.env });
+  c.stdout.on('data', d => out.push(d));
+  c.stderr.on('data', d => err.push(d));
+  c.on('close', code => cb(code, Buffer.concat(out).toString('utf8'), Buffer.concat(err).toString('utf8')));
+  c.on('error', e => cb(-1, '', String(e)));
+}
+function dpost(chan, text) { dpy(['post', chan, text], () => {}); }
+
+const D_HELP = [
+  '🤖 **HQ-Kommandos** (schreib sie einfach hier rein):',
+  '• `status` – Lage aller Agents',
+  '• `run <agent>` oder nur `<agent>` – Lauf starten',
+  '• `<agent>: <auftrag>` – Lauf mit eigenem Auftrag',
+  '• `go [agent]` – Freigabe: wartenden Agent seine Aktion ausführen lassen',
+  '• `agents` – bekannte Agents auflisten',
+  '• `help` – diese Hilfe'
+].join('\n');
+
+function dStatusText() {
+  const a = readStatus().agents || {};
+  const ic = { running: '🔵', ok: '🟢', done: '🟢', waiting: '🟡', error: '🔴' };
+  const ks = Object.keys(a);
+  if (!ks.length) return 'Noch keine Läufe verzeichnet.';
+  return ks.map(k => `${ic[a[k].status] || '⚪'} **${k}** – ${a[k].status || '?'}${a[k].message ? ': ' + a[k].message : ''}`).join('\n');
+}
+function dRun(id, prompt) {
+  if (!AGENTS[id]) return dpost(D.cmd, `❓ Kein Agent "${id}". Bekannt: ${Object.keys(AGENTS).join(', ')}`);
+  const st = readStatus();
+  if (st.agents && st.agents[id] && st.agents[id].status === 'running') return dpost(D.cmd, `⏳ **${id}** läuft schon.`);
+  try { runAgent(id, prompt || null); dpost(D.cmd, `▶️ **${id}** gestartet${prompt ? ' (eigener Auftrag)' : ''}. Ich melde mich, wenn fertig.`); }
+  catch (e) { dpost(D.cmd, `❌ Start fehlgeschlagen: ${e.message || e}`); }
+}
+function dGo(id) {
+  const a = readStatus().agents || {};
+  if (!id) id = Object.keys(a).find(k => a[k].status === 'waiting');
+  if (!id) return dpost(D.cmd, 'Kein Agent wartet gerade auf Go. Nenne einen, z. B. `go wochenreport`.');
+  dRun(id, 'Sebastian hat GO gegeben. Führe die freigegebene Aktion des letzten Laufs jetzt aus (z. B. die abgelegten Entwürfe versenden). Liegt nichts zum Versenden bereit, sag das kurz.');
+}
+function dHandle(text) {
+  text = (text || '').trim();
+  if (!text) return;
+  const low = text.toLowerCase();
+  let m;
+  if (low === 'help' || low === 'hilfe' || low === '?') return dpost(D.cmd, D_HELP);
+  if (low === 'status') return dpost(D.cmd, dStatusText());
+  if (low === 'agents' || low === 'agent') return dpost(D.cmd, 'Agents: ' + Object.keys(AGENTS).join(', '));
+  if (m = low.match(/^(?:run|start|starte)\s+([a-z-]+)$/)) return dRun(m[1]);
+  if (m = low.match(/^go(?:\s+([a-z-]+))?$/)) return dGo(m[1]);
+  if (m = text.match(/^([a-z-]+)\s*:\s*([\s\S]+)/i)) { const id = m[1].toLowerCase(); if (AGENTS[id]) return dRun(id, m[2].trim()); }
+  if (AGENTS[low]) return dRun(low);
+  dpost(D.cmd, `❓ Verstehe "${text}" nicht. Tippe \`help\`.`);
+}
+let dBusy = false;
+function dPoll() {
+  if (dBusy) return; dBusy = true;
+  const after = dLastId();
+  const args = ['read', D.cmd, '--json', '--limit', '20'];
+  if (after) args.push('--after', after);
+  dpy(args, (code, out) => {
+    dBusy = false;
+    if (code !== 0) return;
+    let msgs; try { msgs = JSON.parse(out || '[]'); } catch (e) { return; }
+    if (!Array.isArray(msgs) || !msgs.length) return;
+    let newest = after;
+    for (const msg of msgs) {
+      newest = msg.id;
+      if (msg.bot) continue;      // eigene/andere Bot-Posts ignorieren
+      if (!after) continue;       // Erststart: nur Basislinie setzen, History nicht abarbeiten
+      dHandle(msg.content);
+    }
+    if (newest) dSetLast(newest);
+  });
+}
+if (D.on && D.token && D.guild) {
+  console.log(`Discord-Bridge aktiv: #${D.cmd} (Poll ${D.poll}s), Logs -> #${D.log}`);
+  setInterval(dPoll, D.poll * 1000);
+  dPoll();
+} else {
+  console.log('Discord-Bridge aus (DISCORD_BOT_TOKEN/GUILD_ID fehlt oder DISCORD_BRIDGE=off).');
+}
+
 server.listen(PORT, HOST, () => console.log(`Agent HQ läuft auf http://${HOST}:${PORT}  (Basis: ${BASE})`));

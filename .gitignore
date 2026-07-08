@@ -11,6 +11,7 @@ rechnungen/
 master/
 httpdocs/status.json
 httpdocs/uptime.json
+dashboard/.discord-last.json
 *.log
 agents-hq-upload.zip
 .idea/

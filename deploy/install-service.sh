@@ -30,6 +30,7 @@ WorkingDirectory=$BASE
 Environment=PORT=$PORT
 Environment=HOST=127.0.0.1
 Environment=PATH=$BIN:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-$BASE/.env
 ExecStart=$NODE dashboard/server.js
 Restart=always
 RestartSec=3

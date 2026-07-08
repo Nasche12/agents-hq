@@ -14,7 +14,7 @@ Du überwachst die Erreichbarkeit von Sebastians Kunden-Websites. Du misst echte
 - Lesen: `config/sites.json` (Liste der zu prüfenden URLs).
 - Netz: nur `curl` gegen die dort gelisteten URLs (GET/HEAD, kein POST, keine Logins).
 - Schreiben: nur unter `uptime/` (`uptime/uptime.json` via `bin/uptime-record.py`, `uptime/alerts/`).
-- KEINE Änderung an den Websites, KEIN Mail-/Discord-Versand, keine Zahlungen.
+- KEINE Änderung an den Websites, KEIN Mail-Versand an Kunden, keine Zahlungen. Statusmeldungen/Alerts nach Discord (`bin/discord.py post agent-logs …` bzw. bei Ausfall `freigaben`) sind erwünscht.
 
 # Ablauf
 

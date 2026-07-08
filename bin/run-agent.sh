@@ -10,6 +10,13 @@ AGENT="$1"; PROMPT="$2"
 LOG="$LOGDIR/$AGENT.log"
 set -a; [ -f "$BASE/.env" ] && . "$BASE/.env"; set +a
 
+LOG_CH="${DISCORD_LOG_CHANNEL:-agent-logs}"
+CMD_CH="${DISCORD_COMMAND_CHANNEL:-freigaben}"
+dpost() { # dpost <kanal> <text> – nur wenn Bot konfiguriert; Fehler schlucken
+  [ -n "${DISCORD_BOT_TOKEN:-}" ] || return 0
+  python3 "$BASE/bin/discord.py" post "$1" "$2" >/dev/null 2>&1 || true
+}
+
 upd() { # upd <status> <phase> <progress> <message> [details_json] [outputs_json]
 python3 - "$STATUS" "$AGENT" "$1" "$2" "$3" "$4" "${5:-}" "${6:-}" << 'PY'
 import json,sys,datetime,os
@@ -30,10 +37,16 @@ PY
 }
 
 upd running "Gestartet" 5 "Ich lege los…"
+dpost "$LOG_CH" "▶️ $AGENT gestartet"
 echo "=== $(date -Is) START $AGENT ===" >> "$LOG"
 
 cd "$BASE"
 claude -p "$PROMPT
+
+ZUSÄTZLICH – DISCORD ist Sebastians Kommunikationskanal. Poste deine Kernergebnisse selbst in den passenden Kanal (interne Kommunikation ist erwünscht):
+  $BASE/bin/discord.py post <kanal> \"<text>\"                 # Kanäle: reports, belege, content, ideen, verkauf, kunden-notizen, freigaben, agent-logs
+  $BASE/bin/discord.py post <kanal> \"<text>\" --attach <datei>  # z. B. PDF/HTML-Report anhängen
+Regel: Discord-Posts an EIGENE Kanäle jederzeit ok. NUR Versand nach AUSSEN (Kunden-E-Mail) braucht weiterhin Sebastians Go – lege dafür einen Entwurf ab und melde dich (Status waiting) in #freigaben.
 
 ZUSÄTZLICH (Status fürs Dashboard): Rufe während der Arbeit bei jedem größeren Schritt auf:
   $BASE/bin/status-update.sh $AGENT running \"<Phase>\" <Fortschritt 0-100> \"<kurze Sprechblasen-Nachricht, max 34 Zeichen>\"
@@ -52,6 +65,15 @@ print('running' if a.get('status')=='running' else 'done')" | grep -q running &&
 else
   upd error "Abgebrochen (Exit $RC)" 0 "Fehler – Log prüfen!"
 fi
+
+# Endstatus nach Discord melden (waiting -> Kommando-Kanal fürs Go, sonst Log-Kanal)
+FINAL=$(python3 -c "import json;d=json.load(open('$STATUS'));a=d['agents'].get('$AGENT',{});print((a.get('status') or '')+'\t'+(a.get('message') or ''))" 2>/dev/null)
+FSTATUS="${FINAL%%$'\t'*}"; FMSG="${FINAL#*$'\t'}"
+case "$FSTATUS" in
+  waiting) dpost "$CMD_CH" "⏳ $AGENT wartet auf dein Go: ${FMSG:-siehe Dashboard}. Antworte mit \`go $AGENT\`." ;;
+  error)   dpost "$LOG_CH" "❌ $AGENT: Fehler – Log prüfen. ${FMSG}" ;;
+  *)       [ $RC -eq 0 ] && dpost "$LOG_CH" "✅ $AGENT fertig: ${FMSG:-Lauf abgeschlossen}" || dpost "$LOG_CH" "❌ $AGENT abgebrochen (Exit $RC)" ;;
+esac
 
 # Dashboard-Datenfiles ins statische Docroot spiegeln (index.html liest sie ohne server.js)
 [ -f "$BASE/uptime/uptime.json" ] && cp -f "$BASE/uptime/uptime.json" "$WEBDIR/uptime.json" 2>/dev/null

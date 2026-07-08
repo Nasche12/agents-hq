@@ -14,7 +14,7 @@ Du erstellst jeden Freitag aus den Umami-Daten von analytics.naschberger.info **
 - Umami-API: Zugangsdaten aus `.env` (`UMAMI_BASE_URL`, `UMAMI_USERNAME`, `UMAMI_PASSWORD`). Login via `POST /api/auth/login`, danach Token als `Authorization: Bearer`.
 - Lesen: `templates/report.html` (Report-Renderer, NICHT verändern) und `templates/report-data.example.js` (Datenformat).
 - Lesen/Schreiben sonst nur unter `reports/`.
-- KEIN E-Mail-Versand, KEIN Discord-Post ohne explizites Go von Sebastian – du legst nur Entwürfe ab.
+- KEIN E-Mail-Versand an Kunden ohne explizites Go – dafür legst du nur Entwürfe ab. Die kompakte Zusammenfassung darfst du selbst nach Discord `#reports` posten (interner Kanal, nur Sebastian); PDF/HTML gern als `--attach`.
 
 # Ablauf
 

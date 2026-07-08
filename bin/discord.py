@@ -129,10 +129,24 @@ def cmd_post(token, gid, name_or_id, text, attach):
     print(f"gepostet in {name_or_id}")
 
 
-def cmd_read(token, gid, name_or_id, limit):
+def cmd_read(token, gid, name_or_id, limit, as_json=False, after=None):
     cid = resolve_channel(token, gid, name_or_id)
-    msgs = api("GET", f"/channels/{cid}/messages?limit={limit}", token)
-    for m in reversed(msgs):  # älteste zuerst
+    q = f"?limit={limit}"
+    if after:
+        q += f"&after={after}"
+    msgs = list(reversed(api("GET", f"/channels/{cid}/messages{q}", token)))  # älteste zuerst
+    if as_json:
+        out = [{
+            "id": m.get("id"),
+            "author": m.get("author", {}).get("username", "?"),
+            "author_id": m.get("author", {}).get("id"),
+            "bot": bool(m.get("author", {}).get("bot")),
+            "content": m.get("content", ""),
+            "ts": m.get("timestamp", "")[:19],
+        } for m in msgs]
+        print(json.dumps(out, ensure_ascii=False))
+        return
+    for m in msgs:
         author = m.get("author", {}).get("username", "?")
         content = m.get("content", "") or "(kein Textinhalt – Message Content Intent aktiv?)"
         print(f"[{m.get('timestamp','')[:19]}] {author}: {content}")
@@ -154,12 +168,16 @@ def main():
             i = a.index("--attach"); attach = a[i + 1]; a = a[:i] + a[i + 2:]
         cmd_post(token, gid, a[1], a[2], attach)
     elif cmd == "read":
-        limit = 20
+        limit, as_json, after = 20, False, None
         if "--limit" in a:
             i = a.index("--limit"); limit = int(a[i + 1]); a = a[:i] + a[i + 2:]
+        if "--after" in a:
+            i = a.index("--after"); after = a[i + 1]; a = a[:i] + a[i + 2:]
+        if "--json" in a:
+            as_json = True; a = [x for x in a if x != "--json"]
         if len(a) < 2:
-            die("read <kanal> [--limit N]")
-        cmd_read(token, gid, a[1], limit)
+            die("read <kanal> [--limit N] [--after ID] [--json]")
+        cmd_read(token, gid, a[1], limit, as_json=as_json, after=after)
     else:
         die(f"unbekannter Befehl: {cmd}")
 

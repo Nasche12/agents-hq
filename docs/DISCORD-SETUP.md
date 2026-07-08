@@ -50,10 +50,65 @@ Entscheidungen triffst nur du.
   Versand (per Cron-Folgeprompt oder von Hand)
 - **So 17:00** Content-Agent läuft → Plan in #content, Fokus für nächste Woche posten
 
-## Optional später: echter Bot statt Webhooks
+## Zwei-Wege-Steuerung (Bot) – Discord als Fernbedienung
 
-Wenn du willst, dass Agents Discord auch LESEN (z. B. dein "Go" automatisch
-erkennen oder den Wochen-Fokus aus #content ziehen): Discord Developer Portal →
-New Application → Bot → Token in `.env` (DISCORD_BOT_TOKEN), Bot mit
-Scope `bot` + Rechten "Read Messages/Send Messages" einladen. Dann sag mir
-Bescheid – ich baue dir das Lese-Skript dazu. Für den Start reichen Webhooks.
+Damit Discord dein Kommandokanal wird (du steuerst die Website-Agents von
+unterwegs, die Agents melden zurück), brauchst du einen Bot statt reiner Webhooks.
+
+**1. Bot anlegen:** Discord Developer Portal → New Application → Bot →
+Token kopieren. Unter *Privileged Gateway Intents* **Message Content Intent**
+einschalten (nötig, damit der Bot deine Kommandos lesen darf).
+
+**2. Einladen:** OAuth2 → URL Generator → Scope `bot`, Rechte
+*View Channels, Send Messages, Read Message History, Manage Channels*
+(letzteres nur fürs einmalige `setup`). Link öffnen, Bot auf deinen Server holen.
+
+**3. `.env` auf dem Server:**
+
+```
+DISCORD_BOT_TOKEN=...
+DISCORD_GUILD_ID=...          # Server-ID (Rechtsklick auf Server → ID kopieren, Entwicklermodus an)
+DISCORD_COMMAND_CHANNEL=freigaben   # hier tippst du Kommandos
+DISCORD_LOG_CHANNEL=agent-logs      # hierhin melden Agents Start/Ende
+```
+
+**4. Struktur anlegen & Service neu starten:**
+
+```
+python3 bin/discord.py setup          # legt Kategorien/Kanäle idempotent an
+sudo bash deploy/install-service.sh   # zieht .env jetzt via EnvironmentFile
+```
+
+Der `server.js`-Service pollt `#freigaben` alle ~12 s und führt deine Kommandos aus.
+
+### Was du in #freigaben tippen kannst
+
+| Kommando | Wirkung |
+| --- | --- |
+| `status` | Lage aller Agents |
+| `run wochenreport` / nur `wochenreport` | Lauf starten |
+| `wochenreport: nur naschberger.info` | Lauf mit eigenem Auftrag |
+| `go` / `go wochenreport` | Freigabe: wartender Agent führt seine Aktion aus (z. B. Mailversand) |
+| `agents` | bekannte Agents auflisten |
+| `help` | Kommandoliste |
+
+### Rückmeldung der Agents (automatisch)
+
+`bin/run-agent.sh` postet für **jeden** Lauf ohne Zutun:
+- `▶️ <agent> gestartet` → `#agent-logs`
+- `✅ <agent> fertig: <Fazit>` bzw. `❌ … Fehler` → `#agent-logs`
+- `⏳ <agent> wartet auf dein Go …` → `#freigaben` (du antwortest mit `go <agent>`)
+
+Zusätzlich posten Agents ihre Kernergebnisse selbst in den passenden Kanal
+(`bin/discord.py post reports "…" --attach report.pdf`). Nur Kunden-E-Mails
+brauchen weiterhin dein Go.
+
+### Schnelltest
+
+```
+python3 bin/discord.py post agent-logs "Bridge-Test ✅"   # Ausgabe muss im Kanal erscheinen
+python3 bin/discord.py read freigaben --limit 5 --json    # zeigt letzte Nachrichten als JSON
+```
+
+Webhooks (oben) und Bot schließen sich nicht aus – der Bot kann alles, was die
+Webhooks können, plus Lesen. Wer nur Ergebnisse will, bleibt bei Webhooks.
