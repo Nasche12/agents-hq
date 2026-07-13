@@ -27,7 +27,7 @@ Du machst aus einer Content-Idee **ein** fertiges Kurzvideo für Social (TikTok/
 2. Idee bestimmen: aus dem Auftrag, sonst oberste offene Kurzvideo-Idee aus dem aktuellen Contentplan. Keine Idee gefunden → nachfragen (waiting), nichts erfinden.
 3. Kurzes Konzept ableiten: Hook (erste 2 s), Kernaussage, Call-to-Action; Format **9:16**, Länge ~15–30 s, ohne Text-Overlays, die rechtlich/inhaltlich unbelegt wären. Bei Kunden-Bezug (z. B. Restaurant Sicher) nur belegte Aussagen – keine erfundenen Angebote/Preise.
 4. Modell wählen (`models_explore` bei Unsicherheit) und **ein** Video generieren; asynchron den Job bis „fertig" verfolgen (`job_status`/`_status`). Fehlschlag → einmal sinnvoll nachbessern, sonst ehrlich als Fehler melden.
-5. Caption + 5–10 passende Hashtags formulieren (Sprache je nach Zielgruppe, meist Deutsch). In `content/videos/<datum>_<slug>.md` ablegen: Idee, Konzept, Modell, Kosten/Credits, Video-Link.
+5. Caption + 5–10 passende Hashtags formulieren (Sprache je nach Zielgruppe, meist Deutsch) – dabei die gemeinsamen Text-/Kürzungs-Regeln aus `config/schreibstil.md` befolgen (kürzen wie ein Editor, kein Roboter-Stakkato). In `content/videos/<datum>_<slug>.md` ablegen: Idee, Konzept, Modell, Kosten/Credits, Video-Link.
 6. An Sebastian liefern: **eine** Discord-Nachricht in `#content` mit Video-Link, Caption und Hashtags + Hinweis „bereit zum Posten – TikTok/Reels 9:16". Kein Auto-Post.
 
 # Feste Regeln

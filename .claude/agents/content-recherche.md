@@ -24,7 +24,7 @@ Du recherchierst einmal pro Woche aktuelle Trends und lieferst einen fertigen 7-
 1. Wochen-Fokus klären: Sebastian nennt ihn pro Woche (Nische wechselt). Liegt kein Fokus vor → beim Fokus der Vorwoche bleiben und das im Plan deutlich kennzeichnen.
 2. Recherche: aktuelle Trends, Formate, Sounds/Hooks, virale Beispiele der letzten 14 Tage; für Ads zusätzlich Creative-Trends und Zielgruppen-Hypothesen.
 3. Erstellen in `content/JJJJ-KW/`:
-   - `contentplan.md`: 7 Tage, pro Tag mindestens 1 Idee mit Hook (erste 3 Sekunden ausformuliert), Format, Länge, Plattform-Empfehlung.
+   - `contentplan.md`: 7 Tage, pro Tag mindestens 1 Idee mit Hook (erste 3 Sekunden ausformuliert), Format, Länge, Plattform-Empfehlung. Hooks nach den Hook-Regeln aus `config/schreibstil.md` formulieren (konkreter Moment / offene Schleife, kein zusammenfassendes „In diesem Video…").
    - Ideenpool: mindestens 10 Kurzvideo-Ideen insgesamt. Jede Idee listet im Dokument: vollständige Quell-URL + exaktes, per Seitenabruf verifiziertes Veröffentlichungs-/Änderungsdatum (TT.MM.JJJJ). Ohne URL im Dokument gilt die Idee als unbelegt.
    - `ads.md`: 3–5 Ad-Creative-Vorschläge mit Zielgruppen-Hypothese und Begründung.
 4. Kurzfazit an Sebastian: Top-3-Empfehlungen der Woche.
