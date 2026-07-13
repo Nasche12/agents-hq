@@ -1,8 +1,22 @@
 {
-  "_hinweis": "Kunden-Websites, die uptime-waechter und seo-audit prüfen. Von Hand pflegen: neue Kundenseite hier eintragen. name = Anzeigename, url = Live-URL (mit https).",
+  "_hinweis": "Kunden-Websites, die uptime-waechter und seo-audit pruefen. Von Hand pflegen. name=Anzeigename, url=Live-URL. Optionale Funktionschecks pro Site: 'expect'=String, der im HTML stehen MUSS (echter Inhalt statt Fehlerseite); 'assets'=\"auto\" (jedes <img> der Startseite GETen: 200 + image/* + >0 Byte) oder Liste kritischer Pfade wie [\"/assets/logo.png\"]; 'health'=URL eines JSON-Health-Endpoints ({\"ok\":true} = 200, sonst defekt) fuers Backend/DB-Lebenszeichen. Fehlt ein Feld, wird der jeweilige Check uebersprungen (nicht als gruen gewertet).",
   "sites": [
-    { "name": "naschberger.info", "url": "https://naschberger.info" },
-    { "name": "sicherrestaurant.at", "url": "https://sicherrestaurant.at" },
-    { "name": "ursulakircher.at", "url": "https://ursulakircher.at" }
+    {
+      "name": "naschberger.info",
+      "url": "https://naschberger.info",
+      "expect": "Naschberger"
+    },
+    {
+      "name": "sicherrestaurant.at",
+      "url": "https://sicherrestaurant.at",
+      "expect": "Restaurant Sicher",
+      "assets": "auto",
+      "health": "https://sicherrestaurant.at/api/health"
+    },
+    {
+      "name": "ursulakircher.at",
+      "url": "https://ursulakircher.at",
+      "expect": "Ursula Kircher"
+    }
   ]
 }

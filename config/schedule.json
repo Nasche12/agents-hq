@@ -1,12 +1,73 @@
 {
-  "_hinweis": "Zentraler Zeitplan aller Agents. Der Master/Kommandant pflegt diese Datei; der Cron am Server wird daraus erzeugt. next_run in status.json muss zu 'cadence' passen.",
+  "_hinweis": "Zentraler Zeitplan aller Agents. Zeitbasis = 'zeitzone' (der Scheduler in server.js rechnet zeitzonen-fest via Intl, unabhaengig von der Server-TZ). cadence: 'Fr 08:00' (Wochentag+Uhrzeit) | '06:00' (taeglich) | 'alle 60 min' (Intervall, an der Uhr ausgerichtet) | 'auf Abruf'. schwer=true -> Auto-Start nur nach Rueckfrage in #freigaben (/ja bzw. /nein). enabled=false -> kein Termin. channel = Themen-Kanal fuer knappe Einzeiler. quiet=true -> Routine-Erfolge nicht posten, nur Probleme. catchup_minuten = Nachhol-Fenster: verpasste Wochentag/Uhrzeit-Laeufe feuern nur, wenn der Server innerhalb dieser Zeit nach der Planzeit laeuft.",
   "zeitzone": "Europe/Vienna",
+  "catchup_minuten": 120,
   "agents": {
-    "wochenreport":       { "cadence": "Fr 08:00",     "enabled": true,  "schwer": true },
-    "belege-buchhaltung": { "cadence": "Mo 09:00",     "enabled": true,  "schwer": false },
-    "content-recherche":  { "cadence": "So 17:00",     "enabled": true,  "schwer": true },
-    "uptime-waechter":    { "cadence": "alle 90 min",  "enabled": true,  "schwer": false, "quiet": true },
-    "seo-audit":          { "cadence": "Mi 06:00",     "enabled": true,  "schwer": true },
-    "rechnungssteller":   { "cadence": "auf Abruf",    "enabled": true,  "schwer": false }
+    "wochenreport": {
+      "cadence": "Fr 08:00",
+      "enabled": true,
+      "schwer": true,
+      "channel": "reports"
+    },
+    "belege-buchhaltung": {
+      "cadence": "auf Abruf",
+      "enabled": false,
+      "schwer": false,
+      "channel": "belege"
+    },
+    "content-recherche": {
+      "cadence": "So 17:00",
+      "enabled": true,
+      "schwer": true,
+      "channel": "content"
+    },
+    "uptime-waechter": {
+      "cadence": "alle 60 min",
+      "enabled": true,
+      "schwer": false,
+      "channel": "agent-logs",
+      "quiet": true
+    },
+    "seo-audit": {
+      "cadence": "Mi 06:00",
+      "enabled": true,
+      "schwer": true,
+      "channel": "reports",
+      "quiet": false
+    },
+    "rechnungssteller": {
+      "cadence": "auf Abruf",
+      "enabled": false,
+      "schwer": false,
+      "channel": "verkauf"
+    },
+    "server-waechter": {
+      "cadence": "alle 360 min",
+      "enabled": true,
+      "schwer": false,
+      "channel": "agent-logs",
+      "quiet": true
+    },
+    "mail-assistent": {
+      "_hinweis": "Gmail-Connector ist interaktiv authentifiziert -> laeuft NUR aus einer Session mit verbundenem Gmail, nicht im Server-Cron. Darum 'auf Abruf' + enabled=false (kein automatischer Termin).",
+      "cadence": "auf Abruf",
+      "enabled": false,
+      "schwer": false,
+      "channel": "agent-logs"
+    },
+    "video-producent": {
+      "_hinweis": "Video-MCPs (Higgsfield/Motion) sind interaktiv authentifiziert -> nur aus einer Session mit verbundenen MCPs, nicht im Server-Cron. Kostet Credits. Darum 'auf Abruf' + enabled=false.",
+      "cadence": "auf Abruf",
+      "enabled": false,
+      "schwer": false,
+      "channel": "content"
+    },
+    "ki-influencer": {
+      "_hinweis": "Higgsfield-MCP interaktiv + kostet Credits + braucht trainierte soul_id in config/influencer.json. Nur auf Abruf aus einer Session mit Higgsfield, nicht im Server-Cron.",
+      "cadence": "auf Abruf",
+      "enabled": false,
+      "schwer": false,
+      "channel": "content"
+    }
   }
 }

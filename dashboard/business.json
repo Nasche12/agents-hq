@@ -1,0 +1,45 @@
+{
+  "_hinweis": "Daten-Ledger fuers Akquise-&-Content-Cockpit (dashboard/cockpit.html). Wird von den Agents video-producent/akquise-video (videos, credits) und mail/akquise (outreach, emails) fortgeschrieben. BEISPIELDATEN zum Ansehen des Templates - von den Agents ueberschrieben, sobald sie laufen.",
+  "updated": "2026-07-13T16:40:00+02:00",
+  "sample": true,
+  "kpi": {
+    "revenue_eur": 6500,
+    "revenue_trend_pct": 30,
+    "videos": 42,
+    "emails_sent": 128,
+    "replies": 19,
+    "deals": 7,
+    "credits_used": 1180,
+    "credits_total": 3000
+  },
+  "funnel": [
+    { "stage": "Leads", "n": 210 },
+    { "stage": "Kontaktiert", "n": 128 },
+    { "stage": "Geantwortet", "n": 19 },
+    { "stage": "Kunde", "n": 7 }
+  ],
+  "revenue_series": [
+    { "m": "Feb", "eur": 0 },
+    { "m": "Mär", "eur": 350 },
+    { "m": "Apr", "eur": 700 },
+    { "m": "Mai", "eur": 1200 },
+    { "m": "Jun", "eur": 1850 },
+    { "m": "Jul", "eur": 2400 }
+  ],
+  "videos": [
+    { "date": "2026-07-13", "objekt": "Chalet Alpenblick, Nassfeld", "kind": "Objekt-Tour", "credits": 28, "status": "geliefert", "url": "" },
+    { "date": "2026-07-12", "objekt": "Seehaus Wörthersee", "kind": "Reel 9:16", "credits": 24, "status": "geliefert", "url": "" },
+    { "date": "2026-07-12", "objekt": "Apartment Altstadt Villach", "kind": "Objekt-Tour", "credits": 26, "status": "kunde", "url": "" },
+    { "date": "2026-07-11", "objekt": "Ferienhaus Millstätter See", "kind": "Reel 9:16", "credits": 22, "status": "entwurf", "url": "" },
+    { "date": "2026-07-10", "objekt": "Bergchalet Turrach", "kind": "Objekt-Tour", "credits": 30, "status": "geliefert", "url": "" },
+    { "date": "2026-07-09", "objekt": "Loft Klagenfurt Zentrum", "kind": "Reel 9:16", "credits": 21, "status": "kunde", "url": "" }
+  ],
+  "outreach": [
+    { "date": "2026-07-13", "lead": "Chalet Alpenblick", "objekt": "Nassfeld", "stage": "Geantwortet", "revenue_eur": 0 },
+    { "date": "2026-07-12", "lead": "Seehaus Wörthersee", "objekt": "Pörtschach", "stage": "Kontaktiert", "revenue_eur": 0 },
+    { "date": "2026-07-12", "lead": "Apartment Altstadt", "objekt": "Villach", "stage": "Kunde", "revenue_eur": 1200 },
+    { "date": "2026-07-10", "lead": "Bergchalet Turrach", "objekt": "Turracher Höhe", "stage": "Kontaktiert", "revenue_eur": 0 },
+    { "date": "2026-07-09", "lead": "Loft Klagenfurt", "objekt": "Klagenfurt", "stage": "Kunde", "revenue_eur": 900 },
+    { "date": "2026-07-08", "lead": "Ferienhaus Millstatt", "objekt": "Millstätter See", "stage": "Geantwortet", "revenue_eur": 0 }
+  ]
+}

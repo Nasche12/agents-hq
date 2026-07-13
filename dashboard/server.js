@@ -6,6 +6,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
 
 const BASE = path.resolve(__dirname, '..');
@@ -22,7 +23,11 @@ const AGENTS = {
   'content-recherche': 'Nutze den Subagent content-recherche und erstelle den Contentplan für die kommende Woche.',
   'uptime-waechter': 'Nutze den Subagent uptime-waechter und prüfe jetzt alle Sites aus config/sites.json.',
   'seo-audit': 'Nutze den Subagent seo-audit und auditiere alle Sites aus config/sites.json.',
-  'rechnungssteller': 'Nutze den Subagent rechnungssteller. Falls keine Positionen genannt sind, frage nach, statt zu raten.'
+  'rechnungssteller': 'Nutze den Subagent rechnungssteller. Falls keine Positionen genannt sind, frage nach, statt zu raten.',
+  'server-waechter': 'Nutze den Subagent server-waechter und prüfe jetzt READ-ONLY die Server-Gesundheit (config/server.json). Nichts ändern, nur melden.',
+  'mail-assistent': 'Nutze den Subagent mail-assistent und triagiere den Gmail-Posteingang: sortieren, zusammenfassen, Antwort-Entwürfe anlegen. Nichts versenden.',
+  'video-producent': 'Nutze den Subagent video-producent und erzeuge EIN Kurzvideo (9:16) aus der obersten offenen Content-Idee und liefere es mit Caption nach #content. Nicht selbst auf Social posten.',
+  'ki-influencer': 'Nutze den Subagent ki-influencer und erzeuge EINEN on-brand Tages-Post (Bild + 9:16-Clip + Caption) aus config/influencer.json und liefere ihn nach #content. Nicht selbst auf Social posten.'
 };
 /* Report-Wurzeln: nur diese Ordner sind über /api lesbar */
 const REPORT_ROOTS = ['reports', 'content', 'belege', 'uptime', 'seo', 'rechnungen'];
@@ -61,7 +66,9 @@ function runAgent(id, prompt) {
   const script = path.join(BASE, 'bin', 'run-agent.sh');
   const log = fs.openSync(path.join(BASE, 'logs', id + '.server.log'), 'a');
   const child = spawn(findBash(), [script, id, prompt || AGENTS[id]], {
-    cwd: BASE, detached: true, stdio: ['ignore', log, log]
+    cwd: BASE, detached: true, stdio: ['ignore', log, log],
+    // Node-Pfad mitgeben, damit run-agent.sh die Kern-Logik ohne Python fahren kann
+    env: Object.assign({}, process.env, { HQ_NODE: process.execPath })
   });
   child.unref();
   return child.pid;
@@ -128,6 +135,15 @@ const server = http.createServer((req, res) => {
   /* ---------- API ---------- */
   if (p === '/api/ping') return send(res, 200, { api: true, agents: Object.keys(AGENTS) });
 
+  /* Discord Slash-Commands: signierter Interactions-Endpoint (Roh-Body noetig fuer ed25519) */
+  if (p === '/discord/interactions' && req.method === 'POST') {
+    let raw = '', too = false;
+    req.on('data', c => { raw += c; if (raw.length > 1e6) { too = true; req.destroy(); } });
+    req.on('end', () => { if (!too) handleInteraction(req, res, raw); });
+    req.on('error', () => { try { res.writeHead(400); res.end(); } catch (e) {} });
+    return;
+  }
+
   if (p.startsWith('/api/run/') && req.method === 'POST') {
     const id = p.slice(9);
     if (!AGENTS[id]) return send(res, 404, { error: 'unbekannter agent' });
@@ -151,10 +167,16 @@ const server = http.createServer((req, res) => {
       const cur = readSchedule(); cur.agents = cur.agents || {};
       for (const [id, patch] of Object.entries(body.agents)) {
         if (!AGENTS[id] || id === 'master' || !patch || typeof patch !== 'object') continue;
-        cur.agents[id] = Object.assign({}, cur.agents[id], {
-          enabled: patch.enabled !== false,
-          cadence: typeof patch.cadence === 'string' ? patch.cadence.slice(0, 40) : (cur.agents[id] || {}).cadence
-        });
+        const next = Object.assign({}, cur.agents[id]);
+        next.enabled = patch.enabled !== false;
+        if (typeof patch.cadence === 'string') next.cadence = patch.cadence.slice(0, 40);
+        if (typeof patch.schwer === 'boolean') next.schwer = patch.schwer;
+        if (typeof patch.quiet === 'boolean') next.quiet = patch.quiet;
+        if (typeof patch.channel === 'string') {
+          const ch = patch.channel.trim().slice(0, 40);
+          if (ch) next.channel = ch; else delete next.channel;
+        }
+        cur.agents[id] = next;
       }
       try {
         const tmp = SCHEDULE_FILE + '.tmp';
@@ -169,6 +191,29 @@ const server = http.createServer((req, res) => {
     const id = p.slice(9);
     if (!AGENTS[id]) return send(res, 404, { error: 'unbekannter agent' });
     return send(res, 200, tailLog(id));
+  }
+
+  /* Lauf-Historie (Report-Datensätze) eines Agents – neueste zuerst */
+  if (p.startsWith('/api/runs/')) {
+    const id = p.slice(10);
+    if (!AGENTS[id]) return send(res, 404, { error: 'unbekannter agent' });
+    const f = path.join(BASE, 'logs', id + '.jsonl');
+    let runs = [];
+    try {
+      runs = fs.readFileSync(f, 'utf8').split('\n').filter(Boolean)
+        .slice(-100).map(l => { try { return JSON.parse(l); } catch (e) { return null; } })
+        .filter(Boolean).reverse();
+    } catch (e) {}
+    return send(res, 200, runs);
+  }
+
+  /* Volltext-Log eines EINZELNEN Laufs (logs/<id>/<run>.log) */
+  if (p === '/api/runlog') {
+    const id = u.searchParams.get('id'), run = u.searchParams.get('run') || '';
+    if (!AGENTS[id] || !/^[0-9T]{8,20}$/.test(run)) return send(res, 404, { error: 'nicht gefunden' });
+    const f = path.join(BASE, 'logs', id, run + '.log');
+    try { return send(res, 200, { text: fs.readFileSync(f, 'utf8') }); }
+    catch (e) { return send(res, 404, { error: 'nicht gefunden' }); }
   }
 
   if (p === '/api/reports') return send(res, 200, listReports());
@@ -222,13 +267,9 @@ function dpy(args, cb) {
 function dpost(chan, text) { dpy(['post', chan, text], () => {}); }
 
 const D_HELP = [
-  '🤖 **HQ-Kommandos** (schreib sie einfach hier rein):',
-  '• `status` – Lage aller Agents · `offen` – nur Waits/Fehler',
-  '• `run <agent>` oder nur `<agent>` – Lauf starten (Aliase ok: report, belege, content, uptime, seo, rechnung)',
-  '• `<agent>: <auftrag>` – Lauf mit eigenem Auftrag',
-  '• `go [agent]` – Freigabe: wartenden Agent seine Aktion ausführen lassen',
-  '• `agents` – bekannte Agents · `help` – diese Hilfe',
-  '• **Frage mit `?`** oder `master …` – der Master antwortet (nur das kostet Tokens)'
+  '🤖 **HQ** – am besten die **Slash-Commands**: `/status` `/offen` `/run` `/ja` `/nein` `/go` `/master`.',
+  'Hier als Text geht auch: `status`, `offen`, `<agent>` starten, `go [agent]`, `<agent>: <auftrag>`,',
+  'und eine **Frage mit `?`** bzw. `master …` (nur das kostet Tokens).'
 ].join('\n');
 
 /* Aliase -> Agent-ID, damit lockere Formulierungen ohne LLM erkannt werden */
@@ -237,7 +278,8 @@ const ALIAS = {
   beleg: 'belege-buchhaltung', belege: 'belege-buchhaltung', buchhaltung: 'belege-buchhaltung',
   content: 'content-recherche', contentplan: 'content-recherche', recherche: 'content-recherche',
   uptime: 'uptime-waechter', erreichbarkeit: 'uptime-waechter', monitoring: 'uptime-waechter',
-  seo: 'seo-audit', audit: 'seo-audit', rechnung: 'rechnungssteller', rechnungen: 'rechnungssteller'
+  seo: 'seo-audit', audit: 'seo-audit', rechnung: 'rechnungssteller', rechnungen: 'rechnungssteller',
+  influencer: 'ki-influencer', persona: 'ki-influencer'
 };
 function matchAgent(s) {
   s = (s || '').toLowerCase().trim();
@@ -343,78 +385,204 @@ if (D.on && D.token && D.guild) {
   console.log('Discord-Bridge aus (DISCORD_BOT_TOKEN/GUILD_ID fehlt oder DISCORD_BRIDGE=off).');
 }
 
-/* ---------- Scheduler (macht den HQ „lebendig" wie der Master) ----------
-   Feuert fällige Agents aus config/schedule.json und lässt den Master 1×/Tag die Lage posten.
-   Zeit = Serverzeit; setze TZ=Europe/Vienna im Service (install-service.sh tut das). */
+/* ---------- Discord Slash-Commands (Interactions-Endpoint) ----------
+   Native /-Kommandos. Discord POSTet signierte Interactions an /discord/interactions.
+   Wir verifizieren die ed25519-Signatur mit DISCORD_PUBLIC_KEY (Dev-Portal) und antworten
+   sofort (ephemeral, nur Sebastian sieht es). Registrierung: bin/discord-register.py. */
+function verifyDiscord(raw, sig, ts, pubHex) {
+  try {
+    const der = Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), Buffer.from(pubHex, 'hex')]);
+    const key = crypto.createPublicKey({ key: der, format: 'der', type: 'spki' });
+    return crypto.verify(null, Buffer.from(ts + raw), key, Buffer.from(sig, 'hex'));
+  } catch (e) { return false; }
+}
+/* Agent-ID -> kurzer Slash-Wert (Auswahl im /-Menue, siehe discord-register.py) */
+const CHOICE = {
+  wochenreport: 'report', 'belege-buchhaltung': 'belege', 'content-recherche': 'content',
+  'uptime-waechter': 'uptime', 'seo-audit': 'seo', rechnungssteller: 'rechnung',
+  'server-waechter': 'server', 'mail-assistent': 'mail', 'video-producent': 'video',
+  'ki-influencer': 'influencer'
+};
+const SLASH_HELP = [
+  '🤖 **HQ-Slash-Commands**',
+  '`/status` Ampel · `/offen` Waits/Fehler · `/agents` Liste',
+  '`/run <agent>` starten · `/ja <agent>` fälligen Lauf freigeben · `/nein <agent>` überspringen',
+  '`/go [agent]` Versand/Aktion freigeben · `/master <frage>` den Master fragen'
+].join('\n');
+
+/* Startet einen Agent, wenn er nicht schon läuft. Ergebnis-Meldung ist kurz. */
+function startAgent(id, prompt) {
+  if (!AGENTS[id]) return { ok: false, msg: `❓ Kein Agent "${id}".` };
+  const st = readStatus();
+  if (st.agents && st.agents[id] && st.agents[id].status === 'running') return { ok: false, msg: `⏳ ${id} läuft schon.` };
+  try { runAgent(id, prompt || null); return { ok: true, msg: `▶️ ${id} gestartet.` }; }
+  catch (e) { return { ok: false, msg: '❌ ' + (e.message || e) }; }
+}
+function startGo(id) {
+  const a = readStatus().agents || {};
+  if (!id) id = Object.keys(a).find(k => a[k].status === 'waiting');
+  if (!id) return 'Kein Agent wartet gerade auf Go.';
+  const r = startAgent(id, 'Sebastian hat GO gegeben. Führe die freigegebene Aktion des letzten Laufs jetzt aus (z. B. abgelegte Entwürfe versenden). Liegt nichts bereit, sag das kurz.');
+  return r.ok ? `✅ Go für ${id} – führe die freigegebene Aktion aus.` : r.msg;
+}
+function startMaster(frage) {
+  const st = readStatus();
+  if (st.agents && st.agents.master && st.agents.master.status === 'running') return '⏳ Der Master arbeitet noch.';
+  const prompt = `Nutze den Subagent kommandant. Sebastian fragt via Discord-Slash: "${frage}". `
+    + `Antworte KNAPP (wenige Zeilen, kein Roman) per bin/discord.py post ${D.cmd} "<antwort>". `
+    + `Bei Bedarf lies dashboard/status.json und config/schedule.json und stoße Läufe via bin/run-agent.sh an. Nichts an Kunden senden.`;
+  try { runAgent('master', prompt); return '🧠 Master schaut sich das an – Antwort kommt in #' + D.cmd + '.'; }
+  catch (e) { return '❌ ' + (e.message || e); }
+}
+function optVal(opts, name) { const o = (opts || []).find(o => o.name === name); return o ? o.value : null; }
+function routeSlash(name, opts) {
+  const eph = t => ({ content: t, ephemeral: true });
+  const wantId = () => matchAgent(optVal(opts, 'agent') || '');
+  switch (name) {
+    case 'status': return eph(dStatusText());
+    case 'offen':  return eph(dOpenText());
+    case 'agents': return eph('Agents: ' + Object.keys(AGENTS).filter(k => k !== 'master').join(', '));
+    case 'help':   return eph(SLASH_HELP);
+    case 'run':
+    case 'ja': { const id = wantId(); return eph(id ? startAgent(id).msg : '❓ Kein passender Agent.'); }
+    case 'nein': { const id = wantId(); return eph(id ? `⏭️ ${id} diesmal übersprungen – ich frage wieder zum nächsten Termin.` : '❓ Kein passender Agent.'); }
+    case 'go':     return eph(startGo(optVal(opts, 'agent') ? wantId() : null));
+    case 'master': return eph(startMaster(optVal(opts, 'frage') || ''));
+    default:       return eph('Unbekanntes Kommando.');
+  }
+}
+function handleInteraction(req, res, raw) {
+  const pub = process.env.DISCORD_PUBLIC_KEY || '';
+  const sig = req.headers['x-signature-ed25519'], ts = req.headers['x-signature-timestamp'];
+  if (!pub || !sig || !ts || !verifyDiscord(raw, sig, ts, pub))
+    return send(res, 401, 'invalid request signature', 'text/plain');
+  let body; try { body = JSON.parse(raw); } catch (e) { return send(res, 400, { error: 'bad json' }); }
+  if (body.type === 1) return send(res, 200, { type: 1 });                 // PING -> PONG
+  if (body.type === 2) {                                                   // APPLICATION_COMMAND
+    const r = routeSlash(body.data && body.data.name, (body.data && body.data.options) || []);
+    return send(res, 200, { type: 4, data: { content: r.content, flags: r.ephemeral ? 64 : 0 } });
+  }
+  return send(res, 200, { type: 4, data: { content: 'Nicht unterstützt.', flags: 64 } });
+}
+
+/* ---------- Scheduler (deterministisch, zeitzonen-fest) ----------
+   Feuert fällige Agents aus config/schedule.json. Zeitbasis = 'zeitzone' aus schedule.json
+   (via Intl, UNABHÄNGIG von der Server-TZ). Intervalle sind an der Uhr ausgerichtet;
+   Wochentag/Uhrzeit-Läufe feuern nur im Nachhol-Fenster (catchup_minuten) – kein „wahllos". */
 const SCHED_ON = (process.env.DISCORD_SCHEDULER || 'on') !== 'off';
-const MASTER_DAILY = (process.env.DISCORD_MASTER_DAILY ?? '07:30').trim();  // '' = aus
-const HEARTBEAT = (process.env.DISCORD_HEARTBEAT ?? '08:00,14:00,20:00').split(',').map(s => s.trim()).filter(Boolean);
+const MASTER_DAILY = (process.env.DISCORD_MASTER_DAILY ?? '07:30').trim();          // '' = aus
+const HEARTBEAT = (process.env.DISCORD_HEARTBEAT ?? '').split(',').map(s => s.trim()).filter(Boolean); // Default: aus
 function heartbeatText() {
-  let d; try { d = JSON.parse(fs.readFileSync(path.join(BASE, 'uptime', 'uptime.json'), 'utf8')); } catch (e) { return '💓 HQ aktiv – Scheduler & Bridge laufen (noch keine Uptime-Daten).'; }
+  let d; try { d = JSON.parse(fs.readFileSync(path.join(BASE, 'uptime', 'uptime.json'), 'utf8')); } catch (e) { return '💓 HQ aktiv.'; }
   const sites = d.sites || [];
   const down = sites.filter(s => !['ok', 'slow'].includes(s.state));
   const stand = (d.stand || '').slice(11, 16);
-  if (!sites.length) return '💓 HQ aktiv – Scheduler & Bridge laufen.';
-  if (!down.length) return `💓 Alles aktiv: ${sites.length}/${sites.length} Seiten oben (Stand ${stand}). Scheduler & Bridge laufen.`;
-  return `⚠️ Nur ${sites.length - down.length}/${sites.length} Seiten oben – DOWN: ${down.map(s => s.name).join(', ')} (Stand ${stand}).`;
+  if (!sites.length) return '💓 HQ aktiv.';
+  if (!down.length) return `💓 ${sites.length}/${sites.length} Seiten oben (${stand}).`;
+  return `⚠️ ${sites.length - down.length}/${sites.length} oben – DOWN: ${down.map(s => s.name).join(', ')} (${stand}).`;
 }
 const FIRES = path.join(WEB, '.sched-fires.json');
 let fires = {}; try { fires = JSON.parse(fs.readFileSync(FIRES, 'utf8')); } catch (e) { fires = {}; }
 function saveFires() { try { fs.writeFileSync(FIRES, JSON.stringify(fires)); } catch (e) {} }
 
-const WDAYS = { mo: 1, di: 2, mi: 3, do: 4, fr: 5, sa: 6, so: 0 };
-function isDue(cad, last, now) {
+const WDAYS = { mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, sun: 0 };          // Intl en-Kürzel
+const CAD_WD = { mo: 1, di: 2, mi: 3, do: 4, fr: 5, sa: 6, so: 0 };                // cadence-Kürzel (de)
+function zoneNow(tz) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz || 'Europe/Vienna', weekday: 'short', hour12: false,
+    hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
+  }).formatToParts(new Date());
+  const g = t => (parts.find(p => p.type === t) || {}).value || '';
+  return {
+    wd: WDAYS[g('weekday').toLowerCase().slice(0, 3)],
+    min: (parseInt(g('hour'), 10) % 24) * 60 + parseInt(g('minute'), 10),
+    date: `${g('year')}-${g('month')}-${g('day')}`
+  };
+}
+function chanOf(id, sched) { return (sched[id] && sched[id].channel) || D.log; }
+
+/* true, wenn cadence jetzt fällig ist; belegt fires[id] selbst (Fensterlogik) */
+function due(id, cad, z, catchup) {
   cad = (cad || '').toLowerCase().trim();
   if (!cad || cad.includes('abruf')) return false;
   let m;
-  if (m = cad.match(/alle\s+(\d+)\s*(min|minuten|h|std|stunde|stunden)/)) {
-    const iv = (+m[1]) * (m[2][0] === 'h' || m[2][0] === 's' ? 3600000 : 60000);
-    return (now - last) >= iv;
+  if (m = cad.match(/alle\s+(\d+)\s*(min|minuten|h|std|stunde|stunden)/)) {        // Intervall, an der Uhr ausgerichtet
+    const ivMin = (+m[1]) * (m[2][0] === 'h' || m[2][0] === 's' ? 60 : 1);
+    const slot = Math.floor(Date.now() / (ivMin * 60000));
+    if (fires[id] === slot) return false;
+    fires[id] = slot; saveFires(); return true;
   }
-  if (m = cad.match(/^(mo|di|mi|do|fr|sa|so)\s+(\d{1,2}):(\d{2})/)) {
-    const d = new Date(now);
-    if (d.getDay() !== WDAYS[m[1]]) return false;
-    const t = new Date(now); t.setHours(+m[2], +m[3], 0, 0);
-    return now >= t.getTime() && last < t.getTime();     // heute fällig, noch nicht gefeuert
+  if (m = cad.match(/^(mo|di|mi|do|fr|sa|so)\s+(\d{1,2}):(\d{2})/)) {               // Wochentag + Uhrzeit
+    if (z.wd !== CAD_WD[m[1]]) return false;
+    const sched = (+m[2]) * 60 + (+m[3]);
+    if (z.min < sched || z.min >= sched + catchup) return false;                    // nur im Nachhol-Fenster
+    if (fires[id] === z.date) return false;                                         // heute schon gefeuert
+    fires[id] = z.date; saveFires(); return true;
   }
-  if (m = cad.match(/(\d{1,2}):(\d{2})/)) {               // reine Uhrzeit -> täglich
-    const t = new Date(now); t.setHours(+m[1], +m[2], 0, 0);
-    return now >= t.getTime() && last < t.getTime();
+  if (m = cad.match(/(\d{1,2}):(\d{2})/)) {                                         // reine Uhrzeit -> täglich
+    const sched = (+m[1]) * 60 + (+m[2]);
+    if (z.min < sched || z.min >= sched + catchup) return false;
+    if (fires[id] === z.date) return false;
+    fires[id] = z.date; saveFires(); return true;
   }
   return false;
 }
+/* täglicher Termin (Heartbeat/Master) im Nachhol-Fenster, einmal pro Tag */
+function dailyDue(key, hhmm, z, catchup) {
+  const m = (hhmm || '').match(/(\d{1,2}):(\d{2})/); if (!m) return false;
+  const sched = (+m[1]) * 60 + (+m[2]);
+  if (z.min < sched || z.min >= sched + catchup) return false;
+  if (fires[key] === z.date) return false;
+  fires[key] = z.date; saveFires(); return true;
+}
+/* next_run in status.json = Wahrheit aus schedule.json (behebt die Log/Report-Drift) */
+function humanNext(cfg) {
+  if (!cfg || cfg.enabled === false) return 'kein Termin';
+  const c = (cfg.cadence || '').trim();
+  return (!c || /abruf/i.test(c)) ? 'auf Abruf' : c;
+}
+function syncNextRuns(sched) {
+  const f = statusPath();
+  let d; try { d = JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { return; }
+  if (!d.agents) return;
+  let dirty = false;
+  for (const [id, a] of Object.entries(d.agents)) {
+    if (id === 'master') continue;
+    const nr = humanNext(sched[id]);
+    if (a.next_run !== nr) { a.next_run = nr; dirty = true; }
+  }
+  if (dirty) { try { const tmp = f + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(d, null, 1)); fs.renameSync(tmp, f); } catch (e) {} }
+}
 function schedTick() {
-  const now = Date.now();
-  const sched = readSchedule().agents || {};
+  const cfgAll = readSchedule();
+  const sched = cfgAll.agents || {};
+  const tz = cfgAll.zeitzone || 'Europe/Vienna';
+  const catchup = Math.max(5, parseInt(cfgAll.catchup_minuten, 10) || 120);
+  const z = zoneNow(tz);
   const st = readStatus().agents || {};
+  syncNextRuns(sched);
   for (const [id, cfg] of Object.entries(sched)) {
     if (!AGENTS[id] || !cfg || cfg.enabled === false) continue;
-    if (!isDue(cfg.cadence, fires[id] || 0, now)) continue;
-    if (st[id] && st[id].status === 'running') { fires[id] = now; saveFires(); continue; }  // läuft schon -> Fenster als erledigt markieren
-    fires[id] = now; saveFires();
-    if (cfg.schwer) {   // schwere Läufe nicht blind starten – nach Freigabe fragen
-      dpost(D.cmd, `⏳ **${id}** ist laut Plan fällig (${cfg.cadence}). Starten? Antworte \`run ${id}\`.`);
+    if (!due(id, cfg.cadence, z, catchup)) continue;           // due() belegt das Fenster bereits
+    if (st[id] && st[id].status === 'running') continue;       // läuft schon
+    if (cfg.schwer) {                                          // schwer -> nachfragen (/ja /nein)
+      const short = CHOICE[id] || id;
+      dpost(D.cmd, `⏳ **${id}** fällig (${cfg.cadence}) — \`/ja ${short}\` starten · \`/nein ${short}\` überspringen.`);
     } else {
-      try { runAgent(id); if (!cfg.quiet) dpost(D.log, `⏰ **${id}** automatisch gestartet (Plan: ${cfg.cadence}).`); } catch (e) {}
+      try { runAgent(id); if (!cfg.quiet) dpost(chanOf(id, sched), `⏰ **${id}** gestartet (Plan: ${cfg.cadence}).`); } catch (e) {}
     }
   }
-  for (const hb of HEARTBEAT) {   // 3×/Tag Lebenszeichen „alles aktiv" (still gezählt via fires)
-    const key = '__hb_' + hb;
-    if (isDue(hb, fires[key] || 0, now)) { fires[key] = now; saveFires(); dpost(D.log, heartbeatText()); }
-  }
-  if (MASTER_DAILY && isDue(MASTER_DAILY, fires.__master__ || 0, now)) {
-    fires.__master__ = now; saveFires();
-    if (!(st.master && st.master.status === 'running')) {
-      try {
-        runAgent('master', 'Nutze den Subagent kommandant: verschaffe dir den Gesamtüberblick (dashboard/status.json), '
-          + 'stimme config/schedule.json ab und stoße fällige Läufe an. Poste danach eine kompakte Lage '
-          + '(Ampel je Agent, offene Waits/Fehler zuerst) nach Discord: bin/discord.py post ' + D.log + ' "<Lage>". Nichts an Kunden senden.');
-      } catch (e) {}
-    }
+  for (const hb of HEARTBEAT) { if (dailyDue('__hb_' + hb, hb, z, catchup)) dpost(D.log, heartbeatText()); }
+  if (MASTER_DAILY && dailyDue('__master__', MASTER_DAILY, z, catchup) && !(st.master && st.master.status === 'running')) {
+    try {
+      runAgent('master', 'Nutze den Subagent kommandant: verschaffe dir den Gesamtüberblick (dashboard/status.json), '
+        + 'stimme config/schedule.json ab und stoße fällige Läufe an. Poste danach GENAU EINE knappe Lage-Zeile '
+        + '(Ampel je Agent, offene Waits/Fehler zuerst, kein Roman) nach Discord: bin/discord.py post ' + D.log + ' "<Lage>". Nichts an Kunden senden.');
+    } catch (e) {}
   }
 }
 if (SCHED_ON) {
-  console.log(`Scheduler aktiv (Tick 30s)${MASTER_DAILY ? `, Master-Lage täglich ${MASTER_DAILY}` : ''}${HEARTBEAT.length ? `, Heartbeat ${HEARTBEAT.join('/')}` : ''}.`);
+  console.log(`Scheduler aktiv (Tick 30s, TZ aus schedule.json)${MASTER_DAILY ? `, Master-Lage ${MASTER_DAILY}` : ''}${HEARTBEAT.length ? `, Heartbeat ${HEARTBEAT.join('/')}` : ''}.`);
   setInterval(schedTick, 30000);
   schedTick();
 } else {

@@ -1,0 +1,30 @@
+{
+  "_hinweis": "Label-Baum ('Ordner') + Routing-Regeln fuer mail-assistent (Gmail). Verschachtelung via '/'. 'archive_labels' = Labels, deren Threads aus der Inbox archiviert werden (INBOX-Label entfernt); ALLE anderen bleiben sichtbar in der Inbox und werden nur zusaetzlich gelabelt. 'rules' = Startheuristik, erste passende gewinnt; der Agent darf mit Urteilskraft abweichen, aber nichts erfinden. Spam wird NIE angefasst (bleibt bei Gmail). Von Hand pflegen.",
+  "backfill_window": "newer_than:90d",
+  "labels": [
+    "Anfragen",
+    "Kunden/Restaurant Sicher",
+    "Kunden/Ursula Kircher",
+    "Finanzen/Rechnungen",
+    "Finanzen/Zahlungen",
+    "Finanzen/Steuer",
+    "Wichtig",
+    "Newsletter",
+    "Werbung",
+    "Benachrichtigungen",
+    "Persoenlich"
+  ],
+  "archive_labels": ["Newsletter", "Werbung", "Benachrichtigungen"],
+  "fallback_label": "Wichtig",
+  "rules": [
+    { "label": "Kunden/Restaurant Sicher", "from_domain": ["sicherrestaurant.at"] },
+    { "label": "Kunden/Ursula Kircher",    "from_domain": ["ursulakircher.at"] },
+    { "label": "Finanzen/Steuer",          "from_keyword": ["finanzamt", "bmf.gv.at", "steuerberat"], "subject_keyword": ["steuer", "umsatzsteuer", "ust-"] },
+    { "label": "Finanzen/Rechnungen",      "subject_keyword": ["rechnung", "invoice", "faktura", "zahlungsaufforderung"] },
+    { "label": "Finanzen/Zahlungen",       "subject_keyword": ["zahlung", "payment", "zahlungseingang", "gutschrift", "ueberweisung"] },
+    { "label": "Anfragen",                 "subject_keyword": ["anfrage", "angebot", "kostenvoranschlag", "neue website", "projektanfrage", "zusammenarbeit"] },
+    { "label": "Werbung",                  "gmail_category": ["promotions"] },
+    { "label": "Newsletter",               "keyword": ["newsletter", "unsubscribe", "abmelden", "mailing"] },
+    { "label": "Benachrichtigungen",       "gmail_category": ["updates", "social", "forums"], "from_keyword": ["no-reply", "noreply", "notifications", "donotreply"] }
+  ]
+}

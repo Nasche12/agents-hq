@@ -2,7 +2,7 @@
 name: content-recherche
 description: Recherchiert wöchentlich aktuelle Trends und erstellt einen 7-Tage-Contentplan mit Kurzvideo-Ideen (Shorts/Reels/TikTok) und Video-Ad-Empfehlungen. Verwenden am Ende jeder Woche für die Planung der Folgewoche.
 tools: Read, Write, WebSearch, WebFetch
-model: sonnet
+model: haiku
 ---
 
 # Hinweis Modellwahl

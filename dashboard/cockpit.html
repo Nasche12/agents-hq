@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Akquise & Content Cockpit · Agent HQ</title>
+<style>
+:root{
+  --bg:oklch(13% 0.028 268); --bg-deep:oklch(8% 0.022 268);
+  --ink:oklch(94% 0.012 255); --mut:oklch(71% 0.025 258); --mut2:oklch(60% 0.02 258);
+  --hair:oklch(100% 0 0 / .08); --hair2:oklch(100% 0 0 / .14);
+  --panel:oklch(16% 0.026 268 / .92); --panel2:oklch(19% 0.03 266 / .7);
+  --field:oklch(100% 0 0 / .04);
+  --cyan:#53e0ff; --grn:#5df2b4; --amb:#ffcf5c; --red:#ff7b6b; --vio:#c99cff; --pink:#ff5ca8;
+  --r1:9px; --r2:14px; --r3:20px;
+  --t:180ms cubic-bezier(.2,.7,.2,1);
+  --z-tip:60;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  font-family:system-ui,"Segoe UI",Roboto,sans-serif;color:var(--ink);
+  background:
+    radial-gradient(1100px 620px at 82% -14%, oklch(24% 0.07 300 / .5), transparent 60%),
+    radial-gradient(900px 640px at 4% 116%, oklch(20% 0.06 225 / .55), transparent 60%),
+    var(--bg);
+  background-attachment:fixed;min-height:100vh;line-height:1.5;
+  -webkit-font-smoothing:antialiased;letter-spacing:.005em;
+}
+.mono{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;font-variant-numeric:tabular-nums}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1180px;margin:0 auto;padding:22px 20px 64px}
+
+/* ---- header ---- */
+.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:22px}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.glyph{width:34px;height:34px;border-radius:10px;flex:none;position:relative;
+  background:linear-gradient(150deg, oklch(60% 0.13 215 / .35), oklch(60% 0.16 300 / .28));
+  border:1px solid var(--hair2)}
+.glyph::before,.glyph::after{content:"";position:absolute;inset:0;border-radius:inherit}
+.glyph::before{background:radial-gradient(9px 9px at 50% 42%, var(--cyan), transparent 70%);opacity:.9}
+.glyph::after{border:1px solid oklch(80% 0.12 210 / .5);margin:6px;border-radius:6px}
+h1{font-size:1.18rem;font-weight:650;margin:0;letter-spacing:-.01em;line-height:1.15}
+.sub{font-size:.72rem;color:var(--mut);margin-top:1px}
+.top .spacer{flex:1}
+.meta{display:flex;align-items:center;gap:10px;font-size:.68rem;color:var(--mut)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--grn);box-shadow:0 0 0 3px oklch(75% 0.15 160 / .18)}
+.badge{font-size:.6rem;letter-spacing:.09em;text-transform:uppercase;color:var(--amb);
+  border:1px solid oklch(70% 0.13 85 / .4);background:oklch(70% 0.13 85 / .1);border-radius:999px;padding:3px 9px;font-weight:600}
+.back{font-size:.72rem;color:var(--mut);border:1px solid var(--hair);border-radius:999px;padding:6px 12px;
+  transition:border-color var(--t),color var(--t)}
+.back:hover{border-color:var(--hair2);color:var(--ink)}
+
+/* ---- panels ---- */
+.panel{background:var(--panel);border:1px solid var(--hair);border-radius:var(--r2);
+  backdrop-filter:blur(6px)}
+.phead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:14px 16px 0}
+.phead h2{font-size:.74rem;font-weight:600;letter-spacing:.02em;color:var(--mut);margin:0;text-transform:none}
+.phead .aux{font-size:.66rem;color:var(--mut2)}
+
+/* ---- overview grid ---- */
+.grid-top{display:grid;grid-template-columns:1.55fr 1fr;gap:14px;margin-bottom:14px}
+@media(max-width:820px){.grid-top{grid-template-columns:1fr}}
+
+.rev{padding:16px 18px 8px;display:flex;flex-direction:column;height:100%}
+.rev .lab{font-size:.72rem;color:var(--mut)}
+.rev .big{font-size:2.5rem;font-weight:660;letter-spacing:-.02em;line-height:1.05;margin:2px 0 0}
+.rev .big .cur{font-size:1.3rem;color:var(--mut);font-weight:500;margin-right:2px;vertical-align:.35em}
+.rev .trend{display:inline-flex;align-items:center;gap:5px;font-size:.72rem;font-weight:600;
+  color:var(--grn);background:oklch(75% 0.15 160 / .12);border-radius:999px;padding:3px 9px;margin-top:8px;width:fit-content}
+.rev .trend.dn{color:var(--red);background:oklch(70% 0.16 25 / .12)}
+.spark{margin-top:auto;width:100%;height:96px;display:block}
+.spark .area{fill:url(#gspark)}
+.spark .line{fill:none;stroke:var(--cyan);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;
+  stroke-dasharray:var(--len);stroke-dashoffset:var(--len);animation:draw 900ms cubic-bezier(.2,.7,.2,1) forwards}
+.spark .mlab{font-size:9px;fill:var(--mut2);font-family:ui-monospace,monospace}
+.spark .pt{fill:var(--cyan)}
+@keyframes draw{to{stroke-dashoffset:0}}
+
+/* stat cluster */
+.stats{display:grid;grid-template-columns:1fr 1fr;height:100%}
+.stat{padding:15px 16px;border-top:1px solid var(--hair);border-left:1px solid var(--hair)}
+.stat:nth-child(-n+2){border-top:0}
+.stat:nth-child(odd){border-left:0}
+.stat .k{font-size:.7rem;color:var(--mut);display:flex;align-items:center;gap:6px}
+.stat .k i{width:6px;height:6px;border-radius:50%;flex:none}
+.stat .v{font-size:1.7rem;font-weight:640;letter-spacing:-.01em;margin-top:3px;line-height:1}
+.stat .cap{font-size:.64rem;color:var(--mut2);margin-top:4px}
+
+/* ---- mid row: funnel + credits ---- */
+.grid-mid{display:grid;grid-template-columns:1.55fr 1fr;gap:14px;margin-bottom:14px}
+@media(max-width:820px){.grid-mid{grid-template-columns:1fr}}
+.funnel{padding:6px 16px 16px}
+.fstep{display:grid;grid-template-columns:112px 1fr auto;align-items:center;gap:12px;padding:7px 0}
+.fstep .fname{font-size:.76rem;color:var(--ink)}
+.ftrack{height:26px;border-radius:8px;background:oklch(100% 0 0 / .04);overflow:hidden;position:relative}
+.ffill{height:100%;border-radius:8px;width:0;transition:width 800ms cubic-bezier(.2,.7,.2,1);
+  background:linear-gradient(90deg, oklch(65% 0.13 215 / .55), oklch(62% 0.15 235 / .35))}
+.fstep .fn{font-size:.8rem;font-weight:600;text-align:right;min-width:64px}
+.fstep .fn small{display:block;font-size:.62rem;color:var(--mut2);font-weight:500}
+
+.credits{padding:16px}
+.credits .cw{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px}
+.credits .cw b{font-size:1.4rem;font-weight:640}
+.credits .cw span{font-size:.7rem;color:var(--mut)}
+.meter{height:12px;border-radius:999px;background:oklch(100% 0 0 / .05);overflow:hidden;border:1px solid var(--hair)}
+.meter i{display:block;height:100%;width:0;border-radius:999px;transition:width 800ms cubic-bezier(.2,.7,.2,1);
+  background:linear-gradient(90deg, var(--cyan), var(--vio))}
+.credits .note{font-size:.66rem;color:var(--mut2);margin-top:10px}
+
+/* ---- videos ---- */
+.section-h{display:flex;align-items:baseline;justify-content:space-between;margin:26px 2px 12px}
+.section-h h3{font-size:.9rem;font-weight:620;margin:0;letter-spacing:-.005em}
+.section-h .cnt{font-size:.7rem;color:var(--mut)}
+.vids{display:grid;grid-template-columns:repeat(auto-fill,minmax(212px,1fr));gap:13px}
+.vid{border:1px solid var(--hair);border-radius:var(--r2);overflow:hidden;background:var(--panel2);
+  transition:border-color var(--t),transform var(--t)}
+.vid:hover{border-color:var(--hair2);transform:translateY(-2px)}
+.poster{aspect-ratio:9/13;position:relative;display:grid;place-items:center;
+  background:
+    repeating-linear-gradient(0deg, oklch(100% 0 0 / .035) 0 1px, transparent 1px 26px),
+    repeating-linear-gradient(90deg, oklch(100% 0 0 / .035) 0 1px, transparent 1px 26px),
+    linear-gradient(155deg, oklch(28% 0.08 285 / .6), oklch(20% 0.06 230 / .5));
+  border-bottom:1px solid var(--hair)}
+.poster .play{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;
+  background:oklch(20% 0.03 260 / .55);border:1px solid oklch(85% 0.1 210 / .5);backdrop-filter:blur(3px);
+  color:var(--cyan)}
+.poster .play svg{margin-left:2px}
+.poster .kind{position:absolute;top:8px;left:8px;font-size:.6rem;color:var(--ink);
+  background:oklch(12% 0.02 268 / .7);border:1px solid var(--hair);border-radius:999px;padding:3px 8px}
+.vmeta{padding:10px 11px}
+.vmeta .vt{font-size:.76rem;font-weight:560;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vmeta .vr{display:flex;align-items:center;justify-content:space-between;margin-top:7px}
+.vmeta .vd{font-size:.64rem;color:var(--mut2)}
+.chip{font-size:.6rem;font-family:ui-monospace,monospace;border-radius:999px;padding:2px 8px;border:1px solid transparent;white-space:nowrap}
+
+/* ---- outreach table ---- */
+.tablewrap{border:1px solid var(--hair);border-radius:var(--r2);overflow:hidden;background:var(--panel)}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:520px}
+th,td{text-align:left;padding:11px 15px;font-size:.76rem;border-bottom:1px solid var(--hair)}
+th{font-size:.66rem;font-weight:600;color:var(--mut);letter-spacing:.03em;background:oklch(100% 0 0 / .02)}
+tbody tr{transition:background var(--t)}
+tbody tr:hover{background:oklch(100% 0 0 / .03)}
+tbody tr:last-child td{border-bottom:0}
+td.num{text-align:right;font-family:ui-monospace,monospace}
+.rev-pos{color:var(--grn);font-weight:600}
+.rev-zero{color:var(--mut2)}
+
+.footnote{margin-top:26px;font-size:.66rem;color:var(--mut2);text-align:center;line-height:1.7}
+.err{padding:40px;text-align:center;color:var(--mut);font-size:.85rem}
+
+@media (prefers-reduced-motion: reduce){
+  .spark .line{animation:none;stroke-dashoffset:0}
+  .ffill,.meter i,.vid{transition:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <div class="glyph" aria-hidden="true"></div>
+      <div>
+        <h1>Akquise&nbsp;&amp;&nbsp;Content Cockpit</h1>
+        <div class="sub">Videos, Outreach &amp; Umsatz · <span id="agents">video-producent &amp; akquise-video</span></div>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <span class="badge" id="sampleBadge" hidden>Beispieldaten</span>
+    <div class="meta"><span class="dot"></span><span id="updated" class="mono">—</span></div>
+    <a class="back" href="index.html">← Flotte</a>
+  </header>
+
+  <main id="app" hidden>
+
+    <!-- overview -->
+    <section class="grid-top">
+      <div class="panel rev">
+        <span class="lab">Umsatz gesamt</span>
+        <div class="big"><span class="cur">€</span><span id="revVal" class="mono">0</span></div>
+        <span class="trend" id="revTrend">+0&nbsp;%</span>
+        <svg class="spark" id="spark" viewBox="0 0 320 96" preserveAspectRatio="none" aria-hidden="true">
+          <defs><linearGradient id="gspark" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#53e0ff" stop-opacity=".28"/>
+            <stop offset="1" stop-color="#53e0ff" stop-opacity="0"/>
+          </linearGradient></defs>
+        </svg>
+      </div>
+
+      <div class="panel stats" id="stats"></div>
+    </section>
+
+    <!-- funnel + credits -->
+    <section class="grid-mid">
+      <div class="panel">
+        <div class="phead"><h2>Outreach-Funnel</h2><span class="aux" id="funnelConv">—</span></div>
+        <div class="funnel" id="funnel"></div>
+      </div>
+      <div class="panel credits">
+        <div class="phead" style="padding:0 0 12px"><h2>Higgsfield-Credits</h2></div>
+        <div class="cw"><b><span id="credUsed" class="mono">0</span></b><span>von <span id="credTotal" class="mono">0</span> genutzt</span></div>
+        <div class="meter"><i id="credBar"></i></div>
+        <div class="note" id="credNote">—</div>
+      </div>
+    </section>
+
+    <!-- videos -->
+    <div class="section-h"><h3>Generierte Videos</h3><span class="cnt" id="vidCnt">—</span></div>
+    <section class="vids" id="vids"></section>
+
+    <!-- outreach -->
+    <div class="section-h"><h3>Outreach</h3><span class="cnt" id="outCnt">—</span></div>
+    <div class="tablewrap"><div class="scroll"><table>
+      <thead><tr><th>Datum</th><th>Lead</th><th>Objekt</th><th>Phase</th><th style="text-align:right">Umsatz</th></tr></thead>
+      <tbody id="outBody"></tbody>
+    </table></div></div>
+
+    <p class="footnote" id="foot"></p>
+  </main>
+
+  <div id="errbox" class="panel err" hidden>Konnte <code>business.json</code> nicht laden.</div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const nf = new Intl.NumberFormat('de-AT');
+const euro = n => nf.format(Math.round(n));
+
+const STAGE = {
+  'Leads':       {c:'var(--mut)',  bg:'oklch(70% 0.02 258 / .14)'},
+  'Kontaktiert': {c:'var(--vio)',  bg:'oklch(72% 0.12 300 / .14)'},
+  'Geantwortet': {c:'var(--cyan)', bg:'oklch(80% 0.12 210 / .13)'},
+  'Kunde':       {c:'var(--grn)',  bg:'oklch(78% 0.14 160 / .14)'}
+};
+const VSTATUS = {
+  'geliefert': {c:'var(--cyan)', bg:'oklch(80% 0.12 210 / .13)'},
+  'kunde':     {c:'var(--grn)',  bg:'oklch(78% 0.14 160 / .14)'},
+  'entwurf':   {c:'var(--amb)',  bg:'oklch(75% 0.13 85 / .13)'}
+};
+const chip = (txt, m) => `<span class="chip" style="color:${m.c};background:${m.bg};border-color:${m.c}">${txt}</span>`;
+
+fetch('business.json', {cache:'no-store'})
+  .then(r => r.ok ? r.json() : Promise.reject())
+  .then(render)
+  .catch(() => { $('#errbox').hidden = false; });
+
+function render(d){
+  $('#app').hidden = false;
+  if (d.sample) $('#sampleBadge').hidden = false;
+  $('#updated').textContent = fmtDate(d.updated, true);
+
+  const k = d.kpi || {};
+  // revenue
+  animateNum($('#revVal'), k.revenue_eur||0, euro);
+  const tr = k.revenue_trend_pct||0;
+  const te = $('#revTrend');
+  te.innerHTML = (tr>=0?'▲ +':'▼ ') + Math.abs(tr) + '&nbsp;%';
+  te.classList.toggle('dn', tr<0);
+  drawSpark(d.revenue_series||[]);
+
+  // stat cluster
+  const stats = [
+    {k:'Videos',    v:k.videos||0,      cap:'generiert',      c:'var(--cyan)'},
+    {k:'E-Mails',   v:k.emails_sent||0, cap:'versendet',      c:'var(--vio)'},
+    {k:'Antworten', v:k.replies||0,     cap:'eingegangen',    c:'var(--amb)'},
+    {k:'Kunden',    v:k.deals||0,       cap:'abgeschlossen',  c:'var(--grn)'}
+  ];
+  $('#stats').innerHTML = stats.map(s => `
+    <div class="stat">
+      <div class="k"><i style="background:${s.c}"></i>${s.k}</div>
+      <div class="v mono">${nf.format(s.v)}</div>
+      <div class="cap">${s.cap}</div>
+    </div>`).join('');
+
+  // funnel
+  const f = d.funnel||[];
+  const max = Math.max(1, ...f.map(x=>x.n));
+  $('#funnel').innerHTML = f.map((s,i) => {
+    const conv = i>0 && f[i-1].n ? Math.round(s.n/f[i-1].n*100) : null;
+    const m = STAGE[s.stage]||STAGE.Leads;
+    return `<div class="fstep">
+      <span class="fname">${s.stage}</span>
+      <div class="ftrack"><div class="ffill" data-w="${Math.max(3, s.n/max*100)}" style="background:linear-gradient(90deg, ${m.c}, transparent 130%)"></div></div>
+      <span class="fn">${nf.format(s.n)}${conv!=null?`<small>${conv}% weiter</small>`:''}</span>
+    </div>`;
+  }).join('');
+  const lead = f[0]?.n, kunde = f[f.length-1]?.n;
+  if (lead) $('#funnelConv').textContent = `Gesamt-Conversion ${(kunde/lead*100).toFixed(1)}%`;
+
+  // credits
+  const used = k.credits_used||0, tot = k.credits_total||0;
+  $('#credUsed').textContent = nf.format(used);
+  $('#credTotal').textContent = nf.format(tot);
+  const pct = tot ? Math.min(100, used/tot*100) : 0;
+  $('#credNote').textContent = tot ? `${nf.format(tot-used)} Credits übrig · ~${Math.floor((tot-used)/24)} Videos möglich` : 'Kein Guthaben hinterlegt';
+
+  // videos
+  const vids = d.videos||[];
+  $('#vidCnt').textContent = `${vids.length} Einträge`;
+  $('#vids').innerHTML = vids.length ? vids.map(v => {
+    const m = VSTATUS[v.status]||VSTATUS.entwurf;
+    const inner = `
+      <div class="poster">
+        <span class="kind">${esc(v.kind||'')}</span>
+        <span class="play"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5v11l9-5.5z"/></svg></span>
+      </div>
+      <div class="vmeta">
+        <div class="vt" title="${esc(v.objekt||'')}">${esc(v.objekt||'—')}</div>
+        <div class="vr"><span class="vd">${fmtDate(v.date)} · ${nf.format(v.credits||0)} Cr.</span>${chip(v.status||'', m)}</div>
+      </div>`;
+    return v.url
+      ? `<a class="vid" href="${esc(v.url)}" target="_blank" rel="noopener">${inner}</a>`
+      : `<div class="vid">${inner}</div>`;
+  }).join('') : emptyState('Noch keine Videos generiert. Der Agent legt sie hier ab.');
+
+  // outreach
+  const out = d.outreach||[];
+  $('#outCnt').textContent = `${out.length} Einträge`;
+  $('#outBody').innerHTML = out.length ? out.map(o => {
+    const m = STAGE[o.stage]||STAGE.Kontaktiert;
+    const rev = o.revenue_eur||0;
+    return `<tr>
+      <td class="mono" style="color:var(--mut)">${fmtDate(o.date)}</td>
+      <td>${esc(o.lead||'—')}</td>
+      <td style="color:var(--mut)">${esc(o.objekt||'')}</td>
+      <td>${chip(o.stage||'', m)}</td>
+      <td class="num ${rev>0?'rev-pos':'rev-zero'}">${rev>0?'€ '+euro(rev):'—'}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="5" style="text-align:center;color:var(--mut2);padding:26px">Noch kein Outreach erfasst.</td></tr>`;
+
+  $('#foot').innerHTML = d.sample
+    ? 'Beispieldaten. Sobald die Agents laufen, überschreiben sie <code>dashboard/business.json</code> mit echten Zahlen.'
+    : 'Live aus <code>dashboard/business.json</code>.';
+
+  requestAnimationFrame(() => {
+    document.querySelectorAll('.ffill').forEach(el => el.style.width = el.dataset.w + '%');
+    $('#credBar').style.width = pct + '%';
+  });
+}
+
+function drawSpark(series){
+  const svg = $('#spark'); if(!series.length) return;
+  const W=320,H=96,pad=6;
+  const max=Math.max(1,...series.map(p=>p.eur)), min=Math.min(0,...series.map(p=>p.eur));
+  const x=i=>pad+i*(W-2*pad)/Math.max(1,series.length-1);
+  const y=v=>H-14-(v-min)/(max-min||1)*(H-24);
+  const pts=series.map((p,i)=>[x(i),y(p.eur)]);
+  const line=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+  const area=`${line} L ${x(series.length-1).toFixed(1)} ${H-14} L ${pad} ${H-14} Z`;
+  const labels=series.map((p,i)=>`<text class="mlab" x="${x(i).toFixed(1)}" y="${H-3}" text-anchor="middle">${p.m}</text>`).join('');
+  const len=Math.round(pts.reduce((a,p,i)=>i?a+Math.hypot(p[0]-pts[i-1][0],p[1]-pts[i-1][1]):0,0));
+  const last=pts[pts.length-1];
+  svg.insertAdjacentHTML('beforeend',
+    `<path class="area" d="${area}"/><path class="line" d="${line}" style="--len:${len}"/>`+
+    `<circle class="pt" cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="3"/>`+labels);
+}
+
+function animateNum(el, target, fmt){
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches){ el.textContent=fmt(target); return; }
+  const dur=700, t0=performance.now();
+  (function step(t){
+    const p=Math.min(1,(t-t0)/dur), e=1-Math.pow(1-p,3);
+    el.textContent=fmt(target*e);
+    if(p<1) requestAnimationFrame(step);
+  })(t0);
+}
+
+function emptyState(msg){ return `<div class="err" style="grid-column:1/-1;border:1px dashed var(--hair);border-radius:var(--r2)">${msg}</div>`; }
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function fmtDate(s, withTime){
+  if(!s) return '—';
+  const d=new Date(s); if(isNaN(d)) return esc(s);
+  const dd=String(d.getDate()).padStart(2,'0'), mm=String(d.getMonth()+1).padStart(2,'0');
+  const base=`${dd}.${mm}.`;
+  return withTime ? `${base}${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` : base;
+}
+</script>
+</body>
+</html>

@@ -5,204 +5,326 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Agent HQ – naschberger.info</title>
 <style>
+/* ================= Design-Tokens ================= */
 :root{
- --bg:oklch(14% 0.03 290);
- --bg-deep:oklch(9% 0.02 290);
- --line-dim:oklch(42% 0.06 250);
- --txt:oklch(91% 0.02 250);
- --mut:oklch(64% 0.03 260);
- --panel:oklch(15% 0.03 280 / .96);
- --cyan:oklch(80% 0.14 200);
- --grn:oklch(80% 0.17 160);
- --amb:oklch(83% 0.15 85);
- --red:oklch(70% 0.19 25);
- --vio:oklch(75% 0.14 300);
+ --bg:oklch(13% 0.028 268);
+ --bg-deep:oklch(8% 0.022 268);
+ --ink:oklch(94% 0.012 255);
+ --mut:oklch(71% 0.025 258);
+ --hair:oklch(100% 0 0 / .08);
+ --hair2:oklch(100% 0 0 / .14);
+ --panel:oklch(15% 0.026 268 / .92);
+ --field:oklch(100% 0 0 / .05);
+ --cyan:#53e0ff; --grn:#5df2b4; --amb:#ffcf5c; --red:#ff7b6b; --vio:#c99cff; --pink:#ff5ca8;
+ --r1:8px; --r2:12px; --r3:18px;
+ --z-board:5; --z-panel:8; --z-modal:40; --z-toast:60;
+ --tfast:.16s cubic-bezier(.2,.7,.3,1);
+ --tmed:.26s cubic-bezier(.16,.84,.3,1);
 }
 *{box-sizing:border-box;margin:0}
 html,body{height:100%}
 body{
- font-family:"Segoe UI",system-ui,sans-serif;color:var(--txt);
+ font-family:system-ui,"Segoe UI",sans-serif;color:var(--ink);
  background:
-  radial-gradient(1100px 600px at 75% -10%, oklch(22% 0.07 300 / .5), transparent 60%),
-  radial-gradient(900px 600px at 10% 110%, oklch(19% 0.06 220 / .5), transparent 60%),
+  radial-gradient(1100px 620px at 78% -12%, oklch(21% 0.06 300 / .5), transparent 60%),
+  radial-gradient(900px 620px at 8% 112%, oklch(19% 0.055 225 / .5), transparent 60%),
   linear-gradient(var(--bg), var(--bg-deep));
  overflow:hidden;
 }
 @media(max-width:1020px){body{overflow-y:auto;overflow-x:hidden}}
-.mono{font-family:Consolas,"Cascadia Mono",monospace}
+.mono{font-family:ui-monospace,Consolas,"Cascadia Mono",monospace}
 button{font-family:inherit}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
 
-#hud{position:fixed;top:0;left:0;right:440px;z-index:5;display:flex;justify-content:space-between;align-items:flex-start;padding:14px 24px;pointer-events:none}
-#hud h1{font-size:1rem;letter-spacing:.32em;text-transform:uppercase;font-weight:600}
-#hud h1 span{color:var(--cyan)}
-#hud h1::after{content:"";display:block;width:52px;height:1px;margin-top:6px;background:linear-gradient(90deg,var(--cyan),transparent)}
-#meta{font-size:.64rem;color:var(--mut);text-align:right;letter-spacing:.08em;text-transform:uppercase;line-height:1.7}
+/* Buttons: eine Vokabel für alles */
+.btn{border:1px solid var(--hair2);border-radius:9px;background:var(--field);color:var(--ink);
+ font-size:.74rem;padding:6px 12px;cursor:pointer;transition:background var(--tfast),border-color var(--tfast),color var(--tfast);white-space:nowrap}
+.btn:hover:not(:disabled){background:oklch(100% 0 0 / .1)}
+.btn:disabled{color:var(--mut);cursor:not-allowed;opacity:.55}
+.btn.prime{background:oklch(65% 0.12 215 / .16);border-color:oklch(75% 0.12 210 / .45);color:var(--cyan);font-weight:600}
+.btn.prime:hover:not(:disabled){background:oklch(65% 0.12 215 / .28)}
+
+/* ================= Linke Kommandospalte ================= */
+#side{position:fixed;top:0;left:0;bottom:0;width:360px;z-index:var(--z-panel);
+ background:var(--panel);-webkit-backdrop-filter:blur(18px) saturate(140%);backdrop-filter:blur(18px) saturate(140%);
+ border-right:1px solid var(--hair);display:flex;flex-direction:column;overflow:hidden}
+#side .shead{padding:15px 18px 13px;border-bottom:1px solid var(--hair);display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex:0 0 auto}
+#side .shead h1{font-size:1rem;letter-spacing:.24em;text-transform:uppercase;font-weight:600}
+#side .shead h1 span{color:var(--cyan)}
+#side .shead h1::after{content:"";display:block;width:46px;height:1px;margin-top:6px;background:linear-gradient(90deg,var(--cyan),transparent)}
+#meta{font-size:.6rem;color:var(--mut);text-align:right;letter-spacing:.05em;text-transform:uppercase;line-height:1.65}
 #meta .src{display:block}
-#demo{display:none;position:fixed;top:10px;left:calc((100vw - 440px)/2);transform:translateX(-50%);z-index:6;border:1px solid var(--amb);color:var(--amb);
- background:oklch(20% 0.04 85 / .88);font-size:.66rem;letter-spacing:.12em;text-transform:uppercase;padding:5px 14px}
-#legend{position:fixed;left:24px;bottom:10px;z-index:5;display:flex;gap:14px;font-size:.6rem;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);pointer-events:none}
+#sidescroll{flex:1;overflow-y:auto;padding:13px 14px 8px;display:flex;flex-direction:column;gap:13px}
+#sidescroll>*{flex:0 0 auto}
+#sidescroll::-webkit-scrollbar{width:8px}
+#sidescroll::-webkit-scrollbar-thumb{background:oklch(100% 0 0 / .12);border-radius:8px}
+.seclbl{font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;color:var(--mut);margin:2px 2px -2px}
+
+/* Abflugtafel */
+#board{border:1px solid var(--hair);border-radius:var(--r2);overflow:hidden;background:oklch(100% 0 0 / .02)}
+#board .bhead{display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-bottom:1px solid var(--hair)}
+#board .bttl{font-size:.62rem;letter-spacing:.18em;color:var(--amb);text-transform:uppercase;display:flex;align-items:center;gap:7px}
+#board .bttl::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--amb);box-shadow:0 0 7px var(--amb)}
+#board .bclock{font-size:.64rem;color:var(--mut);letter-spacing:.1em;font-family:ui-monospace,Consolas,monospace}
+#board .brows{padding:5px 6px;display:flex;flex-direction:column;gap:1px}
+.brow{display:grid;grid-template-columns:9px 1fr auto;gap:10px;align-items:center;width:100%;
+ padding:7px 9px;border:1px solid transparent;background:none;color:var(--ink);cursor:pointer;text-align:left;border-radius:var(--r1);
+ font-family:ui-monospace,Consolas,monospace;transition:background var(--tfast),border-color var(--tfast)}
+.brow:hover,.brow:focus-visible{background:oklch(24% 0.04 250 / .5)}
+.brow.sel{background:oklch(26% 0.05 250 / .6);border-color:oklch(60% 0.1 220 / .5)}
+.brow .bdot{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 7px currentColor}
+.brow .bnm{font-size:.74rem;letter-spacing:.03em;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brow .bst{font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;font-weight:700;text-align:right;white-space:nowrap;color:currentColor}
+.brow .bnx{grid-column:2/-1;font-size:.58rem;color:var(--mut);letter-spacing:.06em;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@keyframes flap{0%{transform:rotateX(0);filter:brightness(1)}45%{transform:rotateX(-88deg);filter:brightness(.5)}55%{transform:rotateX(88deg);filter:brightness(.5)}100%{transform:rotateX(0);filter:brightness(1)}}
+.brow .bst.flip{animation:flap .5s cubic-bezier(.4,0,.2,1);transform-origin:center;display:inline-block}
+
+/* Graphen unter der Abflugtafel */
+#charts{display:flex;flex-direction:column;gap:12px}
+.gcard{border:1px solid var(--hair);border-radius:var(--r2);padding:12px 13px;background:oklch(100% 0 0 / .02)}
+.gcard h4{font-size:.64rem;letter-spacing:.05em;text-transform:uppercase;color:var(--mut);font-weight:600;margin-bottom:10px;
+ display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.gcard h4 span{color:var(--mut);opacity:.7;font-weight:400;text-transform:none;letter-spacing:0;font-size:.62rem;white-space:nowrap}
+.gcard .chart{margin:-2px 0}
+.statbar{display:flex;height:14px;border-radius:999px;overflow:hidden;background:oklch(100% 0 0 / .05);gap:2px}
+.statbar span{min-width:3px;transition:flex-grow .55s cubic-bezier(.2,.7,.3,1)}
+.statbar span:first-child{border-radius:999px 0 0 999px}
+.statbar span:last-child{border-radius:0 999px 999px 0}
+.statleg{display:flex;flex-wrap:wrap;gap:7px 13px;margin-top:10px;font-size:.64rem;color:var(--mut)}
+.statleg b{color:var(--ink);font-weight:600}
+.statleg i{width:8px;height:8px;border-radius:2px;display:inline-block;margin-right:5px;vertical-align:middle}
+.gtiles{display:flex;flex-direction:column;gap:6px}
+.gtile{display:grid;grid-template-columns:9px 1fr auto;gap:9px;align-items:center;font-size:.72rem;
+ padding:7px 9px;border:1px solid var(--hair);border-radius:var(--r1);background:oklch(100% 0 0 / .02)}
+.gtile .gd{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor}
+.gtile .gn{color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gtile .gv{font-family:ui-monospace,Consolas,monospace;font-size:.66rem;color:var(--mut);text-align:right;white-space:nowrap}
+.gtile .gv b{color:var(--ink);font-weight:500}
+
+/* Demo-Banner / Fehler-Toast / Legende (über der Karte) */
+#demo{display:none;position:fixed;top:12px;left:calc((100vw + 360px)/2);transform:translateX(-50%);z-index:6;border:1px solid var(--amb);color:var(--amb);
+ background:oklch(20% 0.04 85 / .9);border-radius:9px;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;padding:5px 14px}
+#errtoast{display:none;position:fixed;bottom:14px;right:16px;z-index:var(--z-toast);max-width:440px;
+ background:oklch(24% 0.08 25 / .95);border:1px solid var(--red);border-radius:var(--r2);color:var(--red);
+ font-size:.74rem;padding:9px 13px;line-height:1.5}
+#legend{position:fixed;left:376px;bottom:12px;z-index:var(--z-board);display:flex;gap:14px;font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);pointer-events:none}
 #legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;background:currentColor;box-shadow:0 0 6px currentColor}
-@media(max-width:1020px){
- #hud{position:static;padding:12px 16px 0;right:auto;flex-wrap:wrap;gap:6px;align-items:baseline}
- #meta{text-align:left;font-size:.6rem;flex-basis:100%}
- #meta .src{display:inline}
- #meta .src::before{content:" · "}
- #legend{position:static;padding:8px 16px;flex-wrap:wrap;gap:10px;letter-spacing:.06em}
- #demo{position:static;transform:none;margin:8px auto 0;max-width:92%;width:max-content}
-}
 
-#stage{position:fixed;inset:0 440px 34px 0;display:grid;place-items:center;padding:54px 14px 6px;z-index:1}
-#game{width:min(100%,calc((100vh - 96px)*1.84));aspect-ratio:46/25;cursor:grab;touch-action:none;
- filter:drop-shadow(0 20px 50px oklch(5% 0.02 290 / .85))}
-@media(max-width:1020px){
- #stage{position:static;display:block;padding:8px 0;overflow-x:auto}
- #game{width:940px}
-}
-@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms !important;transition-duration:.01ms !important}}
+/* ================= Bühne (Canvas-Welt) ================= */
+#stage{position:fixed;inset:0 0 0 360px;display:grid;padding:8px;z-index:1}
+#game{width:100%;height:100%;cursor:grab;touch-action:none}
+#game:active{cursor:grabbing}
 
-/* ---------- mission control ---------- */
-#mc{position:fixed;top:0;right:0;bottom:0;width:440px;z-index:8;background:var(--panel);
- border-left:1px solid var(--line-dim);display:flex;flex-direction:column;overflow:hidden}
-#mc::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;
- background:linear-gradient(180deg,var(--cyan),transparent 40%,transparent 60%,var(--cyan))}
-#mc header{padding:16px 20px 10px}
-#mc header h2{font-size:.8rem;letter-spacing:.3em;text-transform:uppercase;color:var(--cyan)}
-#mc header .sub{font-size:.62rem;color:var(--mut);letter-spacing:.1em;text-transform:uppercase;margin-top:2px}
-#agents{padding:4px 14px}
+/* ================= Agent-Detail (Popup-Drawer, default zu) ================= */
+#dscrim{position:fixed;inset:0 0 0 360px;z-index:calc(var(--z-modal) - 1);background:oklch(4% 0.02 268 / .32);
+ opacity:0;visibility:hidden;transition:opacity var(--tmed),visibility var(--tmed)}
+#dscrim.on{opacity:1;visibility:visible}
+#drawer{position:fixed;top:0;right:0;bottom:0;width:min(440px,94vw);z-index:var(--z-modal);
+ background:var(--panel);-webkit-backdrop-filter:blur(20px) saturate(140%);backdrop-filter:blur(20px) saturate(140%);
+ border-left:1px solid var(--hair2);display:flex;flex-direction:column;overflow:hidden;
+ transform:translateX(102%);transition:transform var(--tmed);box-shadow:-34px 0 90px oklch(0% 0 0 / .55)}
+#drawer.open{transform:translateX(0)}
+#drawer .dhead{padding:14px 18px 12px;border-bottom:1px solid var(--hair);display:flex;align-items:center;gap:11px;flex:0 0 auto}
+#drawer .ddot{width:11px;height:11px;border-radius:50%;background:currentColor;box-shadow:0 0 9px currentColor;flex:0 0 auto}
+#drawer .dtt{flex:1;min-width:0}
+#drawer .dtt b{font-size:.92rem;display:block;color:var(--ink);letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#drawer .dtt small{display:block;font-size:.62rem;color:var(--mut);text-transform:uppercase;letter-spacing:.08em;margin-top:2px}
+#drawer .dclose{flex:0 0 auto;background:var(--field);border:1px solid var(--hair);color:var(--mut);
+ width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:.9rem;line-height:1;display:grid;place-items:center;transition:background var(--tfast),color var(--tfast)}
+#drawer .dclose:hover,#drawer .dclose:focus-visible{background:oklch(100% 0 0 / .13);color:var(--ink)}
+
+/* Master-Karte */
+.mcard{border:1px solid var(--hair2);border-radius:var(--r2);padding:13px 14px;margin:2px 2px 10px;
+ background:linear-gradient(135deg, color-mix(in oklab, var(--mc) 14%, transparent), oklch(100% 0 0 / .03) 55%);
+ box-shadow:inset 0 1px 0 oklch(100% 0 0 / .06)}
+.mcard .mhead{display:flex;align-items:center;gap:10px}
+.mcard .mdot{width:10px;height:10px;border-radius:50%;background:var(--mc);box-shadow:0 0 10px var(--mc);flex:0 0 auto}
+.mcard .mtt{min-width:0;flex:1}
+.mcard .mtt b{font-size:.9rem;letter-spacing:.03em;display:block}
+.mcard .mtt small{display:block;color:var(--mut);font-size:.66rem;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mcard .mstate{font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--mc);border:1px solid color-mix(in oklab,var(--mc) 55%,transparent);border-radius:999px;padding:3px 9px;white-space:nowrap}
+.mcard .mmsg{font-size:.76rem;color:var(--ink);margin:9px 0 8px;line-height:1.45}
+.mcard .mchips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:11px}
+.chip{font-size:.66rem;font-family:ui-monospace,Consolas,monospace;border:1px solid var(--hair);border-radius:999px;padding:2px 9px;color:currentColor;background:oklch(100% 0 0 / .03)}
+.chip i{display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:5px;box-shadow:0 0 5px currentColor;vertical-align:middle}
+.chip.mutc{color:var(--mut)}
+.mcard .mact{display:flex;gap:8px}
+.mcard .mact .btn{flex:1;text-align:center;padding:8px 10px}
+
+/* Flotten-Liste */
+.navlabel{font-size:.6rem;letter-spacing:.18em;text-transform:uppercase;color:var(--mut);padding:4px 4px 5px}
 .arow{display:grid;grid-template-columns:10px 1fr auto auto;gap:10px;align-items:center;width:100%;
- padding:9px 10px;margin:3px 0;background:none;border:1px solid transparent;color:var(--txt);cursor:pointer;text-align:left}
-.arow:hover,.arow:focus-visible{border-color:var(--line-dim);outline:none}
-.arow.sel{border-color:oklch(60% 0.1 220 / .6);background:oklch(20% 0.04 250 / .4)}
+ padding:8px 10px;margin:2px 0;background:none;border:1px solid transparent;border-radius:var(--r1);color:var(--ink);cursor:pointer;text-align:left;
+ transition:background var(--tfast),border-color var(--tfast)}
+.arow:hover,.arow:focus-within{background:oklch(100% 0 0 / .04);border-color:var(--hair)}
+.arow .nmbtn{background:none;border:0;padding:0;margin:0;text-align:left;color:inherit;cursor:pointer;min-width:0;font:inherit}
+.arow.sel{border-color:oklch(60% 0.1 220 / .6);background:oklch(20% 0.04 250 / .45)}
 .arow .dot{width:9px;height:9px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor}
-.arow .nm{font-size:.8rem;letter-spacing:.04em;color:var(--txt)}
-.arow .nm small{display:block;font-size:.62rem;color:var(--mut);letter-spacing:.08em;text-transform:uppercase}
-.arow .pr{font-size:.66rem;color:var(--mut);font-family:Consolas,monospace}
-.runbtn{border:1px solid var(--line-dim);background:none;color:var(--cyan);font-size:.72rem;
- padding:5px 11px;cursor:pointer;letter-spacing:.1em}
-.runbtn:hover:not(:disabled),.runbtn:focus-visible{border-color:var(--cyan);background:oklch(30% 0.06 210 / .3);outline:none}
-.runbtn:disabled{color:var(--mut);cursor:not-allowed;opacity:.55}
-#tabs{display:flex;padding:8px 20px 0;border-bottom:1px solid var(--line-dim)}
+.arow .nm{font-size:.8rem;letter-spacing:.02em;color:var(--ink);min-width:0}
+.arow .nm small{display:block;font-size:.63rem;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arow .pr{font-size:.68rem;color:var(--mut);font-family:ui-monospace,Consolas,monospace}
+
+/* Tabs + Detailpanel */
+#tabs{display:flex;padding:6px 20px 0;border-bottom:1px solid var(--hair)}
 #tabs button{flex:1;background:none;border:0;border-bottom:2px solid transparent;color:var(--mut);
- font-size:.66rem;letter-spacing:.18em;text-transform:uppercase;padding:9px 0;cursor:pointer}
-#tabs button:hover,#tabs button:focus-visible{color:var(--txt);outline:none}
+ font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;padding:9px 0;cursor:pointer;transition:color var(--tfast)}
+#tabs button:hover,#tabs button:focus-visible{color:var(--ink)}
 #tabs button.on{color:var(--cyan);border-bottom-color:var(--cyan)}
 #tabbody{flex:1;overflow-y:auto;padding:16px 20px;font-size:.84rem}
-.plbl{color:var(--mut);font-size:.64rem;text-transform:uppercase;letter-spacing:.18em;margin:13px 0 4px}
+#tabbody::-webkit-scrollbar{width:8px}
+#tabbody::-webkit-scrollbar-thumb{background:oklch(100% 0 0 / .12);border-radius:8px}
+.plbl{color:var(--mut);font-size:.64rem;text-transform:uppercase;letter-spacing:.14em;margin:14px 0 4px}
 .plbl:first-child{margin-top:0}
-.pbar{height:6px;background:oklch(12% 0.02 280);border:1px solid var(--line-dim);overflow:hidden}
-.pbar div{height:100%;background:linear-gradient(90deg,var(--cyan),var(--vio));transition:width .6s}
-.st{font-size:.66rem;letter-spacing:.18em;text-transform:uppercase;display:inline-block;padding:3px 11px;border:1px solid;margin-bottom:4px}
+.pbar{height:6px;background:oklch(11% 0.02 280);border:1px solid var(--hair);border-radius:999px;overflow:hidden}
+.pbar div{height:100%;width:100%;border-radius:999px;background:linear-gradient(90deg,var(--cyan),var(--vio));
+ transform-origin:left;transition:transform .6s cubic-bezier(.2,.7,.3,1)}
+.st{font-size:.66rem;letter-spacing:.16em;text-transform:uppercase;display:inline-block;padding:3px 11px;border:1px solid;border-radius:999px;margin-bottom:4px}
 #tabbody ul{margin:4px 0 0 16px;line-height:1.55}
-#tabbody pre{background:oklch(11% 0.02 280);border:1px solid var(--line-dim);padding:10px;font-size:.66rem;
- white-space:pre-wrap;word-break:break-word;color:oklch(78% 0.04 200);line-height:1.5;max-height:52vh;overflow:auto}
+#tabbody pre{background:oklch(10% 0.02 280);border:1px solid var(--hair);border-radius:var(--r1);padding:10px;font-size:.66rem;
+ white-space:pre-wrap;word-break:break-word;color:oklch(80% 0.04 200);line-height:1.5;max-height:52vh;overflow:auto}
 #tabbody .hint{color:var(--mut);font-style:italic;font-size:.78rem}
 #tabbody code{color:var(--cyan);font-size:.76rem}
-.repitem{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:baseline;width:100%;padding:8px 10px;margin:2px 0;
- background:none;border:1px solid transparent;color:var(--txt);cursor:pointer;text-align:left;font-size:.76rem}
-.repitem:hover,.repitem:focus-visible{border-color:var(--line-dim);outline:none}
-.repitem .d{color:var(--mut);font-size:.62rem;font-family:Consolas,monospace}
-.repitem .p{color:var(--mut);font-size:.62rem;font-family:Consolas,monospace;grid-column:1/-1}
-.mcounts{display:flex;flex-wrap:wrap;gap:14px;font-size:.72rem;font-family:Consolas,monospace;margin-bottom:6px}
-.mcounts i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;box-shadow:0 0 6px currentColor;vertical-align:baseline}
-.mflag{font-size:.76rem;border:1px solid;padding:9px 11px;margin:10px 0;line-height:1.55}
-.mflag b{letter-spacing:.04em}
+.orow{display:flex;gap:8px;margin-top:4px}
+.orow input{flex:1}
+.cin{background:var(--field);border:1px solid var(--hair2);border-radius:var(--r1);color:var(--ink);
+ font-family:ui-monospace,Consolas,monospace;font-size:.72rem;padding:6px 9px;min-width:0;transition:border-color var(--tfast)}
+.cin:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 3px oklch(80% 0.14 200 / .18)}
+.cin::placeholder{color:oklch(58% 0.02 258)}
+.repitem{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:baseline;width:100%;padding:8px 10px;margin:2px 0;border-radius:var(--r1);
+ background:none;border:1px solid transparent;color:var(--ink);cursor:pointer;text-align:left;font-size:.76rem;transition:background var(--tfast),border-color var(--tfast)}
+.repitem:hover,.repitem:focus-visible{border-color:var(--hair);background:oklch(100% 0 0 / .03)}
+.repitem .d{color:var(--mut);font-size:.62rem;font-family:ui-monospace,Consolas,monospace}
+.repitem .p{color:var(--mut);font-size:.62rem;font-family:ui-monospace,Consolas,monospace;grid-column:1/-1}
+/* Lauf-Historie (Log-Tab) */
+.runlist{display:flex;flex-direction:column;gap:3px;max-height:34vh;overflow-y:auto}
+.runlist::-webkit-scrollbar{width:8px}
+.runlist::-webkit-scrollbar-thumb{background:oklch(100% 0 0 / .12);border-radius:8px}
+.runitem{display:grid;grid-template-columns:9px 1fr auto;gap:9px;align-items:center;width:100%;text-align:left;border-radius:var(--r1);
+ background:oklch(100% 0 0 / .03);border:1px solid transparent;color:var(--ink);padding:7px 9px;cursor:pointer;
+ transition:background var(--tfast),border-color var(--tfast)}
+.runitem:hover,.runitem:focus-visible{background:oklch(100% 0 0 / .07);border-color:var(--hair);outline:none}
+.runitem.sel{border-color:oklch(60% 0.1 220 / .55);background:oklch(20% 0.04 250 / .4)}
+.runitem .rd{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor}
+.runitem .rt{font-size:.74rem;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.runitem .rm{font-size:.62rem;color:var(--mut);font-family:ui-monospace,Consolas,monospace;white-space:nowrap}
+.mflag{font-size:.76rem;border:1px solid;border-radius:var(--r1);padding:9px 11px;margin:10px 0;line-height:1.55}
+.mflag b{letter-spacing:.03em}
 .mflag.err{color:var(--red);border-color:oklch(52% 0.14 25/.6);background:oklch(24% 0.07 25/.22)}
 .mflag.wait{color:var(--amb);border-color:oklch(56% 0.11 85/.5);background:oklch(24% 0.06 85/.16)}
-.mtable{display:flex;flex-direction:column;gap:2px}
-.mrow{display:grid;grid-template-columns:9px 1fr auto auto;gap:11px;align-items:center;text-align:left;
- background:oklch(16% 0.02 280/.5);border:1px solid var(--line2, var(--line-dim));
- color:var(--txt);padding:8px 11px;cursor:pointer}
-.mrow:hover,.mrow:focus-visible{border-color:var(--cyan);outline:none}
-.mrow .mdot{width:9px;height:9px;border-radius:50%;box-shadow:0 0 7px currentColor}
-.mrow .mn{font-size:.82rem}
-.mrow .mn small{display:block;color:var(--mut);font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;margin-top:1px}
+.mtable{display:flex;flex-direction:column;gap:3px}
+.mrow{display:grid;grid-template-columns:9px 1fr auto auto;gap:11px;align-items:center;text-align:left;border-radius:var(--r1);
+ background:oklch(100% 0 0 / .03);border:1px solid transparent;color:var(--ink);padding:8px 11px;cursor:pointer;
+ transition:background var(--tfast),border-color var(--tfast)}
+.mrow:hover,.mrow:focus-visible{border-color:var(--hair2);background:oklch(100% 0 0 / .06)}
+.mrow .mdot2{width:9px;height:9px;border-radius:50%;box-shadow:0 0 7px currentColor;background:currentColor}
+.mrow .mn{font-size:.82rem;min-width:0}
+.mrow .mn small{display:block;color:var(--mut);font-size:.62rem;text-transform:uppercase;letter-spacing:.05em;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mrow .mp{color:var(--cyan);font-size:.72rem}
 .mrow .mnext{color:var(--mut);font-size:.66rem;min-width:64px;text-align:right}
-/* ---- Nav-Struktur: Kommando-Button + Flotten-Label ---- */
-.navlabel{font-size:.58rem;letter-spacing:.22em;text-transform:uppercase;color:var(--mut);padding:12px 12px 2px}
-.cmdbtn{display:grid;grid-template-columns:11px 1fr auto;gap:11px;align-items:center;width:calc(100% - 16px);
- margin:10px 8px 2px;padding:12px 13px;cursor:pointer;text-align:left;color:var(--txt);
- background:linear-gradient(90deg,oklch(23% 0.06 330 / .55),oklch(18% 0.03 280 / .35));
- border:1px solid var(--line-dim);transition:box-shadow .16s,border-color .16s}
-.cmdbtn:hover,.cmdbtn:focus-visible{border-color:var(--mc);box-shadow:inset 0 0 0 1px var(--mc);outline:none}
-.cmdbtn .cdot{width:10px;height:10px;border-radius:50%;box-shadow:0 0 9px currentColor}
-.cmdbtn .ctx b{font-size:.84rem;letter-spacing:.05em;display:block}
-.cmdbtn .ctx small{display:block;color:var(--mut);font-size:.64rem;margin-top:1px}
-.cmdbtn .cgo{font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;color:var(--mc);white-space:nowrap}
+#apibar{padding:8px 18px;border-top:1px solid var(--hair);font-size:.62rem;letter-spacing:.1em;
+ text-transform:uppercase;color:var(--mut);display:flex;justify-content:space-between;flex:0 0 auto}
+#apibar b{font-weight:400}
+#apibar .on{color:var(--grn)} #apibar .off{color:var(--amb)}
+@media(max-width:1020px){
+ #side{position:static;width:auto;border-right:0;border-bottom:1px solid var(--hair)}
+ #sidescroll{max-height:none;overflow:visible}
+ #stage{position:static;display:block;padding:8px 0;overflow-x:auto;height:520px}
+ #game{width:940px;height:100%}
+ #legend{position:static;padding:8px 16px;flex-wrap:wrap;gap:10px;letter-spacing:.05em}
+ #demo{position:static;transform:none;margin:8px auto 0;max-width:92%;width:max-content}
+ #errtoast{right:12px;left:12px;max-width:none}
+ #dscrim{inset:0}
+ #drawer{width:100%;max-width:none;transform:translateY(102%)}
+ #drawer.open{transform:translateY(0)}
+ #tabbody{max-height:60vh}
+}
 
-/* ---- Kommandozentrale-Overlay · schwarz/clean/Apple ---- */
-#cmd{position:fixed;inset:0;z-index:40;display:none;place-items:center;padding:24px;
- background:oklch(0% 0 0 / .6);-webkit-backdrop-filter:blur(24px) saturate(130%);backdrop-filter:blur(24px) saturate(130%)}
+/* ================= Kommandozentrale (Overlay) ================= */
+#cmd{position:fixed;inset:0;z-index:var(--z-modal);display:none;place-items:center;padding:24px;
+ background:oklch(0% 0 0 / .55);-webkit-backdrop-filter:blur(20px) saturate(130%);backdrop-filter:blur(20px) saturate(130%)}
 #cmd.on{display:grid}
-.cmd-panel{--hair:oklch(100% 0 0 / .09);--hair2:oklch(100% 0 0 / .055);--acc:oklch(64% 0.16 255);--sec:oklch(68% 0.008 260);
- font-family:-apple-system,"SF Pro Display","SF Pro Text",system-ui,"Segoe UI",sans-serif;
- width:min(1120px,100%);max-height:calc(100dvh - 48px);display:flex;flex-direction:column;overflow:hidden;
- background:oklch(6.5% 0.004 280);border:1px solid var(--hair);border-radius:22px;
- box-shadow:0 40px 120px oklch(0% 0 0 / .7), inset 0 1px 0 oklch(100% 0 0 / .06)}
-.cmd-top{display:flex;align-items:center;gap:14px;padding:16px 20px;border-bottom:1px solid var(--hair);flex:0 0 auto}
-.cmd-top h2{font-size:.98rem;letter-spacing:-.01em;text-transform:none;font-weight:600;color:var(--txt);white-space:nowrap}
-.cmd-top .up{font-size:.68rem;color:var(--sec);text-transform:none;letter-spacing:0;white-space:nowrap}
+@keyframes cmdin{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
+.cmd-panel{width:min(1180px,100%);max-height:calc(100dvh - 48px);display:flex;flex-direction:column;overflow:hidden;
+ background:oklch(11% 0.022 268 / .97);border:1px solid var(--hair2);border-radius:var(--r3);
+ box-shadow:0 40px 120px oklch(0% 0 0 / .7), inset 0 1px 0 oklch(100% 0 0 / .07);
+ animation:cmdin .26s cubic-bezier(.16,.84,.3,1)}
+.cmd-top{display:flex;align-items:center;gap:14px;padding:15px 20px;border-bottom:1px solid var(--hair);flex:0 0 auto}
+.cmd-top h2{font-size:.96rem;letter-spacing:.02em;font-weight:600;color:var(--ink);white-space:nowrap}
+.cmd-top .up{font-size:.68rem;color:var(--mut);white-space:nowrap}
 .pills{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
-.pill{font-size:.7rem;font-family:inherit;border:1px solid var(--hair);border-radius:999px;padding:3px 10px;letter-spacing:0;
- color:var(--sec);background:oklch(100% 0 0 / .03)}
-.pill i{display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:6px;box-shadow:none;vertical-align:middle}
-.cmd-close{flex:0 0 auto;background:oklch(100% 0 0 / .06);border:1px solid var(--hair);color:var(--sec);
- width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:.9rem;line-height:1;display:grid;place-items:center;transition:.15s}
-.cmd-close:hover,.cmd-close:focus-visible{background:oklch(100% 0 0 / .13);color:var(--txt);border-color:transparent;outline:none}
-.cmd-panel .runbtn{border:1px solid var(--hair);border-radius:8px;background:oklch(100% 0 0 / .05);color:var(--txt);
- font-size:.72rem;letter-spacing:0;padding:6px 12px;transition:.15s}
-.cmd-panel .runbtn:hover:not(:disabled),.cmd-panel .runbtn:focus-visible{background:oklch(100% 0 0 / .1);border-color:var(--hair);outline:none}
-#cmdrun,#cmdsend{background:var(--acc);border-color:transparent;color:#fff;font-weight:600}
-#cmdrun:hover:not(:disabled),#cmdsend:hover:not(:disabled){background:oklch(69% 0.16 255)}
-.cmd-alert{padding:11px 20px;border-bottom:1px solid var(--hair);font-size:.8rem;line-height:1.55;flex:0 0 auto}
+.cmd-close{flex:0 0 auto;background:var(--field);border:1px solid var(--hair);color:var(--mut);
+ width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:.9rem;line-height:1;display:grid;place-items:center;
+ transition:background var(--tfast),color var(--tfast)}
+.cmd-close:hover,.cmd-close:focus-visible{background:oklch(100% 0 0 / .13);color:var(--ink)}
+.cmd-alert{padding:10px 20px;border-bottom:1px solid var(--hair);font-size:.8rem;line-height:1.55;flex:0 0 auto}
 .cmd-alert.err{color:var(--red);background:oklch(30% 0.1 25 / .16)}
 .cmd-alert.wait{color:var(--amb);background:oklch(30% 0.09 85 / .14)}
-.cmd-alert b{letter-spacing:0}
-.cmd-body{display:grid;grid-template-columns:340px 1fr;min-height:0;flex:1 1 auto;overflow:hidden}
-.cmd-fleet{padding:16px 18px;border-right:1px solid var(--hair);overflow-y:auto;display:flex;flex-direction:column;gap:20px}
+.cmd-body{display:grid;grid-template-columns:320px 1fr;min-height:0;flex:1 1 auto;overflow:hidden}
+.cmd-fleet{padding:16px 18px;border-right:1px solid var(--hair);overflow-y:auto;display:flex;flex-direction:column;gap:18px}
 .cmd-main{padding:16px 20px;display:flex;flex-direction:column;gap:20px;min-width:0;overflow-y:auto}
 .cmd-fleet::-webkit-scrollbar,.cmd-main::-webkit-scrollbar{width:8px}
 .cmd-fleet::-webkit-scrollbar-thumb,.cmd-main::-webkit-scrollbar-thumb{background:oklch(100% 0 0 / .12);border-radius:8px}
-.cmd-panel .plbl{text-transform:none;letter-spacing:.01em;color:var(--sec);font-size:.72rem;font-weight:600}
-.sect h3{font-size:.74rem;letter-spacing:.01em;text-transform:none;color:var(--sec);font-weight:600;
+.sect h3{font-size:.76rem;letter-spacing:.02em;color:var(--mut);font-weight:600;
  margin-bottom:10px;display:flex;justify-content:space-between;align-items:baseline;gap:10px}
-.sect h3 span{color:var(--sec);opacity:.7;letter-spacing:0;text-transform:none;font-size:.7rem;font-weight:400}
-.chart{width:100%;height:auto;display:block}
-.chart .gl{stroke:oklch(100% 0 0 / .1);stroke-width:1;opacity:1}
-.chart .gt,.chart .bv,.chart .thrt{fill:var(--sec);font:10px ui-monospace,"SF Mono",Consolas,monospace}
-.chart .bl{fill:var(--txt);font:11px -apple-system,ui-monospace,Consolas,monospace}
-.chart .thr{stroke:var(--amb);stroke-dasharray:3 3;stroke-width:1;opacity:.75}
-.chart-empty{color:var(--sec);font-size:.78rem;padding:26px;
- border:1px dashed var(--hair);border-radius:12px;text-align:center}
-.legend2{display:flex;gap:16px;flex-wrap:wrap;margin-top:9px;font-size:.66rem;color:var(--sec)}
-.legend2 i{display:inline-block;width:12px;height:2px;margin-right:6px;vertical-align:middle}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:9px}
-.tile{border:1px solid var(--hair2);border-radius:12px;padding:12px 13px;background:oklch(100% 0 0 / .03)}
-.tile .tn{font-size:.8rem;font-weight:600;display:flex;align-items:center;gap:7px}
-.tile .tn i{width:7px;height:7px;border-radius:50%;box-shadow:none;flex:0 0 auto}
-.tile .tm{font-family:ui-monospace,"SF Mono",Consolas,monospace;font-size:.66rem;color:var(--sec);margin-top:7px;line-height:1.7}
-.tile .tm b{color:var(--txt);font-weight:500}
-.cmd-tab{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;text-align:left;width:100%;
- background:oklch(100% 0 0 / .03);border:1px solid transparent;border-radius:10px;color:var(--txt);padding:9px 11px;margin-bottom:4px;cursor:pointer;transition:.14s}
-.cmd-tab:hover,.cmd-tab:focus-visible{background:oklch(100% 0 0 / .07);border-color:var(--hair);outline:none}
-.cmd-tab .cn{font-size:.82rem}
-.cmd-tab .cn small{display:block;color:var(--sec);font-size:.64rem;text-transform:none;letter-spacing:0;margin-top:2px}
+.sect h3 span{color:var(--mut);opacity:.75;font-size:.68rem;font-weight:400;text-align:right}
+.cmd-tab{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;text-align:left;width:100%;border-radius:var(--r1);
+ background:oklch(100% 0 0 / .03);border:1px solid transparent;color:var(--ink);padding:9px 11px;margin-bottom:4px;cursor:pointer;
+ transition:background var(--tfast),border-color var(--tfast)}
+.cmd-tab:hover,.cmd-tab:focus-visible{background:oklch(100% 0 0 / .07);border-color:var(--hair)}
+.cmd-tab .cn2{font-size:.8rem;min-width:0}
+.cmd-tab .cn2 small{display:block;color:var(--mut);font-size:.63rem;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cmd-tab .cp{font-family:ui-monospace,Consolas,monospace;font-size:.72rem}
-.cmd-tab .cnx{font-family:ui-monospace,Consolas,monospace;font-size:.64rem;color:var(--sec)}
+.cmd-tab .cnx{font-family:ui-monospace,Consolas,monospace;font-size:.64rem;color:var(--mut)}
+
 /* Steuerung */
-.ctltable{display:flex;flex-direction:column;gap:6px}
-.ctlrow{display:grid;grid-template-columns:1fr auto 92px 34px;gap:9px;align-items:center;
- padding:7px 9px;background:oklch(100% 0 0 / .03);border:1px solid var(--hair2);border-radius:10px}
+.ctltable{display:flex;flex-direction:column;gap:5px;overflow-x:auto}
+.ctlhead,.ctlrow{display:grid;grid-template-columns:minmax(120px,1fr) 42px 152px 42px 42px 108px 36px;gap:9px;align-items:center;min-width:560px}
+.ctlhead{padding:0 9px;font-size:.6rem;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+.ctlhead span{text-align:center}
+.ctlhead span:first-child{text-align:left}
+.ctlrow{padding:7px 9px;background:oklch(100% 0 0 / .03);border:1px solid var(--hair);border-radius:var(--r1)}
 .ctlrow .cn{font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tgl{display:flex;align-items:center;gap:5px;font-size:.64rem;color:var(--sec);text-transform:none;letter-spacing:0;cursor:pointer}
-.tgl input{accent-color:var(--acc);cursor:pointer}
-.cad,.cmdinput{background:oklch(100% 0 0 / .05);border:1px solid var(--hair);border-radius:8px;color:var(--txt);
- font-family:ui-monospace,Consolas,monospace;font-size:.72rem;padding:6px 8px;width:100%}
-.cad:focus,.cmdinput:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px oklch(64% 0.16 255 / .25)}
 .ctlrow .crun{padding:5px 0;text-align:center}
-.ctlbar{display:flex;align-items:center;gap:12px;margin-top:9px;flex-wrap:wrap}
-.cmdinput{resize:vertical;line-height:1.5}
-.ctlmsg{font-size:.7rem;color:var(--sec)}
+/* Schalter */
+.sw{display:grid;place-items:center;cursor:pointer}
+.sw input{position:absolute;opacity:0;pointer-events:none}
+.sw i{width:32px;height:18px;border-radius:999px;background:oklch(100% 0 0 / .1);border:1px solid var(--hair2);position:relative;transition:background var(--tfast)}
+.sw i::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:oklch(75% 0.02 258);transition:transform var(--tfast),background var(--tfast)}
+.sw input:checked+i{background:oklch(60% 0.11 200 / .5)}
+.sw input:checked+i::after{transform:translateX(14px);background:var(--cyan)}
+.sw input:focus-visible+i{outline:2px solid var(--cyan);outline-offset:2px}
+.sw input:disabled+i{opacity:.4}
+/* Häkchen-Chip */
+.ck{display:grid;place-items:center;cursor:pointer}
+.ck input{position:absolute;opacity:0;pointer-events:none}
+.ck i{width:18px;height:18px;border-radius:6px;border:1px solid var(--hair2);background:var(--field);display:grid;place-items:center;transition:background var(--tfast),border-color var(--tfast)}
+.ck i::after{content:"✓";font-size:.7rem;color:var(--cyan);opacity:0;transition:opacity var(--tfast)}
+.ck input:checked+i{border-color:oklch(75% 0.12 210 / .5);background:oklch(65% 0.12 215 / .16)}
+.ck input:checked+i::after{opacity:1}
+.ck input:focus-visible+i{outline:2px solid var(--cyan);outline-offset:2px}
+.ck input:disabled+i{opacity:.4}
+.ctlbar{display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap}
+.ctlmsg{font-size:.72rem;color:var(--mut)}
+.cmdinput{background:var(--field);border:1px solid var(--hair2);border-radius:var(--r1);color:var(--ink);
+ font-family:ui-monospace,Consolas,monospace;font-size:.74rem;padding:8px 10px;width:100%;resize:vertical;line-height:1.5;transition:border-color var(--tfast)}
+.cmdinput:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 3px oklch(80% 0.14 200 / .18)}
+.cmdinput::placeholder{color:oklch(58% 0.02 258)}
+
+/* Charts + Kacheln */
+.chart{width:100%;height:auto;display:block}
+.chart .gl{stroke:oklch(100% 0 0 / .1);stroke-width:1}
+.chart .gt,.chart .bv,.chart .thrt{fill:var(--mut);font:10px ui-monospace,Consolas,monospace}
+.chart .bl{fill:var(--ink);font:11px system-ui,sans-serif}
+.chart .thr{stroke:var(--amb);stroke-dasharray:3 3;stroke-width:1;opacity:.75}
+.chart-empty{color:var(--mut);font-size:.78rem;padding:26px;border:1px dashed var(--hair2);border-radius:var(--r2);text-align:center}
+.legend2{display:flex;gap:16px;flex-wrap:wrap;margin-top:9px;font-size:.66rem;color:var(--mut)}
+.legend2 i{display:inline-block;width:12px;height:2px;margin-right:6px;vertical-align:middle}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px}
+.tile{border:1px solid var(--hair);border-radius:var(--r2);padding:12px 13px;background:oklch(100% 0 0 / .03)}
+.tile .tn{font-size:.8rem;font-weight:600;display:flex;align-items:center;gap:7px}
+.tile .tn i{width:7px;height:7px;border-radius:50%;background:currentColor;flex:0 0 auto}
+.tile .tm{font-family:ui-monospace,Consolas,monospace;font-size:.66rem;color:var(--mut);margin-top:7px;line-height:1.7}
+.tile .tm b{color:var(--ink);font-weight:500}
 @media(max-width:820px){
  #cmd{padding:0}
  .cmd-panel{max-height:100dvh;border-radius:0;border:0}
@@ -212,45 +334,58 @@ button{font-family:inherit}
  .cmd-top{flex-wrap:wrap;gap:10px}
  .pills{margin-left:0;order:3;flex-basis:100%}
 }
-#apibar{padding:8px 20px;border-top:1px solid var(--line-dim);font-size:.6rem;letter-spacing:.12em;
- text-transform:uppercase;color:var(--mut);display:flex;justify-content:space-between}
-#apibar b{font-weight:400}
-#apibar .on{color:var(--grn)} #apibar .off{color:var(--amb)}
-@media(max-width:1020px){
- #mc{position:static;width:auto;border:1px solid var(--line-dim);margin:0 10px 14px;height:auto}
- #tabbody{max-height:50vh}
+@media(prefers-reduced-motion:reduce){
+ *,*::before,*::after{animation-duration:.01ms !important;transition-duration:.01ms !important}
 }
 </style>
 </head>
 <body>
 <div id="demo">Demo-Daten – kein status.json geladen</div>
-<div id="hud">
- <h1>AGENT <span>HQ</span></h1>
- <div id="meta" class="mono">–</div>
-</div>
+<div id="errtoast" role="alert"></div>
+
+<aside id="side" aria-label="Kommandospalte">
+ <div class="shead">
+  <h1>AGENT <span>HQ</span></h1>
+  <div id="meta" class="mono">–</div>
+ </div>
+ <div id="sidescroll">
+  <div id="master"></div>
+  <div id="board" aria-live="polite" aria-label="Abflugtafel: Status aller Agents">
+   <div class="bhead">
+    <span class="bttl">Abflugtafel</span>
+    <span class="bclock" id="bclock">--:--</span>
+   </div>
+   <div class="brows" id="brows"></div>
+  </div>
+  <div class="seclbl">Kennzahlen</div>
+  <div id="charts"></div>
+ </div>
+ <div id="apibar" class="mono">
+  <b id="apistate" class="off">API: PRÜFE…</b>
+  <b id="foot2">refresh 30 s</b>
+ </div>
+</aside>
 
 <div id="stage">
- <canvas id="game" width="1840" height="1000" aria-label="Agent-HQ Spielwelt: Raumstation mit Themen-Zonen je Agent-Kategorie, Kommandoraum und Lounge. Ziehen zum Schwenken, Mausrad zum Zoomen, Klick wählt einen Agenten."></canvas>
+ <canvas id="game" width="1840" height="1000" aria-label="Agent-HQ Spielwelt: Orbital-Station mit Themen-Pods je Agent-Kategorie, Kommandodeck und Lounge. Ziehen zum Schwenken, Mausrad zum Zoomen, Klick wählt einen Agenten."></canvas>
 </div>
 
 <div id="legend" class="mono"></div>
 
-<aside id="mc" aria-live="polite">
- <header>
-  <h2>Mission Control</h2>
-  <div class="sub">naschberger hq · agents</div>
- </header>
- <div id="agents"></div>
+<div id="dscrim"></div>
+<aside id="drawer" role="dialog" aria-modal="false" aria-label="Agent-Detail" aria-hidden="true">
+ <div class="dhead">
+  <span class="ddot" id="ddot"></span>
+  <div class="dtt"><b id="dname">Agent</b><small id="dstate">–</small></div>
+  <button class="btn" id="drun" title="Agent jetzt starten">▶ Start</button>
+  <button class="dclose" id="dclose" aria-label="Schließen">✕</button>
+ </div>
  <div id="tabs" role="tablist">
   <button data-tab="info" class="on">Übersicht</button>
   <button data-tab="log">Log</button>
   <button data-tab="reports">Reports</button>
  </div>
- <div id="tabbody"><p class="hint">Agent wählen: Klick auf einen Roboter in der Welt oder eine Zeile oben.</p></div>
- <div id="apibar" class="mono">
-  <b id="apistate" class="off">API: PRÜFE…</b>
-  <b id="foot2">refresh 30 s</b>
- </div>
+ <div id="tabbody"></div>
 </aside>
 
 <div id="cmd" role="dialog" aria-modal="true" aria-label="Kommandozentrale" aria-hidden="true"></div>
@@ -258,20 +393,20 @@ button{font-family:inherit}
 <script>
 'use strict';
 /* ================================================================
-   AGENT HQ – Pixel-Game-Welt (Canvas) + Mission Control
+   AGENT HQ – Orbital-Station (Canvas) + Mission Control
    ================================================================ */
 const COLORS={running:'#53e0ff',ok:'#5df2b4',idle:'#8ea0bd',waiting:'#ffcf5c',error:'#ff7b6b'};
 const LABELS={running:'läuft',ok:'fertig',idle:'freizeit',waiting:'wartet auf dein go',error:'fehler'};
+const RM=matchMedia('(prefers-reduced-motion:reduce)').matches;
 
 /* ===== Quelle der Wahrheit: Kategorien + Agents =====
-   Die ganze Welt (Räume, Arbeitsplätze, Möbel, Farben, Wege) wird hieraus
-   GENERIERT – nichts ist mehr hart verdrahtet. Neuer Agent = eine Zeile in
-   AGENTS_CFG, die Welt wächst automatisch. Damit er wirklich läuft, braucht er
-   zusätzlich einen Prompt in server.js (AGENTS) und einen status.json-Eintrag. */
+   Die ganze Welt (Pods, Arbeitsplätze, Möbel, Farben, Wege) wird hieraus
+   GENERIERT. Neuer Agent = eine Zeile in AGENTS_CFG, die Welt wächst mit.
+   Damit er wirklich läuft: Prompt in server.js (AGENTS) + status.json-Eintrag. */
 const CATEGORIES=[
- {id:'monitoring',label:'MONITORING',   accent:'#5df2b4',tint:'#2b3f4c',light:'rgba(110,240,220,.09)'},
- {id:'content',   label:'CONTENT-STUDIO',accent:'#c99cff',tint:'#3d3758',light:'rgba(200,150,255,.10)'},
- {id:'finance',   label:'FINANZEN',     accent:'#ffcf5c',tint:'#423d56',light:'rgba(255,205,110,.09)'}
+ {id:'monitoring',label:'MONITORING',    accent:'#5df2b4',tint:'#233b45',light:'rgba(110,240,220,.09)'},
+ {id:'content',   label:'CONTENT-STUDIO',accent:'#c99cff',tint:'#332f52',light:'rgba(200,150,255,.10)'},
+ {id:'finance',   label:'FINANZEN',      accent:'#ffcf5c',tint:'#3b3550',light:'rgba(255,205,110,.09)'}
 ];
 const AGENTS_CFG=[
  {id:'wochenreport',      name:'Wochenreport',        short:'REPORT',  cat:'content',   accent:'#53e0ff',root:'reports'},
@@ -303,8 +438,11 @@ const DEMO={updated:new Date().toISOString(),agents:{
 }};
 
 let DATA=null,SEL=null,API=false,TAB='info',REPORTS=null,UPTIME=null,CMD_OPEN=false,SCHEDULE=null;
+let booted=false,theatreOn=false;
+const MOBILE=matchMedia('(max-width:1020px)').matches;
+const FORCE_DEMO=/[?&]demo\b/.test(location.search);   // ?demo = lebendiger Vorschaumodus (echte Läufe bleiben aus)
 
-/* Demo-Uptime nur im DEMO-Modus (kein echtes uptime.json geladen) – zeigt, wie die Charts aussehen. */
+/* Demo-Uptime nur im DEMO-Modus – zeigt, wie die Charts aussehen. */
 const DEMO_UPTIME=(()=>{
  const names=['naschberger.info','sicherrestaurant.at','ursulakircher.at'];
  const base={'naschberger.info':15,'sicherrestaurant.at':34,'ursulakircher.at':21};
@@ -328,15 +466,18 @@ const dstr=d=>typeof d==='string'?d:(d&&typeof d==='object'
  ?Object.entries(d).map(([k,v])=>k+': '+(v==null?'–':(typeof v==='object'?JSON.stringify(v):v))).join(', ')
  :String(d));
 const $=s=>document.querySelector(s);
+function showErr(msg){const t=$('#errtoast');if(t){t.textContent='Dashboard-Fehler: '+msg;t.style.display='block';}}
+window.addEventListener('error',ev=>showErr(ev.message||'unbekannt'));
+window.addEventListener('unhandledrejection',ev=>{const r=ev.reason;showErr((r&&(r.stack||r.message))||String(r));});
 
 /* ================= Welt prozedural generieren =================
- Aus CATEGORIES + AGENTS_CFG: pro Kategorie ein Themenraum (Größe wächst mit der
- Agent-Zahl), dazu Kommandoraum (Master) + Lounge. ROWS/SPOTS/FURN/ZONES/Labels
- fallen alle aus dem Generator – nichts ist mehr hart verdrahtet.
- Zeichen: '#' Wand, '.' Raumboden, '-' Korridor, 'D' Tür, ' ' Weltraum */
+ Aus CATEGORIES + AGENTS_CFG: pro Kategorie ein Themen-Pod (Größe wächst mit der
+ Agent-Zahl), dazu Kommandodeck (Master) + Lounge. ROWS/SPOTS/FURN/ZONES/Labels
+ fallen alle aus dem Generator.
+ Zeichen: '#' Wand, '.' Podboden, '-' Korridor, 'D' Schleuse, ' ' Weltraum */
 const U=32;
-const WS_COLS=4;            // Arbeitsplätze pro Reihe in einem Themenraum
-const CELL_W=4, CELL_H=3;   // Kachel-Fußabdruck eines Arbeitsplatzes (Schreibtisch + Standplatz)
+const WS_COLS=4;            // Arbeitsplätze pro Reihe in einem Themen-Pod
+const CELL_W=4, CELL_H=3;   // Kachel-Fußabdruck eines Arbeitsplatzes
 const GAP=1, MARGIN=1, CORR=3;
 
 function darken(hex,d){const n=parseInt(hex.slice(1),16);
@@ -348,19 +489,18 @@ function roomDims(n){
  return {cols,rows,iw,ih,ow:iw+2,oh:ih+2};
 }
 
-/* Raum-Definitionen (Position folgt beim Packen) */
 const rooms=[];
 for(const c of CATEGORIES){
  const agents=AGENTS_CFG.filter(a=>a.cat===c.id);
  if(!agents.length)continue;
  rooms.push({kind:'cat',label:c.label,tint:c.tint,accent:c.accent,light:c.light,agents,band:'top',...roomDims(agents.length)});
 }
-rooms.push({kind:'command',label:'KOMMANDO',tint:'#33324f',accent:MASTER_ACCENT,light:'rgba(255,120,190,.09)',
+rooms.push({kind:'command',label:'KOMMANDO',tint:'#2c2a46',accent:MASTER_ACCENT,light:'rgba(255,120,190,.09)',
  agents:[{id:'master'}],band:'bottom',...roomDims(1)});
-{const n=FLEET_IDS.length, cols=Math.min(6,Math.max(3,Math.ceil(Math.sqrt(n))+1)), rows=Math.ceil(n/cols);
- const iw=Math.max(10,cols*3), ih=Math.max(6,rows*2+4);
- rooms.push({kind:'lounge',label:'LOUNGE · CAFÉ',tint:'#493d4a',accent:'#ff9d5c',light:'rgba(255,170,120,.09)',
-  loungeCols:cols,band:'bottom',cols,rows,iw,ih,ow:iw+2,oh:ih+2});}
+{const n=FLEET_IDS.length, cols=Math.min(6,Math.max(3,Math.ceil(Math.sqrt(n))+1)), rows2=Math.ceil(n/cols);
+ const iw=Math.max(10,cols*3), ih=Math.max(6,rows2*2+4);
+ rooms.push({kind:'lounge',label:'LOUNGE · CAFÉ',tint:'#3e3441',accent:'#ff9d5c',light:'rgba(255,170,120,.09)',
+  loungeCols:cols,band:'bottom',cols,rows:rows2,iw,ih,ow:iw+2,oh:ih+2});}
 
 /* Zwei Bänder: oben Kategorien, unten Kommando + Lounge, dazwischen Korridor */
 const topBand=rooms.filter(r=>r.band==='top'), botBand=rooms.filter(r=>r.band==='bottom');
@@ -384,6 +524,7 @@ for(const r of rooms){
   ROWS[y][x]=(x===r.x||x===r.x+r.ow-1||y===r.y||y===r.y+r.oh-1)?'#':'.';
  const dx=r.x+Math.floor(r.ow/2)-1, dy=(r.band==='top')?r.y+r.oh-1:r.y;
  ROWS[dy][dx]='D';ROWS[dy][dx+1]='D';
+ r.doorX=dx; r.doorY=dy;
 }
 for(let y=corrY0;y<=corrY1;y++){
  for(let x=MARGIN;x<MARGIN+bandW;x++)ROWS[y][x]='-';
@@ -393,12 +534,10 @@ const grid=ROWS.map(r=>r.slice());
 const walk=(x,y)=>y>=0&&y<MH&&x>=0&&x<MW&&'.-D'.includes(grid[y][x]);
 const block=(x,y)=>{grid[y][x]='#';};
 
-/* Zonen (Boden + Licht), Labels, Spots, Möbel – alles aus den Räumen */
-const ROOM_LABELS=[], ZONES=[], SPOTS={}, FURN=[], WORK={}, WAIT={}, LEISURE=[];
+/* Zonen, Labels, Spots, Möbel – alles aus den Pods */
+const ROOM_LABELS=[], SPOTS={}, FURN=[], WORK={}, WAIT={}, LEISURE=[];
 for(const r of rooms){
- ZONES.push({x0:r.x,x1:r.x+r.ow-1,y0:r.y,y1:r.y+r.oh-1,a:r.tint,b:darken(r.tint,8),light:r.light,
-  cx:r.x+r.ow/2,cy:r.y+r.oh/2});
- ROOM_LABELS.push({t:r.label,x:r.x+r.ow/2,y:r.y+0.1});
+ ROOM_LABELS.push({t:r.label,x:r.x+r.ow/2,y:r.y+.3,accent:r.accent});
  FURN.push({t:'screen',x:r.x+1,y:r.y+1,w:r.iw,accent:r.accent}); // Feature-Screen (nicht blockierend)
  if(r.kind==='command'){
   const cx=r.x+Math.floor(r.ow/2), cy=r.y+r.oh-2;
@@ -406,10 +545,9 @@ for(const r of rooms){
   FURN.push({t:'console',x:cx-1,y:cy-1,w:3,accent:r.accent,nb:true});
   WORK.master='command'; WAIT.master='command';
  }else if(r.kind==='lounge'){
-  const chips=['☕ kaffee','🕹 arcade','✦ sterne','⏾ chillen','☕ pause'];
   for(let i=0;i<FLEET_IDS.length;i++){
    const cx=r.x+2+(i%r.loungeCols)*2, cy=r.y+2+Math.floor(i/r.loungeCols)*2, nm='leisure'+i;
-   SPOTS[nm]={x:cx,y:cy,face:'down',chip:i<chips.length?chips[i]:undefined};
+   SPOTS[nm]={x:cx,y:cy,face:'down'};
    LEISURE.push(nm);
   }
   FURN.push({t:'coffeemachine',x:r.x+1,y:r.y+1});
@@ -421,7 +559,7 @@ for(const r of rooms){
   r.agents.forEach((a,i)=>{
    const cx=gx0+(i%r.cols)*CELL_W, cy=gy0+Math.floor(i/r.cols)*CELL_H, nm='ws_'+a.id;
    SPOTS[nm]={x:cx+1,y:cy+1,face:'up'};
-   FURN.push({t:'desk',x:cx,y:cy,w:3,accent:a.accent});
+   FURN.push({t:'desk',x:cx,y:cy,w:3,accent:a.accent,agent:a.id});
    WORK[a.id]=nm; WAIT[a.id]=nm;
   });
  }
@@ -433,10 +571,10 @@ for(const f of FURN){
 }
 
 /* ================= BFS-Pfad ================= */
-function findPath(sx,sy,tx,ty){
- if(sx===tx&&sy===ty)return[];
+function findPath(sx0,sy0,tx,ty){
+ if(sx0===tx&&sy0===ty)return[];
  const key=(x,y)=>y*MW+x;
- const prev=new Map();const q=[[sx,sy]];prev.set(key(sx,sy),null);
+ const prev=new Map();const q=[[sx0,sy0]];prev.set(key(sx0,sy0),null);
  while(q.length){
   const [x,y]=q.shift();
   if(x===tx&&y===ty){
@@ -452,40 +590,246 @@ function findPath(sx,sy,tx,ty){
  }
  return null;
 }
+/* Kachelpfad -> geglättete Punktfolge (abgerundete Ecken = flüssige Wege) */
+function smoothPath(tiles,start){
+ const pts=[[start.x,start.y],...tiles];
+ if(pts.length<3)return tiles.map(p=>({x:p[0],y:p[1]}));
+ const out=[];
+ for(let i=1;i<pts.length-1;i++){
+  const p0=pts[i-1],p1=pts[i],p2=pts[i+1];
+  const d1=[p1[0]-p0[0],p1[1]-p0[1]], d2=[p2[0]-p1[0],p2[1]-p1[1]];
+  if(d1[0]===d2[0]&&d1[1]===d2[1]){out.push({x:p1[0],y:p1[1]});continue;}
+  const a={x:p1[0]-d1[0]*.42,y:p1[1]-d1[1]*.42}, b={x:p1[0]+d2[0]*.42,y:p1[1]+d2[1]*.42};
+  out.push(a);
+  for(const t of [.3,.5,.7]){
+   out.push({x:(1-t)*(1-t)*a.x+2*(1-t)*t*p1[0]+t*t*b.x,
+             y:(1-t)*(1-t)*a.y+2*(1-t)*t*p1[1]+t*t*b.y});
+  }
+  out.push(b);
+ }
+ out.push({x:pts[pts.length-1][0],y:pts[pts.length-1][1]});
+ return out;
+}
 
-/* ================= Projektion (Top-down, leicht schief) =================
- Vogelperspektive: Kachel -> Bildschirm 1:1. Tiefe entsteht durch Wandhöhe
- (WALL_H) beim Zeichnen, nicht durch die Projektion. */
-const WALL_H=14;
+/* ================= Projektion (Top-down) ================= */
 const WORLD_W=MW*U, WORLD_H=MH*U;
 function P(cx,cy){return [cx*U,cy*U];}
-function isoC(tx,ty){return [tx*U+U/2,ty*U+U/2];}  // Kachelzentrum (Bodenpunkt)
+function isoC(tx,ty){return [tx*U+U/2,ty*U+U/2];}  // Kachelzentrum
 function rr(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
 
-/* ================= Roboter: Mascot-Droiden =================
- Freundlicher schwebender Droide: Verlaufskörper, Glanz-Visier, glühende Augen
- (blinzeln + Blickrichtung), Antenne, Thruster, Bodenschatten + Status-Ring.
- `act` steuert die Pose: work (Arme tippen), nap (Augen zu, sinkt), coffee
- (Tasse), gaze (Blick nach oben), chat (gestikuliert). */
+/* ================= Canvas + Kamera (weich geführt) ================= */
+const cv=$('#game'),ctx=cv.getContext('2d');
+ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+const staticCv=document.createElement('canvas');staticCv.width=WORLD_W;staticCv.height=WORLD_H;
+const sx=staticCv.getContext('2d');sx.imageSmoothingEnabled=true;
+
+let camMin=Math.min(cv.width/WORLD_W,cv.height/WORLD_H);
+const cam={x:WORLD_W/2,y:WORLD_H/2,scale:Math.max(camMin,1),tx:0,ty:0};
+const camT={x:cam.x,y:cam.y,scale:cam.scale};   // Ziel – Kamera gleitet hin
+/* Canvas füllt die Bühne; Auflösung folgt der Anzeigegröße (scharf via DPR) */
+function fitCanvas(){
+ const r=cv.getBoundingClientRect();
+ if(!r.width||!r.height)return;
+ const dpr=Math.min(1.5,window.devicePixelRatio||1);
+ const w=Math.round(r.width*dpr), h=Math.round(r.height*dpr);
+ if(cv.width===w&&cv.height===h)return;
+ cv.width=w;cv.height=h;
+ ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+ camMin=Math.min(cv.width/WORLD_W,cv.height/WORLD_H);
+ clampObj(camT);clampCam();
+}
+function clampObj(c){
+ c.scale=Math.max(camMin,Math.min(3.5,c.scale));
+ const vw=cv.width/c.scale, vh=cv.height/c.scale;
+ c.x=vw>=WORLD_W?WORLD_W/2:Math.max(vw/2,Math.min(WORLD_W-vw/2,c.x));
+ c.y=vh>=WORLD_H?WORLD_H/2:Math.max(vh/2,Math.min(WORLD_H-vh/2,c.y));
+}
+function clampCam(){
+ clampObj(cam);
+ cam.tx=cv.width/2-cam.x*cam.scale; cam.ty=cv.height/2-cam.y*cam.scale;
+}
+function camTick(dt){
+ const k=RM?1:Math.min(1,1-Math.exp(-dt*7));
+ cam.scale+=(camT.scale-cam.scale)*k;
+ cam.x+=(camT.x-cam.x)*k; cam.y+=(camT.y-cam.y)*k;
+ clampCam();
+}
+function camFit(){camT.scale=camMin;camT.x=WORLD_W/2;camT.y=WORLD_H/2;clampObj(camT);}
+
+const PAL={space:'#05060e',cyan:'#53e0ff',green:'#5df2b4',amber:'#ffcf5c',red:'#ff7b6b',violet:'#c99cff'};
+function hexA(h,a){const n=parseInt(h.slice(1),16);return 'rgba('+(n>>16)+','+((n>>8)&255)+','+(n&255)+','+a+')';}
+function lite(h,d){const n=parseInt(h.slice(1),16);
+ const r=Math.min(255,(n>>16)+d),g=Math.min(255,((n>>8)&255)+d),b=Math.min(255,(n&255)+d);
+ return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');}
+function hash(x,y){let h=(x*374761393+y*668265263)|0;h=(h^(h>>13))*1274126177;return ((h^(h>>16))>>>0)/4294967295;}
+function isFloor(x,y){return ROWS[y]&&'.-D'.includes(ROWS[y][x]);}
+function grad(c,x0,y0,x1,y1,stops){const g=c.createLinearGradient(x0,y0,x1,y1);for(const[o,cc]of stops)g.addColorStop(o,cc);return g;}
+function softShadow(cx,cy,rx,ry,a){const g=sx.createRadialGradient(cx,cy,1,cx,cy,Math.max(rx,ry));
+ g.addColorStop(0,'rgba(2,3,8,'+(a||.5)+')');g.addColorStop(1,'rgba(2,3,8,0)');
+ sx.fillStyle=g;sx.beginPath();sx.ellipse(cx,cy,rx,ry,0,0,7);sx.fill();}
+function furnCenter(f){return P(f.x+(f.w||1)/2,f.y+(f.h||1)/2);}
+
+/* ================= Statische Ebene: Holo-Station =================
+ Klarer Blueprint-Look: dunkler Raum, Basisplatte, angedockte Pods mit
+ Leuchtkante, Korridor-Röhre, Schleusen-Stege. Keine Pseudo-3D-Wände. */
+function drawStatic(){
+ sx.textAlign='left';
+ sx.clearRect(0,0,WORLD_W,WORLD_H);   // Weltraum kommt full-bleed im Screen-Space (draw)
+
+ // --- Basisplatte der Station ---
+ const minX=Math.min(...rooms.map(r=>r.x)), maxX=Math.max(...rooms.map(r=>r.x+r.ow));
+ const minY=Math.min(...rooms.map(r=>r.y)), maxY=Math.max(...rooms.map(r=>r.y+r.oh));
+ sx.save();
+ sx.shadowColor='rgba(90,140,255,.22)';sx.shadowBlur=60;
+ rr(sx,(minX-.55)*U,(minY-.55)*U,(maxX-minX+1.1)*U,(maxY-minY+1.1)*U,30);
+ sx.fillStyle='rgba(9,12,26,.6)';sx.fill();
+ sx.restore();
+ sx.strokeStyle='rgba(150,175,230,.09)';sx.lineWidth=1.5;
+ rr(sx,(minX-.55)*U,(minY-.55)*U,(maxX-minX+1.1)*U,(maxY-minY+1.1)*U,30);sx.stroke();
+
+ // --- Korridor-Röhre ---
+ {const X0=MARGIN*U+3,Y0=corrY0*U+3,W=bandW*U-6,H=CORR*U-6;
+  rr(sx,X0,Y0,W,H,12);
+  sx.fillStyle=grad(sx,0,Y0,0,Y0+H,[[0,'#181f3b'],[.5,'#131a33'],[1,'#101528']]);sx.fill();
+  sx.strokeStyle=hexA(PAL.cyan,.18);sx.lineWidth=1.5;sx.stroke();
+  // Mittellinie
+  sx.save();sx.setLineDash([12,16]);sx.strokeStyle='rgba(120,170,255,.14)';sx.lineWidth=2;
+  sx.beginPath();sx.moveTo(X0+14,Y0+H/2);sx.lineTo(X0+W-14,Y0+H/2);sx.stroke();sx.restore();
+  // Randmarkierungen
+  sx.fillStyle='rgba(120,160,255,.08)';
+  for(let x=MARGIN+1;x<MARGIN+bandW-1;x+=2){sx.fillRect(x*U+8,Y0+4,U-16,2);sx.fillRect(x*U+8,Y0+H-6,U-16,2);}
+ }
+
+ // --- Pods (Räume) ---
+ for(const r of rooms){
+  const px0=(r.x+.3)*U, py0=(r.y+.3)*U, pw=(r.ow-.6)*U, ph=(r.oh-.6)*U, rad=15;
+  // Boden
+  rr(sx,px0,py0,pw,ph,rad);
+  sx.fillStyle=grad(sx,0,py0,0,py0+ph,[[0,lite(r.tint,10)],[1,darken(r.tint,14)]]);sx.fill();
+  // Nähte + Glanz + Rand-AO (geclippt)
+  sx.save();rr(sx,px0,py0,pw,ph,rad);sx.clip();
+  sx.strokeStyle='rgba(255,255,255,.035)';sx.lineWidth=1;
+  for(let x=r.x+1;x<r.x+r.ow;x++){sx.beginPath();sx.moveTo(x*U+.5,py0);sx.lineTo(x*U+.5,py0+ph);sx.stroke();}
+  for(let y=r.y+1;y<r.y+r.oh;y++){sx.beginPath();sx.moveTo(px0,y*U+.5);sx.lineTo(px0+pw,y*U+.5);sx.stroke();}
+  sx.fillStyle=grad(sx,px0,py0,px0+pw*.8,py0+ph*.8,[[0,'rgba(255,255,255,.05)'],[.5,'rgba(255,255,255,0)']]);
+  sx.fillRect(px0,py0,pw,ph);
+  const ao=sx.createRadialGradient(px0+pw/2,py0+ph/2,Math.min(pw,ph)*.28,px0+pw/2,py0+ph/2,Math.max(pw,ph)*.7);
+  ao.addColorStop(0,'rgba(0,0,0,0)');ao.addColorStop(1,'rgba(2,4,10,.42)');
+  sx.fillStyle=ao;sx.fillRect(px0,py0,pw,ph);
+  sx.restore();
+  // Leuchtkante (einmal weich, einmal scharf)
+  sx.save();
+  sx.strokeStyle=hexA(r.accent,.5);sx.lineWidth=1.6;sx.shadowColor=r.accent;sx.shadowBlur=14;
+  rr(sx,px0,py0,pw,ph,rad);sx.stroke();
+  sx.shadowBlur=0;sx.strokeStyle=hexA(r.accent,.7);sx.lineWidth=1;
+  rr(sx,px0,py0,pw,ph,rad);sx.stroke();
+  sx.restore();
+ }
+
+ // --- Schleusen-Stege (Pod <-> Korridor) ---
+ for(const r of rooms){
+  const dx=r.doorX;
+  const x0=dx*U+2, w=2*U-4;
+  let y0,h;
+  if(r.band==='top'){y0=(r.y+r.oh-.55)*U; h=corrY0*U+8-y0;}
+  else{y0=(corrY1+1)*U-8; h=(r.y+.55)*U-y0;}
+  rr(sx,x0,y0,w,h,6);
+  sx.fillStyle='#161d36';sx.fill();
+  sx.strokeStyle=hexA(r.accent,.3);sx.lineWidth=1;sx.stroke();
+  // Schwelle glüht
+  const gy=r.band==='top'?(r.y+r.oh-.5)*U:(r.y+.5)*U-2;
+  sx.fillStyle=hexA(PAL.cyan,.4);sx.shadowColor=PAL.cyan;sx.shadowBlur=9;
+  sx.fillRect(x0+6,gy,w-12,2.5);sx.shadowBlur=0;
+ }
+
+ // --- Möbel ---
+ for(const f of FURN)drawFurnStatic(f);
+ // Gate-Chevrons vor jeder Agent-Station
+ for(const id of FLEET_IDS){const sp=SPOTS[WORK[id]];if(!sp)continue;
+  const px=sp.x*U+U/2, py=sp.y*U+U/2, ac=(ACCENT[id]||PAL.cyan);
+  sx.save();sx.strokeStyle=hexA(ac,.4);sx.lineWidth=1.3;
+  for(let i=0;i<3;i++){sx.globalAlpha=.4-i*.11;sx.beginPath();
+   sx.moveTo(px-6,py+14+i*5);sx.lineTo(px,py+9+i*5);sx.lineTo(px+6,py+14+i*5);sx.stroke();}
+  sx.restore();}
+ sx.globalAlpha=1;
+
+ // --- Pod-Labels (Holo-Tags auf der Oberkante) ---
+ for(const r of ROOM_LABELS){
+  sx.font='600 11px system-ui,sans-serif';
+  const tw=sx.measureText(r.t).width, cx=r.x*U, x0=cx-(tw+26)/2, y0=r.y*U-9;
+  rr(sx,x0,y0,tw+26,18,9);sx.fillStyle='rgba(8,12,24,.88)';sx.fill();
+  sx.strokeStyle='rgba(120,140,190,.3)';sx.lineWidth=1;sx.stroke();
+  sx.fillStyle=r.accent;sx.shadowColor=r.accent;sx.shadowBlur=6;sx.beginPath();sx.arc(x0+12,y0+9,2.8,0,7);sx.fill();sx.shadowBlur=0;
+  sx.fillStyle='#e3ecff';sx.fillText(r.t,x0+19,y0+13);
+ }
+
+}
+
+function drawFurnStatic(f){
+ const X=f.x*U,Y=f.y*U,W=(f.w||1)*U,A=f.accent||PAL.cyan;
+ switch(f.t){
+  case 'screen':{ // Feature-Screen oben im Pod
+   rr(sx,X-2,Y+3,W+4,U-11,7);
+   sx.fillStyle=grad(sx,0,Y,0,Y+U,[[0,'#0e1730'],[1,'#070c1a']]);sx.fill();
+   sx.strokeStyle=hexA(A,.55);sx.lineWidth=1.4;sx.shadowColor=A;sx.shadowBlur=9;sx.stroke();sx.shadowBlur=0;break;}
+  case 'desk':{softShadow(X+W/2,Y+U-3,W/2+2,7,.5);
+   rr(sx,X+2,Y+6,W-4,U-10,8);
+   sx.fillStyle=grad(sx,0,Y+6,0,Y+U-4,[[0,'#28324e'],[1,'#121829']]);sx.fill();
+   sx.strokeStyle=hexA(A,.4);sx.lineWidth=1.3;sx.stroke();
+   rr(sx,X+6,Y+9,W-12,4,2);sx.fillStyle='rgba(255,255,255,.07)';sx.fill();
+   sx.fillStyle=hexA(A,.8);sx.beginPath();sx.arc(X+W-8,Y+U-9,1.7,0,7);sx.fill();break;}
+  case 'coffeemachine':{softShadow(X+16,Y+U-2,14,5,.45);
+   rr(sx,X+4,Y-14,24,30,6);sx.fillStyle=grad(sx,0,Y-14,0,Y+16,[[0,'#3a4262'],[1,'#1a2138']]);sx.fill();
+   sx.strokeStyle='rgba(160,180,220,.2)';sx.lineWidth=1;sx.stroke();
+   rr(sx,X+8,Y-6,16,9,2);sx.fillStyle='#0c1120';sx.fill();break;}
+  case 'arcademachine':{softShadow(X+W/2,Y+U-2,W/2,5,.45);
+   rr(sx,X+2,Y-16,W-4,U+12,6);sx.fillStyle=grad(sx,0,Y-16,0,Y+U,[[0,'#241a3e'],[1,'#120e22']]);sx.fill();
+   sx.strokeStyle=hexA('#c99cff',.5);sx.lineWidth=1.3;sx.stroke();
+   rr(sx,X+8,Y-9,W-16,19,3);sx.fillStyle='#0a0716';sx.fill();break;}
+  case 'couch':{softShadow(X+W/2,Y+U-2,W/2+4,6,.4);
+   rr(sx,X-4,Y+2,W+8,U-4,10);sx.fillStyle=grad(sx,0,Y,0,Y+U,[[0,'#3a4d8f'],[1,'#26356b']]);sx.fill();
+   rr(sx,X-4,Y+2,W+8,9,7);sx.fillStyle='rgba(255,255,255,.08)';sx.fill();break;}
+  case 'plant':{softShadow(X+16,Y+U-2,9,4,.4);
+   rr(sx,X+9,Y+15,14,13,3);sx.fillStyle=grad(sx,0,Y+15,0,Y+28,[[0,'#4a3540'],[1,'#2e2029']]);sx.fill();
+   sx.fillStyle='#3aa274';sx.shadowColor='#57e0a0';sx.shadowBlur=9;
+   for(const [dx,dy,rw,rh] of [[-4,-2,6,16],[3,-8,6,20],[9,-1,6,14]]){sx.beginPath();sx.ellipse(X+13+dx,Y+8+dy,rw/2,rh/2,0,0,7);sx.fill();}
+   sx.shadowBlur=0;break;}
+  case 'console':{softShadow(X+W/2,Y+U+2,W/2+4,7,.5);
+   rr(sx,X-2,Y+9,W+4,U-9,9);sx.fillStyle=grad(sx,0,Y+9,0,Y+U,[[0,'#1f284a'],[1,'#0d1327']]);sx.fill();
+   sx.strokeStyle=hexA(A,.5);sx.lineWidth=1.4;sx.stroke();
+   rr(sx,X+3,Y+12,W-6,5,2);sx.fillStyle='rgba(255,255,255,.06)';sx.fill();break;}
+ }
+}
+
+/* ================= Roboter: Mascot-Droiden ================= */
 const ACCENT={master:MASTER_ACCENT};
 for(const a of AGENTS_CFG)ACCENT[a.id]=a.accent;
 function drawBot(id,cx,cy,dir,moving,st,sel,s,act){
  const acc=ACCENT[id]||'#8ea0bd', sc=COLORS[st]||COLORS.idle, seed=BOT_IDS.indexOf(id);
  const nap=act==='nap', work=act==='work'||act==='oversee', chat=act==='chat', gaze=act==='gaze';
- const hov=nap?0:(Math.sin(s*2+seed*1.7)*1.6+(moving?Math.sin(s*12+seed)*1.2:0));
+ const hov=nap||RM?0:(Math.sin(s*2+seed*1.7)*1.6+(moving?Math.sin(s*10+seed)*1:0));
  const floorY=cy+13, by=floorY-10+hov+(nap?4:0);
  ctx.save();
  // Bodenschatten
  ctx.globalAlpha=.4;ctx.fillStyle='#03040a';ctx.beginPath();ctx.ellipse(cx,floorY+3,11-hov*.2,4,0,0,7);ctx.fill();ctx.globalAlpha=1;
- // Status-Ring (pulsiert)
- ctx.strokeStyle=sc;ctx.lineWidth=sel?2.6:1.7;ctx.shadowColor=sc;ctx.shadowBlur=sel?15:8;
- ctx.globalAlpha=sel?.95:(.5+Math.sin(s*2.5+seed)*.18);
- ctx.beginPath();ctx.ellipse(cx,floorY+1,13,5,0,0,7);ctx.stroke();ctx.shadowBlur=0;ctx.globalAlpha=1;
+ // Status-Ring: Grundring + Zustands-Signal
+ ctx.strokeStyle=sc;ctx.lineWidth=1.3;ctx.globalAlpha=.28;
+ ctx.beginPath();ctx.ellipse(cx,floorY+1,13,5,0,0,7);ctx.stroke();
+ if(st==='running'){const rot=s*2.6+seed;
+  ctx.globalAlpha=.95;ctx.lineWidth=1.8;ctx.shadowColor=sc;ctx.shadowBlur=8;
+  ctx.beginPath();ctx.ellipse(cx,floorY+1,13,5,0,rot,rot+2.1);ctx.stroke();ctx.shadowBlur=0;}
+ else if(st==='waiting'){ctx.globalAlpha=.3+Math.abs(Math.sin(s*2.6+seed))*.6;ctx.lineWidth=1.8;
+  ctx.shadowColor=sc;ctx.shadowBlur=7;ctx.beginPath();ctx.ellipse(cx,floorY+1,13,5,0,0,7);ctx.stroke();ctx.shadowBlur=0;}
+ else if(st==='error'){ctx.globalAlpha=Math.sin(s*9+seed)>0?.9:.25;ctx.lineWidth=1.8;
+  ctx.beginPath();ctx.ellipse(cx,floorY+1,13,5,0,0,7);ctx.stroke();}
+ if(sel){ctx.globalAlpha=.85;ctx.strokeStyle=sc;ctx.lineWidth=1.4;ctx.shadowColor=sc;ctx.shadowBlur=10;
+  ctx.beginPath();ctx.ellipse(cx,floorY+1,16.5,6.5,0,0,7);ctx.stroke();ctx.shadowBlur=0;}
+ ctx.globalAlpha=1;
  // Thruster-Glow (nicht beim Schlafen)
- if(!nap){const tg=ctx.createRadialGradient(cx,by+9,1,cx,by+9,10);tg.addColorStop(0,acc+'cc');tg.addColorStop(1,acc+'00');
-  ctx.globalAlpha=.5+Math.sin(s*16+seed)*.2;ctx.fillStyle=tg;ctx.beginPath();ctx.ellipse(cx,by+10,7,3.5,0,0,7);ctx.fill();ctx.globalAlpha=1;}
+ if(!nap){const tg=ctx.createRadialGradient(cx,by+9,1,cx,by+9,10);tg.addColorStop(0,hexA(acc,.8));tg.addColorStop(1,hexA(acc,0));
+  ctx.globalAlpha=.45+(RM?0:Math.sin(s*14+seed)*.18);ctx.fillStyle=tg;ctx.beginPath();ctx.ellipse(cx,by+10,7,3.5,0,0,7);ctx.fill();ctx.globalAlpha=1;}
  // Arme
- const sw=work?Math.abs(Math.sin(s*7+seed))*3:chat?Math.sin(s*4+seed)*3:moving?Math.sin(s*12+seed)*2.2:Math.sin(s*2+seed);
+ const sw=work?Math.abs(Math.sin(s*7+seed))*3:chat?Math.sin(s*4+seed)*3:moving?Math.sin(s*10+seed)*2.2:Math.sin(s*2+seed);
  for(const sgn of [-1,1]){ctx.fillStyle='#c3ccde';
   const ay=by+2+(work?-sw:sgn*sw);ctx.beginPath();ctx.arc(cx+sgn*10,ay,2.6,0,7);ctx.fill();}
  if(act==='coffee'){ctx.fillStyle='#eef2fb';rr(ctx,cx+8,by-1,5,5,1);ctx.fill();ctx.strokeStyle='#9fb0cf';ctx.lineWidth=1;ctx.stroke();}
@@ -500,7 +844,7 @@ function drawBot(id,cx,cy,dir,moving,st,sel,s,act){
  rr(ctx,hx,hy,hw,hh,5.5);const hg=ctx.createLinearGradient(0,hy,0,hy+hh);hg.addColorStop(0,'#20293e');hg.addColorStop(1,'#0b1120');ctx.fillStyle=hg;ctx.fill();
  rr(ctx,hx+2.5,hy+2.5,hw-5,hh-5,3.5);ctx.fillStyle='#05070f';ctx.fill();
  ctx.globalAlpha=.5;ctx.strokeStyle='#aeb9d6';ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(cx-2,hy+4.5,4,Math.PI*1.1,Math.PI*1.7);ctx.stroke();ctx.globalAlpha=1;
- // Augen
+ // Augen (blinzeln + Blickrichtung)
  const blink=Math.max(0,(Math.sin(s*1.3+seed*2.1)-0.93)/0.07), open=nap?0:1-Math.min(1,blink);
  const eoff=dir==='left'?-2.2:dir==='right'?2.2:0, ey=(dir==='up'||gaze)?-1.6:0, ea=dir==='up'?.5:1, ex=2.9;
  if(nap){ctx.strokeStyle=acc;ctx.lineWidth=1.4;ctx.globalAlpha=.85;
@@ -514,149 +858,21 @@ function drawBot(id,cx,cy,dir,moving,st,sel,s,act){
  ctx.restore();
 }
 
-/* ================= Statische Ebene + Kamera (Top-down) ================= */
-const cv=$('#game'),ctx=cv.getContext('2d');
-ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
-const staticCv=document.createElement('canvas');staticCv.width=WORLD_W;staticCv.height=WORLD_H;
-const sx=staticCv.getContext('2d');sx.imageSmoothingEnabled=true;
-const lightCv=document.createElement('canvas');lightCv.width=WORLD_W;lightCv.height=WORLD_H;
-
-const camMin=Math.min(cv.width/WORLD_W,cv.height/WORLD_H);
-const cam={x:WORLD_W/2,y:WORLD_H/2,scale:Math.max(camMin,1),tx:0,ty:0};
-function clampCam(){
- cam.scale=Math.max(camMin,Math.min(3.5,cam.scale));
- const vw=cv.width/cam.scale, vh=cv.height/cam.scale;
- cam.x=vw>=WORLD_W?WORLD_W/2:Math.max(vw/2,Math.min(WORLD_W-vw/2,cam.x));
- cam.y=vh>=WORLD_H?WORLD_H/2:Math.max(vh/2,Math.min(WORLD_H-vh/2,cam.y));
- cam.tx=cv.width/2-cam.x*cam.scale; cam.ty=cv.height/2-cam.y*cam.scale;
-}
-function camFit(){cam.scale=Math.max(camMin,1);cam.x=WORLD_W/2;cam.y=WORLD_H/2;clampCam();}
-
-const PAL={space:'#05060e',cyan:'#53e0ff',green:'#5df2b4',amber:'#ffcf5c',red:'#ff7b6b',violet:'#c99cff'};
-function hexA(h,a){const n=parseInt(h.slice(1),16);return 'rgba('+(n>>16)+','+((n>>8)&255)+','+(n&255)+','+a+')';}
-function lite(h,d){const n=parseInt(h.slice(1),16);
- const r=Math.min(255,(n>>16)+d),g=Math.min(255,((n>>8)&255)+d),b=Math.min(255,(n&255)+d);
- return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');}
-function hash(x,y){let h=(x*374761393+y*668265263)|0;h=(h^(h>>13))*1274126177;return ((h^(h>>16))>>>0)/4294967295;}
-function isFloor(x,y){return ROWS[y]&&'.-D'.includes(ROWS[y][x]);}
-function roomAt(x,y){return rooms.find(r=>x>=r.x&&x<r.x+r.ow&&y>=r.y&&y<r.y+r.oh);}
-function grad(x0,y0,x1,y1,stops){const g=sx.createLinearGradient(x0,y0,x1,y1);for(const[o,c]of stops)g.addColorStop(o,c);return g;}
-function softShadow(cx,cy,rx,ry,a){const g=sx.createRadialGradient(cx,cy,1,cx,cy,Math.max(rx,ry));
- g.addColorStop(0,'rgba(2,3,8,'+(a||.5)+')');g.addColorStop(1,'rgba(2,3,8,0)');
- sx.fillStyle=g;sx.beginPath();sx.ellipse(cx,cy,rx,ry,0,0,7);sx.fill();}
-function furnCenter(f){return P(f.x+(f.w||1)/2,f.y+(f.h||1)/2);}
-
-function drawStatic(){
- sx.imageSmoothingEnabled=true;sx.textAlign='left';
- sx.fillStyle=PAL.space;sx.fillRect(0,0,WORLD_W,WORLD_H);
- for(const [nx,ny,nc] of [[.22,.16,'rgba(66,42,120,.22)'],[.8,.3,'rgba(30,92,132,.17)'],[.5,.92,'rgba(84,42,112,.16)']]){
-  const g=sx.createRadialGradient(nx*WORLD_W,ny*WORLD_H,10,nx*WORLD_W,ny*WORLD_H,WORLD_W*.42);
-  g.addColorStop(0,nc);g.addColorStop(1,'rgba(0,0,0,0)');sx.fillStyle=g;sx.fillRect(0,0,WORLD_W,WORLD_H);}
- const stars=Math.round(WORLD_W*WORLD_H/5200);
- for(let i=0;i<stars;i++){const x=hash(i,1)*WORLD_W,y=hash(i,2)*WORLD_H,r=hash(i,5)>.92?1.7:.9;
-  sx.globalAlpha=.3+hash(i,3)*.6;sx.fillStyle=hash(i,4)>.85?'#bfe0ff':'#eef3ff';sx.beginPath();sx.arc(x,y,r,0,7);sx.fill();}
- sx.globalAlpha=1;
-
- // ---- Böden ----
- for(let y=0;y<MH;y++)for(let x=0;x<MW;x++){
-  const ch=ROWS[y][x]; if(!'.-D'.includes(ch))continue;
-  const X=x*U,Y=y*U, rm=roomAt(x,y), chk=(x+y)&1;
-  let base = rm?(chk?lite(rm.tint,22):lite(rm.tint,4)) : (ch==='-'?(chk?'#262e4c':'#1d2440'):'#20263c');
-  sx.fillStyle=base;sx.fillRect(X,Y,U,U);
-  sx.fillStyle='rgba(0,0,0,.16)';sx.fillRect(X,Y,U,1);sx.fillRect(X,Y,1,U);
-  sx.fillStyle='rgba(255,255,255,.03)';sx.fillRect(X+1,Y+1,U-1,1);
-  if(rm){sx.strokeStyle=hexA(rm.accent,.06);sx.lineWidth=1;sx.strokeRect(X+.5,Y+.5,U-1,U-1);}
-  if(ch==='-'&&x%2===0){sx.fillStyle='rgba(120,160,255,.10)';sx.fillRect(X+5,Y+U/2-1,U-10,2);}
-  if(ch==='D'){sx.fillStyle=hexA(PAL.cyan,.22);sx.shadowColor=PAL.cyan;sx.shadowBlur=13;sx.fillRect(X+3,Y+3,U-6,U-6);sx.shadowBlur=0;}
- }
- // Raumglanz + Vignette + Akzentrahmen
- for(const r of rooms){
-  const ix=(r.x+1)*U,iy=(r.y+1)*U,iw=(r.ow-2)*U,ih=(r.oh-2)*U;
-  sx.fillStyle=grad(ix,iy,ix+iw*.7,iy+ih*.7,[[0,'rgba(255,255,255,.045)'],[.5,'rgba(255,255,255,0)']]);sx.fillRect(ix,iy,iw,ih);
-  const ao=sx.createRadialGradient(ix+iw/2,iy+ih/2,Math.min(iw,ih)*.25,ix+iw/2,iy+ih/2,Math.max(iw,ih)*.72);
-  ao.addColorStop(0,'rgba(0,0,0,0)');ao.addColorStop(1,'rgba(2,4,10,.4)');sx.fillStyle=ao;sx.fillRect(ix,iy,iw,ih);
- }
-
- // ---- Wände: Deckkante + Vorderfläche mit Höhe (Nordwände „stehen") ----
- for(let y=0;y<MH;y++)for(let x=0;x<MW;x++){
-  if(ROWS[y][x]!=='#')continue;
-  const X=x*U,Y=y*U, floorS=isFloor(x,y+1);
-  sx.fillStyle='#0b1020';sx.fillRect(X,Y,U,U);
-  sx.fillStyle=grad(X,Y,X,Y+8,[[0,'#4b5680'],[1,'#2a3350']]);sx.fillRect(X,Y,U,8);
-  sx.fillStyle='rgba(165,185,230,.5)';sx.fillRect(X,Y,U,2);
-  sx.fillStyle='rgba(0,0,0,.35)';sx.fillRect(X,Y+8,U,2);
-  if(floorS){
-   const acc=(roomAt(x,y+1)||{}).accent||PAL.cyan;
-   sx.fillStyle=grad(X,Y+U-2,X,Y+U-2+WALL_H,[[0,'#212a44'],[1,'#0b1020']]);sx.fillRect(X,Y+U-2,U,WALL_H);
-   sx.fillStyle=hexA(acc,.4);sx.fillRect(X,Y+U-2,U,1.5);
-   sx.fillStyle=grad(X,Y+U-2+WALL_H,X,Y+U-2+WALL_H+8,[[0,'rgba(3,5,12,.55)'],[1,'rgba(3,5,12,0)']]);sx.fillRect(X,Y+U-2+WALL_H,U,8);
-  }
- }
-
- // ---- Möbel + Nameplates ----
- for(const f of FURN)drawFurnStatic(f);
- for(const r of ROOM_LABELS){
-  sx.font='600 12px "Segoe UI",system-ui,sans-serif';
-  const tw=sx.measureText(r.t).width, cx=r.x*U, x0=cx-(tw+24)/2, y0=r.y*U+3;
-  rr(sx,x0,y0,tw+24,18,9);sx.fillStyle='rgba(8,12,24,.85)';sx.fill();
-  sx.strokeStyle='rgba(120,140,190,.35)';sx.lineWidth=1;sx.stroke();
-  sx.fillStyle=r.accent||PAL.cyan;sx.shadowColor=r.accent||PAL.cyan;sx.shadowBlur=6;sx.beginPath();sx.arc(x0+11,y0+9,3,0,7);sx.fill();sx.shadowBlur=0;
-  sx.fillStyle='#e3ecff';sx.fillText(r.t,x0+18,y0+13);
- }
-
- // ---- Vignette + Lichtlöcher ----
- const lx=lightCv.getContext('2d');
- lx.clearRect(0,0,WORLD_W,WORLD_H);
- lx.fillStyle='rgba(4,6,14,.24)';lx.fillRect(0,0,WORLD_W,WORLD_H);
- lx.globalCompositeOperation='destination-out';
- const hole=(x,y,r,a)=>{const g=lx.createRadialGradient(x,y,r*.15,x,y,r);
-  g.addColorStop(0,`rgba(0,0,0,${a})`);g.addColorStop(1,'rgba(0,0,0,0)');lx.fillStyle=g;lx.beginPath();lx.arc(x,y,r,0,7);lx.fill();};
- for(const r of rooms){const [cx,cy]=isoC(r.x+r.ow/2-.5,r.y+r.oh/2-.5);hole(cx,cy,Math.max(r.ow,r.oh)*U*.42,1);}
- for(let x=MARGIN+3;x<MARGIN+bandW;x+=6)hole(x*U,(corrY0+CORR/2)*U,3.2*U,.85);
-}
-
-function drawFurnStatic(f){
- const X=f.x*U,Y=f.y*U,W=(f.w||1)*U,A=f.accent||PAL.cyan;
- switch(f.t){
-  case 'screen':{rr(sx,X-2,Y+2,W+4,U-8,6);sx.fillStyle=grad(X,Y,X,Y+U,[[0,'#0d1626'],[1,'#060a14']]);sx.fill();
-   sx.strokeStyle=hexA(A,.75);sx.lineWidth=2;sx.shadowColor=A;sx.shadowBlur=11;sx.stroke();sx.shadowBlur=0;break;}
-  case 'desk':{softShadow(X+W/2,Y+U-3,W/2+2,7,.5);
-   rr(sx,X,Y+4,W,U-8,7);sx.fillStyle=grad(X,Y+4,X,Y+U-4,[[0,'#2b3550'],[1,'#141a2c']]);sx.fill();
-   sx.strokeStyle=hexA(A,.4);sx.lineWidth=1.5;sx.stroke();
-   rr(sx,X+3,Y+6,W-6,5,3);sx.fillStyle='rgba(255,255,255,.06)';sx.fill();break;}
-  case 'coffeemachine':{softShadow(X+16,Y+U-2,14,5,.45);
-   rr(sx,X+4,Y-14,24,30,5);sx.fillStyle=grad(X,Y-14,X,Y+16,[[0,'#3a4262'],[1,'#1a2138']]);sx.fill();
-   rr(sx,X+8,Y-6,16,9,2);sx.fillStyle='#0c1120';sx.fill();
-   sx.fillStyle=PAL.red;sx.shadowColor=PAL.red;sx.shadowBlur=5;sx.beginPath();sx.arc(X+11,Y-9,1.6,0,7);sx.fill();sx.shadowBlur=0;break;}
-  case 'arcademachine':{softShadow(X+W/2,Y+U-2,W/2,5,.45);
-   rr(sx,X+2,Y-16,W-4,U+12,5);sx.fillStyle=grad(X,Y-16,X,Y+U,[[0,'#241a3e'],[1,'#120e22']]);sx.fill();
-   sx.strokeStyle=hexA('#c99cff',.6);sx.lineWidth=1.5;sx.stroke();
-   rr(sx,X+8,Y-9,W-16,19,3);sx.fillStyle='#0a0716';sx.fill();break;}
-  case 'couch':{softShadow(X+W/2,Y+U-2,W/2+4,6,.4);
-   rr(sx,X-4,Y+2,W+8,U-4,10);sx.fillStyle=grad(X,Y,X,Y+U,[[0,'#3a4d8f'],[1,'#26356b']]);sx.fill();
-   rr(sx,X-4,Y+2,W+8,9,7);sx.fillStyle='rgba(255,255,255,.08)';sx.fill();break;}
-  case 'plant':{softShadow(X+16,Y+U-2,9,4,.4);
-   rr(sx,X+9,Y+15,14,13,3);sx.fillStyle=grad(X,Y+15,X,Y+28,[[0,'#4a3540'],[1,'#2e2029']]);sx.fill();
-   sx.fillStyle='#3aa274';sx.shadowColor='#57e0a0';sx.shadowBlur=10;
-   for(const [dx,dy,rw,rh] of [[-4,-2,6,16],[3,-8,6,20],[9,-1,6,14]]){sx.beginPath();sx.ellipse(X+13+dx,Y+8+dy,rw/2,rh/2,0,0,7);sx.fill();}
-   sx.shadowBlur=0;break;}
-  case 'console':{softShadow(X+W/2,Y+U+2,W/2+4,7,.5);
-   rr(sx,X-2,Y+10,W+4,U-8,6);sx.fillStyle=grad(X,Y+10,X,Y+U,[[0,'#20294a'],[1,'#0e1428']]);sx.fill();
-   sx.strokeStyle=hexA(A,.5);sx.lineWidth=1.5;sx.stroke();
-   rr(sx,X+2,Y+13,W-4,6,3);sx.fillStyle='rgba(255,255,255,.05)';sx.fill();break;}
- }
-}
 drawStatic();
+fitCanvas();
 camFit();
+clampObj(camT);cam.x=camT.x;cam.y=camT.y;cam.scale=camT.scale;clampCam();
+if(window.ResizeObserver)new ResizeObserver(()=>fitCanvas()).observe(cv);
+else window.addEventListener('resize',fitCanvas);
 
-/* ================= Bots: Spiel-Logik + Verhaltens-Engine =================
+/* ================= Bots: Verhaltens-Engine =================
  Läuft ein Task -> Bot arbeitet an der Station. Wartet -> steht dort. Fehler ->
- Funken. Sonst lebt der Bot 24/7 eine Aktivitäts-Schleife: Kaffee, Nap, Sterne
- gucken, Kollegen besuchen, patrouillieren, wandern, quatschen. */
+ Funken. Sonst lebt der Bot eine Freizeit-Schleife: Kaffee, Nap, Sterne gucken,
+ Kollegen besuchen, patrouillieren, wandern, quatschen. */
 const bots={};
 function initBots(){
  const c=SPOTS.command||{x:Math.floor(MW/2),y:corrY0+1};
- BOT_IDS.forEach((id)=>{bots[id]={id,x:c.x,y:c.y,path:[],dir:'down',frame:0,ft:0,spot:null,spotName:null,
+ BOT_IDS.forEach((id)=>{bots[id]={id,x:c.x,y:c.y,path:[],dir:'down',spot:null,spotName:null,moveT:0,
   act:'idle',emote:null,dwell:2000,faceAt:null,status:null,nextThink:0,moving:false};});
 }
 const taken={};
@@ -690,23 +906,29 @@ function think(b,now){
  else {[tx,ty,face,act,emote]=freeLife(b);dwell=3500+Math.random()*6000;}
  b.act=act;b.emote=emote;b.dwell=dwell;b.faceAt=face;
  if(!b.spawned){b.spawned=true;b.x=tx;b.y=ty;b.path=[];b.dir=face||'down';b.nextThink=now+dwell;return;}
- if(Math.round(b.x)===tx&&Math.round(b.y)===ty){b.path=[];if(face)b.dir=face;b.nextThink=now+dwell;return;}
+ if(Math.round(b.x)===tx&&Math.round(b.y)===ty&&Math.hypot(b.x-tx,b.y-ty)<.2){b.path=[];if(face)b.dir=face;b.nextThink=now+dwell;return;}
  const p=findPath(Math.round(b.x),Math.round(b.y),tx,ty);
- if(p&&p.length){b.path=p;b.nextThink=9e9;}else{b.nextThink=now+dwell;}
+ if(p&&p.length){b.path=smoothPath(p,b);b.moveT=0;b.nextThink=9e9;}else{b.nextThink=now+dwell;}
 }
-const BOT_SPEED=3.4; // Kacheln/s
+const BOT_SPEED=3.2; // Kacheln/s
 function updateBots(dt,now){
  for(const id of BOT_IDS){
   const b=bots[id];
-  const wp=b.path[0];
-  if(wp){
-   b.moving=true;
-   const [tx,ty]=wp, dx=tx-b.x,dy=ty-b.y, dist=Math.hypot(dx,dy), step=BOT_SPEED*dt;
-   if(dist<=step){b.x=tx;b.y=ty;b.path.shift();}else{b.x+=dx/dist*step;b.y+=dy/dist*step;}
-   b.dir=Math.abs(dx)>Math.abs(dy)?(dx>0?'right':'left'):(dy>0?'down':'up');
-   b.ft+=dt; if(b.ft>.14){b.frame=1-b.frame;b.ft=0;}
+  if(b.path.length){
+   b.moving=true;b.moveT+=dt;
+   // sanft anfahren + vor dem Ziel abbremsen
+   let rem=0,px=b.x,py=b.y;
+   for(const p of b.path){rem+=Math.hypot(p.x-px,p.y-py);px=p.x;py=p.y;}
+   const v=RM?BOT_SPEED:BOT_SPEED*Math.min(1,.3+b.moveT*2.4)*Math.min(1,.35+rem/1.3);
+   let step=v*dt;
+   while(step>0&&b.path.length){
+    const p=b.path[0],dx=p.x-b.x,dy=p.y-b.y,d=Math.hypot(dx,dy);
+    if(d<=step){b.x=p.x;b.y=p.y;step-=d;b.path.shift();}
+    else{b.x+=dx/d*step;b.y+=dy/d*step;
+     b.dir=Math.abs(dx)>Math.abs(dy)?(dx>0?'right':'left'):(dy>0?'down':'up');step=0;}
+   }
   }else{
-   if(b.moving){b.moving=false;b.frame=0;if(b.faceAt)b.dir=b.faceAt;b.nextThink=now+(b.dwell||3000);}
+   if(b.moving){b.moving=false;b.moveT=0;if(b.faceAt)b.dir=b.faceAt;b.nextThink=now+(b.dwell||3000);}
    if(DATA&&now>=b.nextThink)think(b,now);
   }
  }
@@ -722,7 +944,9 @@ function updateBots(dt,now){
 
 /* ================= Partikel ================= */
 const parts=[];
-function spawnParts(t){
+function spawnParts(){
+ if(RM)return;
+ if(parts.length>(MOBILE?45:150))return;
  const cm=FURN.find(f=>f.t==='coffeemachine');
  if(cm&&Math.random()<.06){const [cx,cy]=furnCenter(cm);
   parts.push({x:cx,y:cy-16,vx:(Math.random()-.5)*3,vy:-9-Math.random()*5,life:1.6,c:'rgba(220,230,245,.5)',s:2.4});}
@@ -742,45 +966,106 @@ function updateParts(dt){
  }
 }
 
-/* ================= Render-Loop (Top-down) ================= */
+/* ================= Shuttles: Abflug / Landung =================
+ Statuswechsel eines Agenten schickt ein Shuttle: -> running = Abflug,
+ running -> ok/idle = Landung, -> error = roter Abbruch. Rein dekorativ. */
+const planes=[];
+const EO=t=>1-Math.pow(1-t,3);
+function stationXY(id){const sp=SPOTS[WORK[id]]||SPOTS.command||{x:MW/2,y:MH/2};return isoC(sp.x,sp.y);}
+function spawnPlane(kind,id){
+ if(RM)return;
+ if(planes.length>(MOBILE?3:7))return;
+ const o=stationXY(id), up=[o[0]+250,-3*U];
+ const seg = kind==='land' ? {a:up,b:o} : {a:[o[0],o[1]],b:up};
+ const ang=Math.atan2(seg.b[1]-seg.a[1],seg.b[0]-seg.a[0]);
+ planes.push({kind,id,t:0,dur:kind==='land'?2.4:kind==='abort'?1.8:2.6,seg,ang,accent:ACCENT[id]||COLORS.running});
+}
+function onStatusChange(id,prev,st){
+ if(st==='running')spawnPlane('takeoff',id);
+ else if(prev==='running'&&(st==='ok'||st==='idle'))spawnPlane('land',id);
+ else if(st==='error')spawnPlane('abort',id);
+}
+function updatePlanes(dt){
+ for(let i=planes.length-1;i>=0;i--){const p=planes[i];p.t+=dt;
+  if(p.t>=p.dur){
+   if(p.kind==='land'){const o=stationXY(p.id);              // Touchdown-Staub
+    for(let k=0;k<6;k++)parts.push({x:o[0]+(hash(k,p.t*7|0)-.5)*14,y:o[1]-6,vx:(hash(k,3)-.5)*20,vy:-8-hash(k,5)*6,life:.5,c:hexA(p.accent,.7),s:2});}
+   planes.splice(i,1);}
+ }
+}
+function drawPlanes(s){
+ for(const p of planes){
+  const t=Math.min(1,p.t/p.dur), e=EO(t), a=p.seg.a, b=p.seg.b;
+  const x=a[0]+(b[0]-a[0])*e, y=a[1]+(b[1]-a[1])*e;
+  let sc,al;
+  if(p.kind==='land'){sc=.32+.68*e; al=t<.15?t/.15:1;}
+  else{sc=1-.7*e; al=(t<.08?t/.08:1)*(t>.72?Math.max(0,(1-t)/.28):1);}
+  if(p.kind==='abort'&&t>.5)al*=Math.max(0,1-(t-.5)/.5);
+  al=Math.max(0,Math.min(1,al)); if(al<=0)continue;
+  const col=p.kind==='abort'?COLORS.error:p.accent;
+  ctx.save();ctx.globalAlpha=al;ctx.translate(x,y);ctx.rotate(p.ang);ctx.scale(sc,sc);
+  const tg=ctx.createLinearGradient(-42,0,-6,0);tg.addColorStop(0,hexA(col,0));tg.addColorStop(1,hexA(col,.55));
+  ctx.fillStyle=tg;ctx.beginPath();ctx.moveTo(-42,0);ctx.lineTo(-8,-2.6);ctx.lineTo(-8,2.6);ctx.closePath();ctx.fill();
+  ctx.shadowColor=col;ctx.shadowBlur=10;
+  ctx.fillStyle=hexA(col,.9);ctx.beginPath();
+  ctx.moveTo(2,0);ctx.lineTo(-8,-9);ctx.lineTo(-4,-1);ctx.closePath();
+  ctx.moveTo(2,0);ctx.lineTo(-8,9);ctx.lineTo(-4,1);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#eef3fb';ctx.beginPath();
+  ctx.moveTo(14,0);ctx.lineTo(-7,-3.4);ctx.lineTo(-10,-1.8);ctx.lineTo(-10,1.8);ctx.lineTo(-7,3.4);ctx.closePath();ctx.fill();
+  ctx.shadowBlur=0;ctx.fillStyle=col;ctx.beginPath();ctx.arc(-9,0,2.1+Math.sin(s*22)*.5,0,7);ctx.fill();
+  ctx.restore();
+ }
+}
+
+/* ================= Render-Loop ================= */
 function shootStar(s){return {t:Math.floor(s/11)*11, x:(hash(Math.floor(s/11),8))*WORLD_W*.8, y:(hash(Math.floor(s/11),9))*WORLD_H*.4};}
 /* Animierte Zusätze pro Möbel (über der statischen Basis) */
 function furnAnim(f,s){
  const A=f.accent||PAL.cyan, X=f.x*U, Y=f.y*U, W=(f.w||1)*U, [cx]=furnCenter(f);
  if(f.t==='screen'){
   const n=Math.max(4,Math.floor(W/20));
-  ctx.save();ctx.beginPath();ctx.rect(X,Y+3,W,U-9);ctx.clip();
-  for(let i=0;i<n;i++){const h=6+Math.abs(Math.sin(s*1.4+i*1.7+f.x))*13, bx=X+5+i*(W-8)/n;
-   ctx.fillStyle=i%3?hexA(A,.35):A;rr(ctx,bx,Y+U-11-h,(W-8)/n-2,h,1.5);ctx.fill();}
+  ctx.save();ctx.beginPath();ctx.rect(X,Y+5,W,U-14);ctx.clip();
+  for(let i=0;i<n;i++){const h=5+Math.abs(Math.sin(s*1.4+i*1.7+f.x))*11, bx=X+5+i*(W-8)/n;
+   ctx.fillStyle=i%3?hexA(A,.3):hexA(A,.8);rr(ctx,bx,Y+U-12-h,(W-8)/n-2,h,1.5);ctx.fill();}
   ctx.restore();
-  ctx.fillStyle=hexA(A,.12);ctx.fillRect(X,Y+4+((s*20)%(U-13)),W,2);
+  ctx.fillStyle=hexA(A,.1);ctx.fillRect(X,Y+5+((s*18)%(U-16)),W,2);
  }else if(f.t==='desk'){
-  const mx=cx,my=Y-19+Math.sin(s*1.6+f.x)*1.4, pw=Math.min(26,W-4);
-  ctx.fillStyle=hexA(A,.07);ctx.beginPath();ctx.moveTo(cx-3,Y+2);ctx.lineTo(mx-pw/2,my+13);ctx.lineTo(mx+pw/2,my+13);ctx.lineTo(cx+3,Y+2);ctx.closePath();ctx.fill();
-  rr(ctx,mx-pw/2,my,pw,13,2);ctx.fillStyle=hexA(A,.14);ctx.fill();ctx.strokeStyle=hexA(A,.6);ctx.lineWidth=1;ctx.stroke();
-  ctx.strokeStyle=A;ctx.beginPath();
-  for(let i=0;i<=pw-6;i+=3){const yy=my+6.5+Math.sin(s*4+i*.3+f.x)*3.5;i?ctx.lineTo(mx-pw/2+3+i,yy):ctx.moveTo(mx-pw/2+3+i,yy);}ctx.stroke();
+  // Holo-Display nur, wenn der Agent wirklich etwas zeigt (Zustand, keine Deko)
+  const st=(DATA&&DATA.agents[f.agent]&&DATA.agents[f.agent].status)||'idle';
+  if(st==='running'){
+   const mx=cx,my=Y-19+Math.sin(s*1.6+f.x)*1.4, pw=Math.min(26,W-4);
+   ctx.fillStyle=hexA(A,.07);ctx.beginPath();ctx.moveTo(cx-3,Y+4);ctx.lineTo(mx-pw/2,my+13);ctx.lineTo(mx+pw/2,my+13);ctx.lineTo(cx+3,Y+4);ctx.closePath();ctx.fill();
+   rr(ctx,mx-pw/2,my,pw,13,2);ctx.fillStyle=hexA(A,.14);ctx.fill();ctx.strokeStyle=hexA(A,.6);ctx.lineWidth=1;ctx.stroke();
+   ctx.strokeStyle=A;ctx.beginPath();
+   for(let i=0;i<=pw-6;i+=3){const yy=my+6.5+Math.sin(s*4+i*.3+f.x)*3.5;i?ctx.lineTo(mx-pw/2+3+i,yy):ctx.moveTo(mx-pw/2+3+i,yy);}ctx.stroke();
+  }else if(st==='waiting'){
+   ctx.fillStyle=hexA(COLORS.waiting,.35+Math.abs(Math.sin(s*2.4))*.5);
+   ctx.font='700 12px system-ui,sans-serif';ctx.textAlign='center';ctx.fillText('?',cx,Y-6);ctx.textAlign='left';
+  }else if(st==='error'){
+   ctx.fillStyle=hexA(COLORS.error,Math.sin(s*8)>0?.8:.25);
+   ctx.font='700 11px system-ui,sans-serif';ctx.textAlign='center';ctx.fillText('!',cx,Y-6);ctx.textAlign='left';
+  }
  }else if(f.t==='console'){
   const mst=(DATA&&DATA.agents.master&&DATA.agents.master.status)||'idle',col=COLORS[mst]||COLORS.idle,hy=Y-8;
-  ctx.save();ctx.strokeStyle=col;ctx.shadowColor=col;ctx.shadowBlur=8;ctx.lineWidth=1.4;ctx.globalAlpha=.9;
+  ctx.save();ctx.strokeStyle=col;ctx.shadowColor=col;ctx.shadowBlur=8;ctx.lineWidth=1.3;ctx.globalAlpha=.85;
   for(let i=0;i<3;i++){ctx.beginPath();ctx.ellipse(cx,hy,16-i*3,8-i*2,s*(1.1+i*.4),0,7);ctx.stroke();}
   ctx.shadowBlur=0;const oa=s*2;ctx.fillStyle=col;ctx.beginPath();ctx.arc(cx+Math.cos(oa)*15,hy+Math.sin(oa)*6,1.9,0,7);ctx.fill();ctx.restore();
  }else if(f.t==='arcademachine'){
   const on=Object.values(bots).some(b=>!b.moving&&['relax','coffee','gaze','nap'].includes(b.act));
   const c=['#c99cff','#53e0ff','#5df2b4'][Math.floor(s*(on?6:1.6))%3];
-  ctx.fillStyle=hexA(c,on?.85:.45);rr(ctx,X+8,Y-9,W-16,19,3);ctx.fill();
+  ctx.fillStyle=hexA(c,on?.8:.4);rr(ctx,X+8,Y-9,W-16,19,3);ctx.fill();
  }else if(f.t==='coffeemachine'){
   ctx.fillStyle=Math.sin(s*2.4)>0?'#5df2b4':'#1f4a38';ctx.beginPath();ctx.arc(X+11,Y-9,1.6,0,7);ctx.fill();
  }
 }
 function drawBotFull(id,b,s){
  const a=DATA&&DATA.agents[id]||{}, st=a.status||'idle';
- const [cx,cy]=isoC(b.x,b.y), seed=BOT_IDS.indexOf(id), bob=Math.sin(s*1.6+seed)*.5;
+ const [cx,cy]=isoC(b.x,b.y), seed=BOT_IDS.indexOf(id), bob=RM?0:Math.sin(s*1.6+seed)*.5;
  const act=b.chat?'chat':b.act;
  ctx.save();ctx.translate(cx,cy);ctx.scale(1.12,1.12);ctx.translate(-cx,-cy);
  drawBot(id,cx,cy,b.dir,b.moving,st,SEL===id,s,act);
  ctx.restore();
- ctx.font='600 10px "Segoe UI",system-ui,sans-serif';ctx.textAlign='center';
+ ctx.font='600 10px system-ui,sans-serif';ctx.textAlign='center';
  ctx.fillStyle='rgba(0,0,0,.65)';ctx.fillText(NAME_OF[id],cx,cy+22.5);
  ctx.fillStyle=hexA(COLORS[st]||COLORS.idle,.95);ctx.fillText(NAME_OF[id],cx,cy+22);
  let tag=null;
@@ -789,61 +1074,82 @@ function drawBotFull(id,b,s){
  else if(st==='error')tag={t:'fehler',c:COLORS.error};
  else if(b.chat)tag={t:'💬',c:'#aeb8d0',big:true};
  else if(b.emote&&!b.moving)tag={t:b.emote,c:'#aeb8d0',big:true};
- if(tag&&!(tag.blink&&Math.sin(s*5)<0)){
-  ctx.font=(tag.big?'13px ':'600 10px ')+'"Segoe UI",system-ui,sans-serif';
+ if(tag&&!(tag.blink&&Math.sin(s*5)<0&&!RM)){
+  ctx.font=(tag.big?'13px ':'600 10px ')+'system-ui,sans-serif';
   const tw=ctx.measureText(tag.t).width+(tag.big?12:14), bx=cx-tw/2, by=cy-33+bob;
   rr(ctx,bx,by-13,tw,17,8);ctx.fillStyle='rgba(9,12,22,.9)';ctx.fill();
   ctx.strokeStyle=hexA(tag.c,.8);ctx.lineWidth=1;ctx.stroke();
   ctx.fillStyle='#eef2fb';ctx.fillText(tag.t,cx,by-1);
  }
+ ctx.textAlign='left';
 }
+const NEBULAS=[[.22,.14,'rgba(64,42,118,.20)'],[.82,.3,'rgba(28,90,130,.16)'],[.5,.94,'rgba(82,42,110,.15)']];
 function draw(t){
  const s=t/1000;
- ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle=PAL.space;ctx.fillRect(0,0,cv.width,cv.height);
- clampCam();ctx.setTransform(cam.scale,0,0,cam.scale,cam.tx,cam.ty);ctx.imageSmoothingEnabled=true;
- ctx.drawImage(staticCv,0,0);
- // Sternenfunkeln + Sternschnuppe
- for(let i=0;i<40;i++){const hx=hash(i,11)*WORLD_W,hy=hash(i,12)*WORLD_H;
-  ctx.globalAlpha=.15+Math.abs(Math.sin(s*1.3+i))*.5;ctx.fillStyle='#dfeaff';ctx.fillRect(hx,hy,1.4,1.4);}
+ // --- Weltraum full-bleed (Screen-Space; ferne Sterne bewegen sich nicht mit) ---
+ ctx.setTransform(1,0,0,1,0,0);
+ ctx.fillStyle=PAL.space;ctx.fillRect(0,0,cv.width,cv.height);
+ for(const [nx,ny,nc] of NEBULAS){
+  const g=ctx.createRadialGradient(nx*cv.width,ny*cv.height,10,nx*cv.width,ny*cv.height,cv.width*.42);
+  g.addColorStop(0,nc);g.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=g;ctx.fillRect(0,0,cv.width,cv.height);}
+ const starN=Math.min(420,Math.round(cv.width*cv.height/5600));
+ for(let i=0;i<starN;i++){
+  const x=hash(i,1)*cv.width,y=hash(i,2)*cv.height,r=hash(i,5)>.93?1.6:.8;
+  const tw=RM?1:(.72+Math.sin(s*1.2+i)*.28);
+  ctx.globalAlpha=(.28+hash(i,3)*.55)*tw;
+  ctx.fillStyle=hash(i,4)>.85?'#bfe0ff':'#eef3ff';ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fill();}
  ctx.globalAlpha=1;
- {const st=shootStar(s),k=(s-st.t)/1.2;if(k<1){ctx.strokeStyle=`rgba(200,225,255,${(1-k)*.9})`;ctx.lineWidth=1.5;
-  ctx.beginPath();ctx.moveTo(st.x+k*160,st.y+k*70);ctx.lineTo(st.x+k*160-22,st.y+k*70-10);ctx.stroke();}}
- // Datenstrom im Korridor
- {ctx.fillStyle=hexA(PAL.cyan,.7);ctx.shadowColor=PAL.cyan;ctx.shadowBlur=6;
+ if(!RM){const st2=shootStar(s),k=(s-st2.t)/1.2;
+  if(k<1){const sxp=st2.x/WORLD_W*cv.width,syp=st2.y/WORLD_H*cv.height;
+   ctx.strokeStyle=`rgba(200,225,255,${(1-k)*.9})`;ctx.lineWidth=1.5;
+   ctx.beginPath();ctx.moveTo(sxp+k*160,syp+k*70);ctx.lineTo(sxp+k*160-22,syp+k*70-10);ctx.stroke();}}
+ // --- Welt ---
+ ctx.setTransform(cam.scale,0,0,cam.scale,cam.tx,cam.ty);ctx.imageSmoothingEnabled=true;
+ ctx.drawImage(staticCv,0,0);
+ if(!RM){
+  // Datenstrom im Korridor
+  ctx.fillStyle=hexA(PAL.cyan,.7);ctx.shadowColor=PAL.cyan;ctx.shadowBlur=6;
   for(let i=0;i<Math.max(8,bandW);i++){const [px,py]=isoC(MARGIN+((s*3+i*1.7)%bandW),corrY0+CORR/2-.5);
-   ctx.globalAlpha=.35+Math.sin(s*3+i)*.3;ctx.beginPath();ctx.arc(px,py,1.8,0,7);ctx.fill();}
-  ctx.shadowBlur=0;ctx.globalAlpha=1;}
+   ctx.globalAlpha=.3+Math.sin(s*3+i)*.25;ctx.beginPath();ctx.arc(px,py,1.8,0,7);ctx.fill();}
+  ctx.shadowBlur=0;ctx.globalAlpha=1;
+ }
  // Möbel-Animationen
  for(const f of FURN)furnAnim(f,s);
  // Bots nach y sortiert (untere verdecken obere)
  const order=[...BOT_IDS].sort((a,b2)=>bots[a].y-bots[b2].y);
  for(const id of order)drawBotFull(id,bots[id],s);
- // Partikel + Licht
+ // Partikel + Shuttles
  for(const p of parts){ctx.globalAlpha=Math.max(0,Math.min(1,p.life));ctx.fillStyle=p.c;ctx.beginPath();ctx.arc(p.x,p.y,p.s*.7,0,7);ctx.fill();}
- ctx.globalAlpha=1;ctx.drawImage(lightCv,0,0);
+ ctx.globalAlpha=1;
+ drawPlanes(s);
  // Nachricht des gewählten Agenten
- if(SEL&&DATA){const a=DATA.agents[SEL],b=bots[SEL];if(a&&a.message){const [X,Y]=isoC(b.x,b.y);
-  ctx.font='12px Consolas,monospace';ctx.textAlign='left';
+ if(SEL&&DATA){const a=DATA.agents[SEL],b=bots[SEL];if(a&&a.message&&b){const [X,Y]=isoC(b.x,b.y);
+  ctx.font='12px ui-monospace,Consolas,monospace';ctx.textAlign='left';
   const msg=a.message.length>42?a.message.slice(0,41)+'…':a.message, tw=ctx.measureText(msg).width+16;
   const bx=Math.max(6,Math.min(WORLD_W-tw-6,X-tw/2)), by=Y-54;
-  rr(ctx,bx,by-16,tw,22,4);ctx.fillStyle='rgba(10,13,24,.93)';ctx.fill();ctx.strokeStyle='#4b5b8a';ctx.lineWidth=1;ctx.stroke();
+  rr(ctx,bx,by-16,tw,22,5);ctx.fillStyle='rgba(10,13,24,.93)';ctx.fill();ctx.strokeStyle='#4b5b8a';ctx.lineWidth=1;ctx.stroke();
   ctx.fillStyle='#e8edf7';ctx.fillText(msg,bx+8,by-1);
   ctx.fillStyle='rgba(10,13,24,.93)';ctx.beginPath();ctx.moveTo(X-5,by+6);ctx.lineTo(X+5,by+6);ctx.lineTo(X,by+13);ctx.fill();}}
+ // --- Vignette (Screen-Space, fokussiert die Mitte) ---
+ ctx.setTransform(1,0,0,1,0,0);
+ const vg=ctx.createRadialGradient(cv.width/2,cv.height/2,Math.min(cv.width,cv.height)*.42,cv.width/2,cv.height/2,Math.max(cv.width,cv.height)*.78);
+ vg.addColorStop(0,'rgba(3,5,12,0)');vg.addColorStop(1,'rgba(3,5,12,.5)');
+ ctx.fillStyle=vg;ctx.fillRect(0,0,cv.width,cv.height);
 }
 
 let lastT=0;
 function loop(t){
  const dt=Math.min(.06,(t-lastT)/1000);lastT=t;
+ camTick(dt);
  updateBots(dt,performance.now());
- spawnParts(t);updateParts(dt);
+ spawnParts();updateParts(dt);updatePlanes(dt);
  draw(t);
  requestAnimationFrame(loop);
 }
 
 /* ================= Kamera-Steuerung =================
- Ziehen schwenkt, Rad zoomt (auf den Cursor), Doppelklick zeigt alles,
- Tippen/Klick ohne Ziehen wählt den nächsten Bot. Pointer-Events decken
- Maus UND Touch ab (Pinch-Zoom bleibt außen vor – Rad/Doppelklick genügen). */
+ Ziehen schwenkt (direkt), Rad zoomt weich auf den Cursor, Doppelklick zeigt
+ alles, Klick ohne Ziehen wählt den nächsten Bot. Pointer-Events = Maus+Touch. */
 function canvasXY(e){const r=cv.getBoundingClientRect();
  return {mx:(e.clientX-r.left)*cv.width/r.width, my:(e.clientY-r.top)*cv.height/r.height, rw:cv.width/r.width};}
 function toWorld(e){const {mx,my}=canvasXY(e);return {mx,my,wx:(mx-cam.tx)/cam.scale,wy:(my-cam.ty)/cam.scale};}
@@ -853,24 +1159,55 @@ cv.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,cx:cam.x,cy:
 cv.addEventListener('pointermove',e=>{if(!drag)return;
  const {rw}=canvasXY(e), dx=e.clientX-drag.x, dy=e.clientY-drag.y;
  if(Math.abs(dx)+Math.abs(dy)>4)drag.moved=true;
- cam.x=drag.cx-dx*rw/cam.scale; cam.y=drag.cy-dy*rw/cam.scale; clampCam();});
+ cam.x=drag.cx-dx*rw/cam.scale; cam.y=drag.cy-dy*rw/cam.scale;
+ camT.x=cam.x;camT.y=cam.y;clampObj(camT);clampCam();});
 cv.addEventListener('pointerup',e=>{if(drag&&!drag.moved)pickBot(e); drag=null;});
 cv.addEventListener('pointercancel',()=>{drag=null;});
 cv.addEventListener('wheel',e=>{e.preventDefault();
- const {mx,my,wx,wy}=toWorld(e);
- cam.scale*=e.deltaY<0?1.12:1/1.12; clampCam();
- cam.x=wx+(cv.width/2-mx)/cam.scale; cam.y=wy+(cv.height/2-my)/cam.scale; clampCam();
+ const {mx,my}=canvasXY(e);
+ const wx=(mx-cam.tx)/cam.scale, wy=(my-cam.ty)/cam.scale;
+ camT.scale=Math.max(camMin,Math.min(3.5,camT.scale*(e.deltaY<0?1.16:1/1.16)));
+ camT.x=wx-(mx-cv.width/2)/camT.scale;
+ camT.y=wy-(my-cv.height/2)/camT.scale;
+ clampObj(camT);
 },{passive:false});
 cv.addEventListener('dblclick',camFit);
 function pickBot(e){const {wx,wy}=toWorld(e);
  let best=null,bd=1e9;
  for(const id of BOT_IDS){const b=bots[id];const [px,py]=isoC(b.x,b.y);const d=Math.hypot(px-wx,(py-8)-wy);if(d<26&&d<bd){bd=d;best=id;}}
  if(best){select(best);centerOn(best);}}
-function centerOn(id){const b=bots[id];const [px,py]=isoC(b.x,b.y);cam.x=px;cam.y=py;clampCam();}
+function centerOn(id){const b=bots[id];const [px,py]=isoC(b.x,b.y);
+ camT.x=px;camT.y=py;camT.scale=Math.max(camT.scale,1.35);clampObj(camT);}
+
+/* ================= API-Helfer ================= */
+async function apiPost(url,body){
+ const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
+ const j=await r.json().catch(()=>({}));
+ if(!r.ok)throw new Error(j.error||r.status);
+ return j;
+}
+function flash(el,txt,ok){if(!el)return;el.textContent=txt;el.style.color=ok?'var(--grn)':'var(--red)';setTimeout(()=>{if(el)el.textContent='';},3200);}
+async function startRun(id,btn,prompt){
+ if(FORCE_DEMO){ // Vorschau: Lauf nur simulieren, nie echte Agents starten
+  const a=DATA.agents[id];
+  if(a&&a.status!=='running'){a.status='running';a.phase='Gestartet (Demo)';a.progress=5;a.message='Simulierter Lauf…';applyData();}
+  return;
+ }
+ const t=btn.textContent;btn.disabled=true;btn.textContent='…';
+ try{
+  await apiPost('/api/run/'+id,prompt?{prompt}:undefined);
+  const a=DATA.agents[id];if(a){a.status='running';a.phase='Gestartet';a.progress=2;a.message='Ich lege los…';}
+ }catch(err){
+  btn.textContent=String(err.message||'').includes('läuft')?'LÄUFT SCHON':'FEHLER';
+  await new Promise(r=>setTimeout(r,1600));
+ }
+ btn.textContent=t;btn.disabled=!API;   // Button zurücksetzen; Panels leiten ihren Zustand neu ab
+ applyData();
+}
 
 /* ================= Mission Control ================= */
-/* Master = Live-Rollup über die Flotte. Immer aktuell, ohne eigenen Lauf.
-   Ein echter Master-Eintrag (Kommandant läuft gerade) überschreibt den Rollup. */
+/* Master = Live-Rollup über die Flotte. Ein echter Master-Eintrag
+   (Kommandant läuft gerade) überschreibt den Rollup. */
 function computeMaster(){
  const list=FLEET_IDS.map(id=>DATA.agents[id]).filter(Boolean);
  const cnt={running:0,ok:0,idle:0,waiting:0,error:0};
@@ -878,111 +1215,186 @@ function computeMaster(){
  let status='idle';
  if(cnt.error)status='error';else if(cnt.running)status='running';
  else if(cnt.waiting)status='waiting';else if(cnt.ok&&!cnt.idle)status='ok';
- const parts=[];
- if(cnt.running)parts.push(cnt.running+' läuft');
- if(cnt.waiting)parts.push(cnt.waiting+' wartet');
- if(cnt.error)parts.push(cnt.error+' Fehler');
- if(!parts.length)parts.push('alles ruhig');
+ const parts2=[];
+ if(cnt.running)parts2.push(cnt.running+' läuft');
+ if(cnt.waiting)parts2.push(cnt.waiting+' wartet');
+ if(cnt.error)parts2.push(cnt.error+' Fehler');
+ if(!parts2.length)parts2.push('alles ruhig');
  const run=list.filter(a=>a.status==='running');
  const progress=run.length?Math.round(run.reduce((s,a)=>s+(a.progress||0),0)/run.length):(status==='ok'?100:0);
  const real=DATA.agents.master||{};
- const synth={name:'Kommandozentrale',status,phase:cnt.running?('koordiniert '+cnt.running+' Lauf'+(cnt.running>1?'e':'')):(cnt.waiting?'wartet auf dein Go':cnt.error?'Fehler im Blick':'Alle im Blick'),
-  progress,message:parts.join(' · '),_counts:cnt,
+ const synth={name:'Kommandant',status,phase:cnt.running?('koordiniert '+cnt.running+' Lauf'+(cnt.running>1?'e':'')):(cnt.waiting?'wartet auf dein Go':cnt.error?'Fehler im Blick':'Alle im Blick'),
+  progress,message:parts2.join(' · '),_counts:cnt,
   last_run:real.last_run||null,next_run:real.next_run||'laufend',outputs:real.outputs||[],log_tail:real.log_tail||'(Kommandant noch nicht gelaufen)'};
  if(real.status==='running'){synth.status='running';synth.phase=real.phase||synth.phase;synth.progress=real.progress??synth.progress;synth.message=real.message||synth.message;}
  DATA.agents.master=synth;
 }
 function applyData(){
+ try{applyDataInner();}catch(e){showErr((e&&e.stack)||String(e));}
+}
+function applyDataInner(){
  computeMaster();
  BOT_IDS.forEach(id=>{
   const b=bots[id];const a=DATA.agents[id]||{};
   const st=a.status||'idle';
-  if(b.status!==st){b.status=st;b.nextThink=0;}
+  if(b.status!==st){const prev=b.status;b.status=st;b.nextThink=0;
+   if(booted&&id!=='master')onStatusChange(id,prev,st);}   // Statuswechsel -> Abflug/Landung
  });
+ booted=true;
  $('#meta').innerHTML='STAND '+new Date(DATA.updated).toLocaleString('de-AT')+
   '<span class="src">'+(DATA.demo?'DEMO':'LIVE')+(API?' · API':'')+'</span>';
- renderAgents();renderTab();
- if(CMD_OPEN)renderCmd();
+ renderMasterCard();renderBoard();renderCharts();
+ if(DRAWER_OPEN)refreshDrawer();
+ if(CMD_OPEN)updateCmd();
 }
-function renderAgents(){
+function statusChips(cnt){
+ return [['running','läuft'],['waiting','wartet'],['error','Fehler'],['ok','fertig'],['idle','ruht']]
+  .filter(([k])=>cnt[k]).map(([k,l])=>`<span class="chip" style="color:${COLORS[k]}"><i></i>${cnt[k]} ${l}</span>`).join('')
+  ||'<span class="chip mutc"><i></i>alles ruhig</span>';
+}
+/* Master-Karte (oben in der linken Spalte) → öffnet die Kommandozentrale */
+function renderMasterCard(){
  const m=DATA.agents.master||{status:'idle'};
  const mc=COLORS[m.status]||COLORS.idle;
- const cmdBtn=`<button id="cmdopen" class="cmdbtn" style="--mc:${mc}" title="Kommandozentrale öffnen">
-   <span class="cdot" style="color:${mc}"></span>
-   <span class="ctx"><b>Kommandozentrale</b><small>${esc(m.message||'–')}</small></span>
-   <span class="cgo">▣ öffnen</span></button>`;
- const rows=FLEET_IDS.map(id=>{
-  const a=DATA.agents[id]||{name:id,status:'idle'};
-  const c=COLORS[a.status]||COLORS.idle;
-  const running=a.status==='running';
-  return `<button class="arow ${SEL===id?'sel':''}" data-id="${id}" style="color:${c}">
-   <span class="dot"></span>
-   <span class="nm">${esc(a.name||id)}<small>${LABELS[a.status]||esc(a.status)} · ${esc(a.phase||'–')}</small></span>
-   <span class="pr">${a.progress!=null?a.progress+'%':''}</span>
-   <span><button class="runbtn" data-run="${id}" ${!API?'disabled':''}
-     title="${!API?'Nur mit laufendem server.js verfügbar (node dashboard/server.js)':(running?'Läuft gerade – Neustart wird abgewiesen':'Agent jetzt starten')}">▶ START</button></span>
+ const mrun=m.status==='running'&&(m.phase||'').indexOf('koordiniert')!==0; // echter Kommandant-Lauf
+ $('#master').innerHTML=`<div class="mcard" style="--mc:${mc}">
+   <div class="mhead"><span class="mdot"></span>
+    <div class="mtt"><b>Kommandant</b><small>${esc(m.phase||'–')}</small></div>
+    <span class="mstate">${LABELS[m.status]||esc(m.status)}</span></div>
+   <div class="mmsg">${esc(m.message||'–')}</div>
+   <div class="mchips">${statusChips(m._counts||{})}</div>
+   <div class="mact">
+    <button id="cmdopen" class="btn prime" title="Kommandozentrale: Flotte, Zeitplan, Steuerung, Uptime">⌘ Zentrale öffnen</button>
+    <button id="mcoord" class="btn" ${!API||mrun?'disabled':''} title="${API?'Kommandant verschafft sich den Überblick und stößt fällige Läufe an':'Nur mit laufendem server.js'}">▶ Koordinieren</button>
+   </div></div>`;
+ $('#cmdopen').addEventListener('click',openCmd);
+ const mco=$('#mcoord');
+ if(mco)mco.addEventListener('click',()=>startRun('master',mco));
+}
+/* Kennzahlen-Graphen unter der Abflugtafel */
+function renderCharts(){
+ const el=$('#charts');if(!el)return;
+ const cnt=(DATA.agents.master&&DATA.agents.master._counts)||{};
+ const order=[['running','laufen'],['ok','fertig'],['waiting','warten'],['error','Fehler'],['idle','ruhen']];
+ const active=order.filter(([k])=>cnt[k]);
+ const segs=active.map(([k])=>`<span style="flex:${cnt[k]} 1 0;background:${COLORS[k]}"></span>`).join('')
+  ||`<span style="flex:1;background:oklch(45% 0.02 258)"></span>`;
+ const leg=active.map(([k,l])=>`<span><i style="background:${COLORS[k]}"></i><b>${cnt[k]}</b> ${l}</span>`).join('')
+  ||'<span>alles ruhig</span>';
+ let html=`<div class="gcard"><h4>Flotten-Status <span>${FLEET_IDS.length} Agents</span></h4>
+   <div class="statbar" role="img" aria-label="Statusverteilung der Flotte">${segs}</div>
+   <div class="statleg">${leg}</div></div>`;
+ const up=UPTIME,sites=(up&&up.sites)||[],hist=(up&&up.history)||[];
+ if(sites.length){
+  const pal=['#53e0ff','#5df2b4','#ff9d5c','#c99cff','#ffcf5c','#ff5ca8'];
+  const series=sites.map((s,i)=>({name:s.name,color:pal[i%pal.length],
+    pts:hist.map(ptn=>{const q=(ptn.p||[]).find(x=>x.n===s.name);return q?q.ms:null;})}));
+  const avail=name=>{const rel=hist.map(ptn=>(ptn.p||[]).find(x=>x.n===name)).filter(Boolean);return rel.length?Math.round(rel.filter(x=>x.up===1).length/rel.length*100):null;};
+  html+=`<div class="gcard"><h4>Antwortzeit <span>ms · ${hist.length} Punkte</span></h4>
+    ${svgLine(series,{zero:true,aria:'Antwortzeit je Website'})}
+    <div class="legend2">${series.map(s=>`<span><i style="background:${s.color};height:8px;border-radius:2px"></i>${esc(s.name)}</span>`).join('')}</div></div>`;
+  html+=`<div class="gcard"><h4>SSL-Restlaufzeit <span>Tage · Schwelle 21</span></h4>
+    ${svgBars(sites.map(s=>({label:s.name,value:s.ssl_days})),{threshold:21,aria:'SSL-Restlaufzeit'})}</div>`;
+  const tiles=sites.map(s=>{const c=COLORS[s.state==='ok'?'ok':s.state==='slow'?'waiting':'error']||COLORS.idle,av=avail(s.name);
+    return `<div class="gtile" style="color:${c}"><span class="gd"></span><span class="gn">${esc(s.name)}</span>
+      <span class="gv"><b>${s.ms!=null?s.ms+' ms':'–'}</b> · ${av!=null?av+' %':'–'}${s.ssl_days!=null&&s.ssl_days<21?' ⚠':''}</span></div>`;}).join('');
+  html+=`<div class="gcard"><h4>Websites <span>Antwort · Verfügbar</span></h4><div class="gtiles">${tiles}</div></div>`;
+ }else{
+  html+=`<div class="gcard"><h4>Uptime</h4><div class="chart-empty">Noch keine Uptime-Daten. Starte den Uptime-Wächter.</div></div>`;
+ }
+ el.innerHTML=html;
+}
+/* Auswahl: Master → Zentrale, Agent → Detail-Drawer (Popup) */
+function select(id){
+ if(id==='master'){closeDrawer();SEL='master';renderBoard();openCmd();return;}
+ openDrawer(id);
+}
+let DRAWER_OPEN=false,RUNSEL=null;
+/* Nur der Drawer-Kopf wird live nachgezogen (Status, Phase, Fortschritt). Der
+   Tab-Inhalt wird NICHT bei jedem Tick neu gebaut – sonst würden Log-Verlauf,
+   Scroll-Position und getippter Auftrag verloren gehen. */
+function drawerHeader(){
+ if(!DRAWER_OPEN||!SEL||SEL==='master'||!DATA)return;
+ const a=DATA.agents[SEL]||{},c=COLORS[a.status]||COLORS.idle;
+ $('#ddot').style.color=c;
+ $('#dname').textContent=a.name||SEL;
+ $('#dstate').textContent=(LABELS[a.status]||a.status||'')+(a.phase?' · '+a.phase:'')+(a.status==='running'&&a.progress!=null?' · '+a.progress+'%':'');
+ const dr=$('#drun');
+ dr.disabled=!API||a.status==='running';
+ dr.title=!API?'Nur mit laufendem server.js verfügbar':(a.status==='running'?'Läuft gerade – Neustart wird abgewiesen':'Agent jetzt starten');
+}
+function refreshDrawer(){
+ drawerHeader();
+ // Übersicht darf live nachziehen – außer man tippt gerade im Auftragsfeld
+ if(TAB==='info'&&document.activeElement!==$('#ordin'))renderTab();
+}
+function openDrawer(id){
+ SEL=id;DRAWER_OPEN=true;RUNSEL=null;
+ if(TAB==='log'&&!API)TAB='info';
+ drawerHeader();renderTab();renderBoard();centerOn(id);
+ $('#drawer').classList.add('open');$('#drawer').setAttribute('aria-hidden','false');
+ $('#dscrim').classList.add('on');
+}
+function closeDrawer(){
+ if(!DRAWER_OPEN)return;
+ DRAWER_OPEN=false;SEL=null;RUNSEL=null;clearTimeout(logTimer);
+ $('#drawer').classList.remove('open');$('#drawer').setAttribute('aria-hidden','true');
+ $('#dscrim').classList.remove('on');
+ renderBoard();
+}
+
+/* ===== Abflugtafel ===== */
+const BOARD_WORD={running:'LÄUFT',ok:'FERTIG',waiting:'WARTET',idle:'BEREIT',error:'FEHLER'};
+let boardPrev={};
+function renderBoard(){
+ if(!DATA)return;
+ const ids=['master',...FLEET_IDS];
+ const rows=ids.map(id=>{
+  const a=DATA.agents[id]||{status:'idle'};
+  const st=a.status||'idle', c=COLORS[st]||COLORS.idle;
+  const nm=id==='master'?'KOMMANDO':(NAME_OF[id]||id);
+  const gate=id==='master'?(a.phase||'laufend'):(a.next_run||'—');
+  const changed=(boardPrev[id]!==undefined && boardPrev[id]!==st);
+  boardPrev[id]=st;
+  return `<button class="brow ${SEL===id?'sel':''}" data-id="${id}" style="color:${c}"
+    title="${esc(a.message||nm)}">
+   <span class="bdot"></span>
+   <span class="bnm">${esc(nm)}</span>
+   <span class="bst ${changed&&!RM?'flip':''}">${esc(BOARD_WORD[st]||st.toUpperCase())}</span>
+   <span class="bnx">${esc(gate)}</span>
   </button>`;
  }).join('');
- $('#agents').innerHTML=cmdBtn+`<div class="navlabel">Flotte · ${FLEET_IDS.length} Agents</div>`+rows;
- $('#cmdopen').addEventListener('click',()=>{SEL='master';openCmd();});
- document.querySelectorAll('.arow').forEach(el=>el.addEventListener('click',e=>{
-  if(e.target.closest('.runbtn'))return;
-  select(el.dataset.id);
- }));
- document.querySelectorAll('.runbtn').forEach(el=>el.addEventListener('click',async e=>{
-  e.stopPropagation();
-  const id=el.dataset.run;
-  el.disabled=true;el.textContent='…';
-  try{
-   const r=await fetch('/api/run/'+id,{method:'POST'});
-   const j=await r.json();
-   if(!r.ok)throw new Error(j.error||r.status);
-   const a=DATA.agents[id];if(a){a.status='running';a.phase='Gestartet';a.progress=2;a.message='Ich lege los…';}
-   applyData();
-  }catch(err){
-   el.textContent=String(err.message||'').includes('läuft')?'LÄUFT SCHON':'FEHLER';
-   setTimeout(()=>renderAgents(),2200);
-  }
- }));
-}
-function select(id){
- SEL=id;
- if(id!=='master')closeCmd();
- renderAgents();renderTab();
- if(id==='master')openCmd();
+ const box=$('#brows'); box.innerHTML=rows;
+ box.querySelectorAll('.brow').forEach(b=>b.addEventListener('click',()=>select(b.dataset.id)));
+ const cl=$('#bclock');
+ if(cl&&DATA.updated){const d=new Date(DATA.updated);
+  if(!isNaN(d))cl.textContent=d.toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'});}
 }
 document.querySelectorAll('#tabs button').forEach(b=>b.addEventListener('click',()=>{
- TAB=b.dataset.tab;
+ TAB=b.dataset.tab;RUNSEL=null;   // Tabwechsel -> Log wieder auf den aktuellen (Live-)Lauf
  document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on',x===b));
  renderTab();
 }));
 function renderMaster(body){
- const chip=(k,label)=>{const n=(DATA.agents.master._counts||{})[k]||0;
-  return n?`<span style="color:${COLORS[k]}"><i style="background:${COLORS[k]}"></i>${n} ${label}</span>`:'';};
+ const m=DATA.agents.master;
  const flagged=st=>FLEET_IDS.filter(id=>(DATA.agents[id]||{}).status===st);
  const errs=flagged('error'),waits=flagged('waiting');
  const line=id=>{const a=DATA.agents[id]||{};return esc(a.name||id)+' — '+esc(a.message||a.phase||'');};
  body.innerHTML=`
-  <button class="cmdbtn" id="reopencmd" style="--mc:${COLORS[DATA.agents.master.status]||COLORS.idle};margin:0 0 12px;width:100%">
-   <span class="cdot" style="color:${COLORS[DATA.agents.master.status]||COLORS.idle}"></span>
-   <span class="ctx"><b>Kommandozentrale öffnen</b><small>Vollbild: Flotte, Charts, Uptime</small></span><span class="cgo">▣</span></button>
-  <div class="plbl">Flotte · ${FLEET_IDS.length} Agents</div>
-  <div class="mcounts">${['running','waiting','error','ok','idle'].map(k=>chip(k,{running:'laufen',waiting:'warten',error:'Fehler',ok:'fertig',idle:'ruhen'}[k])).filter(Boolean).join('')||'–'}</div>
   ${errs.length?`<div class="mflag err"><b>⚠ Fehler</b><br>${errs.map(line).join('<br>')}</div>`:''}
   ${waits.length?`<div class="mflag wait"><b>? Wartet auf dein Go</b><br>${waits.map(line).join('<br>')}</div>`:''}
   <div class="plbl">Alle Agents im Detail</div>
   <div class="mtable">${FLEET_IDS.map(id=>{const a=DATA.agents[id]||{};const c=COLORS[a.status]||COLORS.idle;
-    return `<button class="mrow" data-id="${id}">
-      <span class="mdot" style="background:${c};color:${c}"></span>
-      <span class="mn">${esc(a.name||id)}<small>${LABELS[a.status]||esc(a.status)} · ${esc(a.phase||'–')}</small></span>
+    return `<button class="mrow" data-id="${id}" style="color:${c}">
+      <span class="mdot2"></span>
+      <span class="mn" style="color:var(--ink)">${esc(a.name||id)}<small>${LABELS[a.status]||esc(a.status)} · ${esc(a.phase||'–')}</small></span>
       <span class="mp mono">${a.progress!=null?a.progress+'%':''}</span>
       <span class="mnext mono">${esc(a.next_run||'–')}</span>
     </button>`;}).join('')}</div>
   <div class="plbl">Kommandant-Log</div>
-  <pre style="max-height:22vh">${esc(DATA.agents.master.log_tail||'–')}</pre>
-  <p class="hint">Klick auf eine Zeile öffnet den Agent. „▶ START" oben lässt den Kommandant jetzt koordinieren.</p>`;
- body.querySelectorAll('.mrow').forEach(el=>el.addEventListener('click',()=>select(el.dataset.id)));
- const rc=body.querySelector('#reopencmd');if(rc)rc.addEventListener('click',openCmd);
+  <pre style="max-height:22vh">${esc(m.log_tail||'–')}</pre>
+  <p class="hint">Klick auf eine Zeile öffnet den Agent. Zeitplan &amp; Steuerung: „⌘ Zentrale" oben.</p>`;
+ body.querySelectorAll('.mrow').forEach(el=>el.addEventListener('click',()=>{select(el.dataset.id);centerOn(el.dataset.id);}));
 }
 function renderTab(){
  const body=$('#tabbody');
@@ -995,7 +1407,7 @@ function renderTab(){
   body.innerHTML=`
    <span class="st" style="color:${c};border-color:${c}">${LABELS[a.status]||esc(a.status)}</span>
    <div class="plbl">Aktuelle Phase</div><div>${esc(a.phase||'–')}</div>
-   <div class="plbl">Fortschritt</div><div class="pbar"><div style="width:${Math.max(0,Math.min(100,a.progress||0))}%"></div></div>
+   <div class="plbl">Fortschritt</div><div class="pbar"><div style="transform:scaleX(${(Math.max(0,Math.min(100,a.progress||0))/100).toFixed(2)})"></div></div>
    <div class="plbl">Meldung</div><div>${esc(a.message||'–')}</div>
    ${SEL==='uptime-waechter'?'<div class="plbl">Live-Charts</div>'+uptimeBlock():''}
    <div class="plbl">Was zuletzt passiert ist</div>
@@ -1003,17 +1415,60 @@ function renderTab(){
    <div class="plbl">Ergebnisse</div>
    ${(a.outputs&&a.outputs.length)?'<ul>'+a.outputs.map(o=>'<li><code>'+esc(o)+'</code></li>').join('')+'</ul>':'<span class="hint">noch keine</span>'}
    <div class="plbl">Letzter / Nächster Lauf</div>
-   <div class="mono" style="font-size:.76rem">${a.last_run?new Date(a.last_run).toLocaleString('de-AT'):'–'} → ${esc(a.next_run||'–')}</div>`;
+   <div class="mono" style="font-size:.76rem">${a.last_run?new Date(a.last_run).toLocaleString('de-AT'):'–'} → ${esc(a.next_run||'–')}</div>
+   ${SEL!=='master'?`<div class="plbl">Eigener Auftrag</div>
+   <div class="orow"><input class="cin" id="ordin" ${API?'':'disabled'} placeholder="${API?'z. B. Prüfe nur ferienhaus-tirol.at':'Nur mit laufendem server.js'}">
+   <button class="btn" id="ordgo" ${API?'':'disabled'}>▶</button></div>`:''}`;
+  const og=$('#ordgo');
+  if(og)og.addEventListener('click',()=>{
+   const txt=($('#ordin').value||'').trim();if(!txt)return;
+   startRun(SEL,og,'Nutze den Subagent '+SEL+'. Sebastians Auftrag für diesen Lauf: '+txt);
+  });
  }else if(TAB==='log'){
-  body.innerHTML=`<div class="plbl">Log · ${esc(a.name||SEL)}</div><pre id="logpre">${esc(a.log_tail||'(leer)')}</pre>
-   ${API?'':'<p class="hint" style="margin-top:8px">Statischer Modus: zeigt log_tail aus status.json. Live-Log nur mit server.js.</p>'}`;
-  if(API)pollLog();
+  body.innerHTML=`<div class="plbl">Läufe · ${esc(a.name||SEL)}</div>
+   <div id="runlist" class="runlist">${API?'<span class="hint">…</span>':'<span class="hint">Verlauf nur mit laufendem server.js.</span>'}</div>
+   <div class="plbl">Transkript</div>
+   <pre id="logpre">${esc(a.log_tail||'(leer)')}</pre>
+   ${API?'':'<p class="hint" style="margin-top:8px">Statischer Modus: zeigt nur <code>log_tail</code> aus status.json. Voller Verlauf &amp; Live-Log mit <code>node dashboard/server.js</code>.</p>'}`;
+  if(API){loadRuns();if(RUNSEL===null)pollLog();else showRun(RUNSEL);}
  }
+}
+/* Lauf-Historie: Liste aller aufgezeichneten Läufe; Klick zeigt das jeweilige Volltext-Log. */
+async function loadRuns(){
+ const box=$('#runlist');if(!box||!API||!SEL)return;
+ let runs=[];try{runs=await (await fetch('/api/runs/'+SEL)).json();}catch(e){}
+ if(!$('#runlist'))return; // Tab inzwischen gewechselt
+ const dur=(t0,t1)=>{const d=(new Date(t1)-new Date(t0))/1000;return isFinite(d)&&d>=0?(d<60?Math.round(d)+'s':Math.round(d/60)+'m'):'';};
+ const a=DATA.agents[SEL]||{},running=a.status==='running';
+ const live=`<button class="runitem ${RUNSEL===null?'sel':''}" data-run="" style="color:${running?COLORS.running:'var(--mut)'}">
+   <span class="rd"></span><span class="rt">Aktueller Lauf</span><span class="rm">${running?'live':'zuletzt'}</span></button>`;
+ const items=runs.map(r=>{
+   const c=r.rc===0?(r.status==='waiting'?COLORS.waiting:COLORS.ok):COLORS.error;
+   const t=new Date(r.t0),ts=isNaN(t)?esc(r.run):t.toLocaleString('de-AT',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+   const lbl=r.status?(LABELS[r.status]||r.status):(r.rc===0?'fertig':'fehler'),d=dur(r.t0,r.t1);
+   return `<button class="runitem ${RUNSEL===r.run?'sel':''}" data-run="${esc(r.run)}" style="color:${c}"
+     title="${esc(r.message||'')}"><span class="rd"></span><span class="rt">${esc(ts)}</span><span class="rm">${esc(lbl)}${d?' · '+d:''}</span></button>`;
+ }).join('');
+ box.innerHTML=live+(items||'<span class="hint" style="display:block;margin-top:5px">Noch keine früheren Läufe aufgezeichnet.</span>');
+ box.querySelectorAll('.runitem').forEach(el=>el.addEventListener('click',()=>selectRun(el.dataset.run||null)));
+}
+function selectRun(run){
+ RUNSEL=run;
+ const box=$('#runlist');if(box)box.querySelectorAll('.runitem').forEach(el=>el.classList.toggle('sel',(el.dataset.run||null)===run));
+ if(run===null){const pre=$('#logpre');if(pre)pre.textContent='(lade…)';pollLog();}
+ else showRun(run);
+}
+async function showRun(run){
+ clearTimeout(logTimer);
+ const pre=$('#logpre');if(pre)pre.textContent='(lade Lauf…)';
+ try{const j=await (await fetch('/api/runlog?id='+encodeURIComponent(SEL)+'&run='+encodeURIComponent(run))).json();
+   if(pre&&RUNSEL===run){pre.textContent=j.text||'(leer)';pre.scrollTop=0;}}
+ catch(e){if(pre)pre.textContent='(Lauf-Log nicht gefunden)';}
 }
 let logTimer=null;
 async function pollLog(){
  clearTimeout(logTimer);
- if(TAB!=='log'||!SEL||!API)return;
+ if(TAB!=='log'||!SEL||!API||RUNSEL!==null)return;   // nur den Live-Lauf pollen, nicht ein gewähltes Alt-Log
  try{
   const r=await fetch('/api/log/'+SEL);const j=await r.json();
   const pre=$('#logpre');
@@ -1041,41 +1496,41 @@ async function renderReports(body){
  }));
 }
 
-/* ================= Kommandozentrale (Overlay + Charts) ================= */
+/* ================= Kommandozentrale (Overlay) ================= */
 function openCmd(){CMD_OPEN=true;const el=$('#cmd');el.classList.add('on');el.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';
  if(API&&!SCHEDULE)loadSchedule().then(()=>{if(CMD_OPEN)renderCmd();});
  renderCmd();}
 function closeCmd(){if(!CMD_OPEN)return;CMD_OPEN=false;const el=$('#cmd');el.classList.remove('on');el.setAttribute('aria-hidden','true');document.body.style.overflow='';}
 
-/* Multi-Linien-Zeitchart (Inline-SVG, self-contained). series:[{name,color,pts:[num|null]}] */
+/* Multi-Linien-Zeitchart (Inline-SVG). series:[{name,color,pts:[num|null]}] */
 function svgLine(series,o){
- o=o||{};const w=520,h=150,pl=40,pr=12,pt=12,pb=18;
+ o=o||{};const w=560,h=150,pl=40,pr=12,pt=12,pb=18;
  const n=Math.max(0,...series.map(s=>s.pts.length));
  const vals=series.flatMap(s=>s.pts).filter(v=>v!=null&&!isNaN(v));
  if(n<2||vals.length<2)return `<div class="chart-empty">Sammelt Daten – Liniengrafik ab 2 Messpunkten.</div>`;
  let max=Math.max(...vals),min=o.zero?0:Math.min(...vals);
  if(max<=min)max=min+1;
  const X=i=>pl+(i/(n-1))*(w-pl-pr), Y=v=>pt+(1-(v-min)/(max-min))*(h-pt-pb);
- const grid=[max,(max+min)/2,min].map(v=>`<line class="gl" x1="${pl}" y1="${Y(v).toFixed(1)}" x2="${w-pr}" y2="${Y(v).toFixed(1)}"/><text class="gt" x="2" y="${(Y(v)+3).toFixed(1)}">${Math.round(v)}</text>`).join('');
+ const grid2=[max,(max+min)/2,min].map(v=>`<line class="gl" x1="${pl}" y1="${Y(v).toFixed(1)}" x2="${w-pr}" y2="${Y(v).toFixed(1)}"/><text class="gt" x="2" y="${(Y(v)+3).toFixed(1)}">${Math.round(v)}</text>`).join('');
  const lines=series.map(s=>{let d='',pen=false;s.pts.forEach((v,i)=>{if(v==null||isNaN(v)){pen=false;return;}d+=(pen?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1)+' ';pen=true;});return d?`<path d="${d}" fill="none" stroke="${s.color}" stroke-width="1.6" stroke-linejoin="round"/>`:'';}).join('');
  const dots=series.map(s=>{for(let i=s.pts.length-1;i>=0;i--){const v=s.pts[i];if(v!=null&&!isNaN(v))return `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="2.6" fill="${s.color}"/>`;}return '';}).join('');
- return `<svg viewBox="0 0 ${w} ${h}" class="chart" role="img" aria-label="${esc(o.aria||'Verlauf')}">${grid}${lines}${dots}</svg>`;
+ return `<svg viewBox="0 0 ${w} ${h}" class="chart" role="img" aria-label="${esc(o.aria||'Verlauf')}">${grid2}${lines}${dots}</svg>`;
 }
 /* Horizontale Balken mit Warnschwelle. rows:[{label,value}] */
 function svgBars(rows,o){
- o=o||{};const w=520,pl=132,pr=48,rh=30,tp=6,thr=o.threshold||21;
+ o=o||{};const w=560,pl=132,pr=48,rh=30,tp=6,thr=o.threshold||21;
  const h=tp*2+rows.length*rh;
  const max=Math.max(thr*1.25,...rows.map(r=>r.value||0),1);
  const X=v=>pl+(v/max)*(w-pl-pr);
  const bars=rows.map((r,i)=>{const y=tp+i*rh+5,v=r.value;
    const col=v==null?'var(--mut)':(v<thr?'var(--red)':(v<thr*2?'var(--amb)':'var(--grn)'));
    const bw=Math.max(2,X(v||0)-pl);
-   return `<text class="bl" x="0" y="${y+13}">${esc(r.label)}</text><rect x="${pl}" y="${y}" width="${bw.toFixed(1)}" height="16" rx="2" fill="${col}"/><text class="bv" x="${(X(v||0)+6).toFixed(1)}" y="${y+13}">${v==null?'?':v+'d'}</text>`;}).join('');
+   return `<text class="bl" x="0" y="${y+13}">${esc(r.label)}</text><rect x="${pl}" y="${y}" width="${bw.toFixed(1)}" height="16" rx="3" fill="${col}"/><text class="bv" x="${(X(v||0)+6).toFixed(1)}" y="${y+13}">${v==null?'?':v+'d'}</text>`;}).join('');
  const tx=X(thr).toFixed(1);
  return `<svg viewBox="0 0 ${w} ${h}" class="chart" role="img" aria-label="${esc(o.aria||'Balken')}"><line class="thr" x1="${tx}" y1="2" x2="${tx}" y2="${h-2}"/><text class="thrt" x="${(X(thr)+3).toFixed(1)}" y="12">${thr}d</text>${bars}</svg>`;
 }
 async function loadSchedule(){try{const r=await fetch('/api/schedule?ts='+Date.now(),{cache:'no-store'});SCHEDULE=r.ok?await r.json():null;}catch(e){SCHEDULE=null;}}
-/* Uptime-Charts + Tiles – in Datacenter UND im Uptime-Agent-Panel verwendet */
+/* Uptime-Charts + Tiles – im Overlay UND im Uptime-Agent-Panel verwendet */
 function uptimeBlock(){
  const up=UPTIME,sites=(up&&up.sites)||[],hist=(up&&up.history)||[];
  if(!sites.length)return '<div class="chart-empty">Noch keine Uptime-Daten. Starte den uptime-waechter.</div>';
@@ -1091,81 +1546,113 @@ function uptimeBlock(){
   <div class="sect"><h3>SSL-Restlaufzeit <span>Tage · Warnschwelle 21</span></h3>${svgBars(sites.map(s=>({label:s.name,value:s.ssl_days})),{threshold:21,aria:'SSL'})}</div>
   <div class="sect"><h3>Websites <span>${esc(upNote)}</span></h3><div class="tiles">${tiles}</div></div>`;
 }
-/* Steuerung: pro Agent aktiv/Zeitplan/Run + freies Eingabefeld an den Kommandant (braucht server.js) */
+/* Steuerung: pro Agent aktiv / Zeitplan / Rückfrage / leise / Kanal / Run
+   + freies Auftragsfeld an den Kommandant (braucht server.js) */
 function controlsBlock(){
- const sched=(SCHEDULE&&SCHEDULE.agents)||{};
- const rows=FLEET_IDS.map(id=>{const a=DATA.agents[id]||{},s=sched[id]||{};
-   return `<div class="ctlrow" data-id="${id}">
-     <span class="cn">${esc(a.name||id)}</span>
-     <label class="tgl"><input type="checkbox" class="cen" ${s.enabled!==false?'checked':''} ${API?'':'disabled'}><span>aktiv</span></label>
-     <input class="cad" value="${esc(s.cadence!=null?s.cadence:(a.next_run||''))}" placeholder="z. B. Fr 08:00" ${API?'':'disabled'} aria-label="Zeitplan ${esc(a.name||id)}">
-     <button class="runbtn crun" title="Jetzt starten" ${API?'':'disabled'}>▶</button>
-   </div>`;}).join('');
- return `<div class="sect"><h3>Steuerung <span>${API?'live · Änderungen wirken sofort':'nur mit server.js'}</span></h3>
-   <div class="ctltable">${rows}</div>
-   <div class="ctlbar"><button class="runbtn" id="schedsave" ${API?'':'disabled'}>Zeitplan speichern</button><span id="schedmsg" class="ctlmsg"></span></div>
-   <div class="plbl" style="margin-top:16px">Auftrag an den Kommandant</div>
+ const sa=(SCHEDULE&&SCHEDULE.agents)||{};
+ const head=`<div class="ctlhead"><span>Agent</span><span>aktiv</span><span>Zeitplan</span><span title="Vor dem Auto-Start in Discord nachfragen">Frage</span><span title="Routine-Erfolge nicht posten">leise</span><span>Kanal</span><span></span></div>`;
+ const rows=FLEET_IDS.map(id=>{const a=DATA.agents[id]||{},s=sa[id]||{};
+  return `<div class="ctlrow" data-id="${id}">
+   <span class="cn" title="${esc(a.name||id)}">${esc(a.name||id)}</span>
+   <label class="sw" title="Agent im Zeitplan aktiv"><input type="checkbox" class="cen" ${s.enabled!==false?'checked':''} ${API?'':'disabled'} aria-label="${esc(a.name||id)} aktiv"><i></i></label>
+   <input class="cin cad" value="${esc(s.cadence!=null?s.cadence:(a.next_run||''))}" placeholder="Fr 08:00 · alle 60 min · auf Abruf" ${API?'':'disabled'} aria-label="Zeitplan ${esc(a.name||id)}">
+   <label class="ck" title="Vor dem Auto-Start in Discord nachfragen (/ja · /nein)"><input type="checkbox" class="csw" ${s.schwer?'checked':''} ${API?'':'disabled'} aria-label="${esc(a.name||id)} Rückfrage vor Start"><i></i></label>
+   <label class="ck" title="Routine-Erfolge nicht nach Discord posten"><input type="checkbox" class="cqt" ${s.quiet?'checked':''} ${API?'':'disabled'} aria-label="${esc(a.name||id)} leise"><i></i></label>
+   <input class="cin cch" value="${esc(s.channel||'')}" placeholder="agent-logs" ${API?'':'disabled'} aria-label="Discord-Kanal ${esc(a.name||id)}">
+   <button class="btn crun" title="Jetzt starten" ${API?'':'disabled'}>▶</button>
+  </div>`;}).join('');
+ const meta2=SCHEDULE?`Zeitzone ${esc(SCHEDULE.zeitzone||'Europe/Vienna')} · Nachholfenster ${SCHEDULE.catchup_minuten||120} min`:(API?'Zeitplan wird geladen…':'nur mit server.js');
+ return `<div class="sect"><h3>Steuerung <span>${esc(meta2)}</span></h3>
+   <div class="ctltable">${head}${rows}</div>
+   <div class="ctlbar"><button class="btn prime" id="schedsave" ${API?'':'disabled'}>Zeitplan speichern</button><span id="schedmsg" class="ctlmsg" role="status"></span></div>
+   ${API?'':'<p class="hint" style="margin-top:8px;color:var(--mut);font-size:.72rem">Einstellen &amp; koordinieren braucht den laufenden <code style="color:var(--cyan)">server.js</code>. Statisch ist alles nur Anzeige.</p>'}</div>
+  <div class="sect"><h3>Auftrag an den Kommandant <span>frei formuliert · nichts geht ohne dein Go raus</span></h3>
    <textarea id="cmdinput" class="cmdinput" rows="2" ${API?'':'disabled'} placeholder="${API?'z. B. Starte seo-audit, danach wochenreport. Melde mir SSL unter 30 Tagen.':'Nur mit laufendem server.js'}"></textarea>
-   <div class="ctlbar"><button class="runbtn" id="cmdsend" ${API?'':'disabled'}>▶ An Kommandant senden</button><span id="cmdmsg" class="ctlmsg"></span></div>
-   ${API?'':'<p class="hint" style="margin-top:8px">Einstellen &amp; koordinieren braucht den laufenden <code>server.js</code>. Statisch ist alles nur Anzeige.</p>'}`;
+   <div class="ctlbar"><button class="btn prime" id="cmdsend" ${API?'':'disabled'}>▶ An Kommandant senden</button><span id="cmdmsg" class="ctlmsg" role="status"></span></div></div>`;
 }
+/* Kommandozentrale: EINMAL beim Öffnen das Gerüst bauen (Formulare, Handler),
+   danach nur noch die Live-Werte per updateCmd() nachziehen. So bleibt Scroll-
+   Position UND getippter Text beim 30-Sekunden-Refresh erhalten. */
 function renderCmd(){
  if(!CMD_OPEN||!DATA)return;
- const m=DATA.agents.master||{},cnt=m._counts||{};
- const pills=[['running','läuft'],['waiting','wartet'],['error','Fehler'],['ok','fertig'],['idle','ruht']]
-  .filter(([k])=>cnt[k]).map(([k,l])=>`<span class="pill" style="color:${COLORS[k]}"><i></i>${cnt[k]} ${l}</span>`).join('')
-  ||`<span class="pill" style="color:var(--mut)">alles ruhig</span>`;
- const al=(ids,cls,label)=>ids.length?`<div class="cmd-alert ${cls}"><b>${label}</b> · ${ids.map(id=>{const a=DATA.agents[id]||{};return esc(a.name||id)+' ('+esc(a.message||a.phase||'')+')';}).join(' · ')}</div>`:'';
- const errs=FLEET_IDS.filter(id=>(DATA.agents[id]||{}).status==='error');
- const waits=FLEET_IDS.filter(id=>(DATA.agents[id]||{}).status==='waiting');
- const fleet=FLEET_IDS.map(id=>{const a=DATA.agents[id]||{},c=COLORS[a.status]||COLORS.idle;
-   return `<button class="cmd-tab" data-go="${id}"><span class="cn">${esc(a.name||id)}<small>${LABELS[a.status]||esc(a.status)} · ${esc(a.phase||'–')}</small></span><span class="cp mono" style="color:${c}">${a.progress!=null?a.progress+'%':''}</span><span class="cnx">${esc(a.next_run||'–')}</span></button>`;}).join('');
  $('#cmd').innerHTML=`<div class="cmd-panel">
-   <div class="cmd-top"><h2>Datacenter</h2>
-    <span class="up">${DATA.updated?new Date(DATA.updated).toLocaleString('de-AT'):'–'} · ${DATA.demo?'DEMO':(API?'LIVE · API':'LIVE · statisch')}</span>
-    <div class="pills">${pills}</div>
-    <button class="runbtn" id="cmdrun" ${!API?'disabled':''} title="${API?'Kommandant koordiniert die Flotte':'Nur mit laufendem server.js'}">▶ KOORDINIEREN</button>
-    <button class="cmd-close" aria-label="Datacenter schließen">✕</button></div>
-   ${al(errs,'err','⚠ Fehler')}${al(waits,'wait','? Wartet auf dein Go')}
+   <div class="cmd-top"><h2>Kommandozentrale</h2>
+    <span class="up" id="cmdup"></span>
+    <div class="pills" id="cmdpills"></div>
+    <button class="btn prime" id="cmdrun" ${!API?'disabled':''} title="${API?'Kommandant koordiniert die Flotte':'Nur mit laufendem server.js'}">▶ Koordinieren</button>
+    <button class="cmd-close" aria-label="Kommandozentrale schließen">✕</button></div>
+   <div id="cmdalerts"></div>
    <div class="cmd-body">
     <div class="cmd-fleet">
-     <div class="sect"><h3>Flotte <span>${FLEET_IDS.length} Agents</span></h3>${fleet}</div>
-     ${controlsBlock()}
+     <div class="sect"><h3>Flotte <span>${FLEET_IDS.length} Agents</span></h3><div id="cmdfleet"></div></div>
+     <div class="sect"><h3>Kommandant-Log</h3><pre id="cmdlog" style="max-height:26vh;background:oklch(8% 0.02 280);border:1px solid var(--hair);border-radius:8px;padding:10px;font-size:.64rem;white-space:pre-wrap;word-break:break-word;color:oklch(80% 0.04 200);line-height:1.5;overflow:auto"></pre></div>
     </div>
-    <div class="cmd-main">${uptimeBlock()}</div>
+    <div class="cmd-main">
+     ${controlsBlock()}
+     <div id="cmduptime"></div>
+    </div>
    </div></div>`;
  $('#cmd').querySelector('.cmd-close').addEventListener('click',closeCmd);
- $('#cmd').querySelectorAll('.cmd-tab').forEach(el=>el.addEventListener('click',()=>select(el.dataset.go)));
- const post=async(url,body)=>{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.status);return j;};
- const flash=(el,txt,ok)=>{if(!el)return;el.textContent=txt;el.style.color=ok?'var(--grn)':'var(--red)';setTimeout(()=>{if(el)el.textContent='';},3000);};
- const cmdRun=async(id,btn,extra)=>{const t=btn.textContent;btn.disabled=true;btn.textContent='…';
-   try{await post('/api/run/'+id,extra);const a=DATA.agents[id];if(a){a.status='running';a.phase='Gestartet';a.progress=2;a.message='Läuft…';}applyData();}
-   catch(err){btn.textContent=String(err.message||'').includes('läuft')?'LÄUFT':'FEHLER';setTimeout(()=>{btn.disabled=!API;btn.textContent=t;},2000);}};
- const rb=$('#cmdrun');if(rb)rb.addEventListener('click',()=>cmdRun('master',rb));
- $('#cmd').querySelectorAll('.ctlrow .crun').forEach(btn=>btn.addEventListener('click',()=>cmdRun(btn.closest('.ctlrow').dataset.id,btn)));
+ const rb=$('#cmdrun');if(rb)rb.addEventListener('click',()=>startRun('master',rb));
+ $('#cmd').querySelectorAll('.ctlrow .crun').forEach(btn=>btn.addEventListener('click',()=>startRun(btn.closest('.ctlrow').dataset.id,btn)));
  const save=$('#schedsave');
- if(save)save.addEventListener('click',async()=>{save.disabled=true;
-   const agents={};$('#cmd').querySelectorAll('.ctlrow').forEach(row=>{agents[row.dataset.id]={enabled:row.querySelector('.cen').checked,cadence:row.querySelector('.cad').value.trim()};});
-   try{const j=await post('/api/schedule',{agents});SCHEDULE=j.schedule||SCHEDULE;flash($('#schedmsg'),'Zeitplan gespeichert ✓',true);}
-   catch(err){flash($('#schedmsg'),'Fehler: '+err.message,false);}finally{save.disabled=false;}});
+ if(save)save.addEventListener('click',async()=>{
+   if(FORCE_DEMO){flash($('#schedmsg'),'Vorschau-Modus: nichts gespeichert.',false);return;}
+   save.disabled=true;
+   const agents={};
+   $('#cmd').querySelectorAll('.ctlrow').forEach(row=>{
+    agents[row.dataset.id]={
+     enabled:row.querySelector('.cen').checked,
+     cadence:row.querySelector('.cad').value.trim(),
+     schwer:row.querySelector('.csw').checked,
+     quiet:row.querySelector('.cqt').checked,
+     channel:row.querySelector('.cch').value.trim()
+    };});
+   try{const j=await apiPost('/api/schedule',{agents});SCHEDULE=j.schedule||SCHEDULE;flash($('#schedmsg'),'Zeitplan gespeichert ✓',true);}
+   catch(err){flash($('#schedmsg'),'Fehler: '+err.message,false);}finally{save.disabled=!API;}});
  const send=$('#cmdsend'),inp=$('#cmdinput');
  if(send)send.addEventListener('click',async()=>{const txt=(inp.value||'').trim();if(!txt){flash($('#cmdmsg'),'Bitte einen Auftrag eintippen.',false);return;}
+   if(FORCE_DEMO){flash($('#cmdmsg'),'Vorschau-Modus: kein echter Lauf gestartet.',false);return;}
    send.disabled=true;send.textContent='…';
-   try{await post('/api/run/master',{prompt:'Nutze den Subagent kommandant. Sebastians Auftrag für diesen Lauf: '+txt+' — koordiniere entsprechend, halte dich an deine Regeln, sende nichts nach außen ohne Go.'});
+   try{await apiPost('/api/run/master',{prompt:'Nutze den Subagent kommandant. Sebastians Auftrag für diesen Lauf: '+txt+' — koordiniere entsprechend, halte dich an deine Regeln, sende nichts nach außen ohne Go.'});
      if(DATA.agents.master){DATA.agents.master.status='running';DATA.agents.master.message='Auftrag läuft…';}inp.value='';flash($('#cmdmsg'),'An Kommandant übergeben ✓',true);applyData();}
    catch(err){flash($('#cmdmsg'),String(err.message||'').includes('läuft')?'Kommandant läuft schon':'Fehler: '+err.message,false);}
    finally{send.disabled=!API;send.textContent='▶ An Kommandant senden';}});
+ updateCmd();
 }
-/* Backdrop-Klick + ESC schließen */
+/* Nur die Live-Regionen der Zentrale nachziehen – Gerüst, Formulare und
+   Scroll-Position bleiben unangetastet. */
+function updateCmd(){
+ if(!CMD_OPEN||!DATA||!$('#cmdpills'))return;
+ const m=DATA.agents.master||{},cnt=m._counts||{};
+ const up=$('#cmdup');if(up)up.textContent=(DATA.updated?new Date(DATA.updated).toLocaleString('de-AT'):'–')+' · '+(DATA.demo?'DEMO':(API?'LIVE · API':'LIVE · statisch'));
+ const pl=$('#cmdpills');if(pl)pl.innerHTML=statusChips(cnt);
+ const al=(ids,cls,label)=>ids.length?`<div class="cmd-alert ${cls}"><b>${label}</b> · ${ids.map(id=>{const a=DATA.agents[id]||{};return esc(a.name||id)+' ('+esc(a.message||a.phase||'')+')';}).join(' · ')}</div>`:'';
+ const errs=FLEET_IDS.filter(id=>(DATA.agents[id]||{}).status==='error');
+ const waits=FLEET_IDS.filter(id=>(DATA.agents[id]||{}).status==='waiting');
+ const alx=$('#cmdalerts');if(alx)alx.innerHTML=al(errs,'err','⚠ Fehler')+al(waits,'wait','? Wartet auf dein Go');
+ const fl=$('#cmdfleet');
+ if(fl){fl.innerHTML=FLEET_IDS.map(id=>{const a=DATA.agents[id]||{},c=COLORS[a.status]||COLORS.idle;
+    return `<button class="cmd-tab" data-go="${id}"><span class="cn2">${esc(a.name||id)}<small>${LABELS[a.status]||esc(a.status)} · ${esc(a.phase||'–')}</small></span><span class="cp mono" style="color:${c}">${a.progress!=null?a.progress+'%':''}</span><span class="cnx">${esc(a.next_run||'–')}</span></button>`;}).join('');
+   fl.querySelectorAll('.cmd-tab').forEach(el=>el.addEventListener('click',()=>{closeCmd();select(el.dataset.go);}));}
+ const lg=$('#cmdlog');if(lg)lg.textContent=m.log_tail||'–';
+ const uc=$('#cmduptime');if(uc)uc.innerHTML=uptimeBlock();
+}
+/* Backdrop-Klick + ESC schließen (Zentrale UND Detail-Drawer) */
 $('#cmd').addEventListener('click',e=>{if(e.target.id==='cmd')closeCmd();});
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closeCmd();});
+$('#dscrim').addEventListener('click',closeDrawer);
+$('#dclose').addEventListener('click',closeDrawer);
+$('#drun').addEventListener('click',()=>{if(SEL&&SEL!=='master')startRun(SEL,$('#drun'));});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(CMD_OPEN)closeCmd();else if(DRAWER_OPEN)closeDrawer();}});
 
 /* ================= Laden ================= */
 (function legend(){
  $('#legend').innerHTML=Object.keys(LABELS).map(k=>`<span style="color:${COLORS[k]}"><i></i>${LABELS[k]}</span>`).join('');
 })();
 async function load(){
- try{
+ if(FORCE_DEMO){
+  DATA=DEMO;DATA.demo=true;$('#demo').textContent='Vorschau-Modus (?demo) – simulierte Läufe, kein echter Agent gestartet';$('#demo').style.display='block';
+ }else try{
   const r=await fetch('status.json?ts='+Date.now(),{cache:'no-store'});
   if(!r.ok)throw 0;
   DATA=await r.json();DATA.demo=false;
@@ -1176,18 +1663,32 @@ async function load(){
  }
  /* Uptime-Daten (vom Wrapper nach httpdocs gespiegelt) – best effort */
  try{const ur=await fetch('uptime.json?ts='+Date.now(),{cache:'no-store'});UPTIME=ur.ok?await ur.json():null;}catch(e){UPTIME=null;}
- if(!UPTIME&&DATA.demo)UPTIME=DEMO_UPTIME;
+ if((!UPTIME||!(UPTIME.sites||[]).length)&&DATA.demo)UPTIME=DEMO_UPTIME;
  applyData();
  const anyRunning=Object.values(DATA.agents||{}).some(a=>a.status==='running');
- $('#foot2').textContent='refresh '+(anyRunning?'5 s':'30 s');
- clearTimeout(load.t);load.t=setTimeout(load,anyRunning?5000:30000);
+ $('#foot2').textContent=FORCE_DEMO?'vorschau':'refresh '+(anyRunning?'5 s':'30 s');
+ if(FORCE_DEMO)startTheatre();
+ else{clearTimeout(load.t);load.t=setTimeout(load,anyRunning?5000:30000);}
+}
+/* Vorschau-Choreografie: kippt reihum Status, damit Abflüge/Landungen sichtbar werden. */
+function startTheatre(){
+ if(theatreOn)return; theatreOn=true;
+ const seq=[...FLEET_IDS]; let i=0;
+ setInterval(()=>{
+  const id=seq[i%seq.length]; i++;
+  const a=DATA.agents[id]; if(!a)return;
+  if(a.status==='running'){a.status='ok';a.progress=100;a.message='Fertig ✓';a.phase='Abgeschlossen';}
+  else{a.status='running';a.progress=8;a.message='läuft…';a.phase='Gestartet';}
+  DATA.updated=new Date().toISOString();
+  applyData();
+ },3600);
 }
 async function detectApi(){
  try{const r=await fetch('/api/ping');API=r.ok&&(await r.json()).api===true;}catch(e){API=false;}
  const el=$('#apistate');
  el.textContent=API?'API: VERBUNDEN':'API: STATISCH';
  el.className=API?'on':'off';
- if(API)REPORTS=null;
+ if(API){REPORTS=null;loadSchedule();}
  if(DATA)applyData();
 }
 initBots();

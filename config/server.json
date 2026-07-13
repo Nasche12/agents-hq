@@ -1,0 +1,10 @@
+{
+  "_hinweis": "Box-spezifische Angaben fuer server-waechter (laeuft READ-ONLY auf dem prod-Server). Von Hand pflegen. Leere Liste/0 = der jeweilige Check wird UEBERSPRUNGEN und als 'n/a' gemeldet, niemals als gruen gewertet.",
+  "systemd_units": ["agents-hq.service"],
+  "disk_warn_percent": 85,
+  "load_warn_per_core": 1.5,
+  "backup_dirs": [],
+  "backup_max_age_hours": 26,
+  "auth_log": "/var/log/auth.log",
+  "log_dir_warn_mb": 500
+}

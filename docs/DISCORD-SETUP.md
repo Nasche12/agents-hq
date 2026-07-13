@@ -68,29 +68,45 @@ einschalten (nötig, damit der Bot deine Kommandos lesen darf).
 ```
 DISCORD_BOT_TOKEN=...
 DISCORD_GUILD_ID=...          # Server-ID (Rechtsklick auf Server → ID kopieren, Entwicklermodus an)
-DISCORD_COMMAND_CHANNEL=freigaben   # hier tippst du Kommandos
-DISCORD_LOG_CHANNEL=agent-logs      # hierhin melden Agents Start/Ende
+DISCORD_APP_ID=...           # Dev-Portal → General Information → Application ID
+DISCORD_PUBLIC_KEY=...       # Dev-Portal → General Information → Public Key (für Slash-Signaturen)
+DISCORD_COMMAND_CHANNEL=freigaben   # hier landen Freigabe-Fragen (/ja /nein /go)
+DISCORD_LOG_CHANNEL=agent-logs      # technische Meldungen/Heartbeat
 ```
 
-**4. Struktur anlegen & Service neu starten:**
+**4. Struktur anlegen, Slash-Commands registrieren, Service starten:**
 
 ```
 python3 bin/discord.py setup          # legt Kategorien/Kanäle idempotent an
-sudo bash deploy/install-service.sh   # zieht .env jetzt via EnvironmentFile
+python3 bin/discord-register.py       # registriert /status /run /ja /nein /go /master …
+sudo bash deploy/install-service.sh   # zieht .env via EnvironmentFile
 ```
 
-Der `server.js`-Service pollt `#freigaben` alle ~12 s und führt deine Kommandos aus.
+**5. Interactions-Endpoint freischalten (nur für Slash-Commands):**
 
-### Was du in #freigaben tippen kannst
+- Plesk → Domain `agents.naschberger.info` → nginx-Direktiven → Block aus
+  `deploy/nginx-proxy.conf` einfügen (enthält jetzt auch `/discord/interactions`).
+  Dieser Pfad muss **ohne Passwortschutz** erreichbar sein – Discord kann sich nicht per
+  Basic-Auth anmelden; die Echtheit sichert die ed25519-Signaturprüfung in `server.js`.
+- Dev-Portal → deine App → **General Information → Interactions Endpoint URL**:
+  `https://agents.naschberger.info/discord/interactions` → Speichern. Discord schickt einen
+  signierten PING; klappt die Prüfung, wird die URL akzeptiert.
+
+### Steuerung per Slash-Commands (nativ, mit Autocomplete)
 
 | Kommando | Wirkung |
 | --- | --- |
-| `status` | Lage aller Agents |
-| `run wochenreport` / nur `wochenreport` | Lauf starten |
-| `wochenreport: nur naschberger.info` | Lauf mit eigenem Auftrag |
-| `go` / `go wochenreport` | Freigabe: wartender Agent führt seine Aktion aus (z. B. Mailversand) |
-| `agents` | bekannte Agents auflisten |
-| `help` | Kommandoliste |
+| `/status` | Ampel-Übersicht aller Agents (nur du siehst die Antwort) |
+| `/offen` | nur Waits und Fehler |
+| `/run <agent>` | Lauf sofort starten |
+| `/ja <agent>` | einen als *fällig* gemeldeten Lauf freigeben und starten |
+| `/nein <agent>` | diesen fälligen Lauf überspringen (Frage kommt zum nächsten Termin wieder) |
+| `/go [agent]` | Freigabe: wartender Agent führt seine Aktion aus (z. B. Mailversand) |
+| `/master <frage>` | Frage an den Master (kostet Tokens) |
+| `/agents`, `/help` | Liste bzw. Hilfe |
+
+Zusätzlich läuft die **Text-Bridge** weiter: `#freigaben` wird gepollt, du kannst dort auch frei
+tippen (`status`, `<agent>`, `go`, oder eine **Frage mit `?`** an den Master).
 
 ### Rückmeldung der Agents (automatisch)
 
@@ -117,12 +133,20 @@ Webhooks können, plus Lesen. Wer nur Ergebnisse will, bleibt bei Webhooks.
 
 Sobald der Service läuft, ist der HQ nicht mehr nur reaktiv:
 
-- **Auto-Scheduler:** `server.js` liest `config/schedule.json` und feuert fällige
-  Läufe von selbst. **Leichte** Agents (z. B. `uptime-waechter`) starten automatisch;
-  **schwere** (`wochenreport`, `content-recherche`, `seo-audit`) posten in `#freigaben`
-  „⏳ fällig – starten?" und warten auf `run <agent>` (schützt den Server, du behältst die Kontrolle).
-- **Tägliche Lage:** Zur Uhrzeit `DISCORD_MASTER_DAILY` (Default 07:30) läuft der
-  `kommandant` und postet die Gesamtlage (Ampel je Agent, offene Waits/Fehler) nach `#agent-logs`.
+- **Auto-Scheduler (zeitzonen-fest):** `server.js` liest `config/schedule.json` und rechnet
+  die Zeit über die `zeitzone` (Intl, unabhängig von der Server-TZ). Intervalle (`alle 60 min`)
+  sind an der Uhr ausgerichtet; Wochentag/Uhrzeit-Läufe feuern nur im Nachhol-Fenster
+  (`catchup_minuten`, Default 120) – verpasst der Server die Zeit um mehr, wird übersprungen
+  statt zu einer „zufälligen" Uhrzeit zu feuern.
+- **Leichte** Agents (z. B. `uptime-waechter`) starten automatisch; **schwere**
+  (`wochenreport`, `content-recherche`, `seo-audit`) posten in `#freigaben`
+  „⏳ fällig – `/ja` / `/nein`". `/nein` überspringt; die Frage kommt zum nächsten Termin wieder.
+- **Finanz** (`belege-buchhaltung`, `rechnungssteller`) hat aktuell **keinen Termin**
+  (`enabled:false` / `auf Abruf`) – nur per `/run` bzw. auf Zuruf.
+- **Tägliche Lage:** Zur Uhrzeit `DISCORD_MASTER_DAILY` (Default 07:30) postet der
+  `kommandant` **eine** knappe Lage-Zeile (Ampel, Waits/Fehler zuerst) nach `#agent-logs`.
+- **`next_run` im Dashboard** wird vom Scheduler direkt aus `schedule.json` gesetzt –
+  Log/Report/Dashboard können nicht mehr auseinanderdriften.
 - **Master-Chat (token-sparsam):** Ein deterministischer Filter beantwortet zuerst alles,
   was ohne LLM geht – `status`, `offen`, lockere Startbefehle mit Aliasen („mach die belege",
   „prüf die erreichbarkeit", „starte den report"), Bestätigungen („danke" → still). Der
@@ -139,6 +163,9 @@ DISCORD_MASTER_DAILY=        # keine tägliche Lage (leer)
 
 **Schwere Läufe voll automatisch** statt Rückfrage: in `config/schedule.json` beim
 jeweiligen Agent `"schwer": false` setzen – dann startet der Scheduler ihn ohne Nachfrage.
+**Einen Agent wieder terminieren:** `"enabled": true` und eine `cadence` setzen
+(z. B. `"Mo 09:00"` oder `"alle 90 min"`).
 
-Zeit richtet sich nach der Serverzeit; `install-service.sh` setzt `TZ=Europe/Vienna`
-passend zur `zeitzone` in `schedule.json`.
+Die Zeit rechnet der Scheduler selbst über `"zeitzone"` in `schedule.json` (via Intl),
+also **unabhängig** von der Server-TZ. `install-service.sh` setzt zusätzlich `TZ=Europe/Vienna`
+für die Agent-Läufe (Datumsangaben in Reports).
