@@ -11,12 +11,12 @@ echo "== Agent HQ Setup in: $BASE"
 mkdir -p logs belege/inbox belege/archiv belege/pakete reports content \
          uptime/alerts seo rechnungen master httpdocs
 
-# 2) Dashboard in den Web-Docroot (httpdocs) legen – NUR diese Dateien sind öffentlich
-cp -f dashboard/index.html httpdocs/index.html
-[ -f httpdocs/status.json ] || cp -f dashboard/status.json httpdocs/status.json
+# 2) Dashboard in den Web-Docroot (httpdocs) legen – NUR diese Dateien sind öffentlich.
+#    Zentral über bin/publish.sh (index.html + styles.css + app.js + assets/).
+bash bin/publish.sh
 
 # 3) Rechte
-chmod +x bin/run-agent.sh bin/status-update.sh
+chmod +x bin/run-agent.sh bin/status-update.sh bin/publish.sh
 [ -f .env ] && chmod 600 .env || echo "!! .env fehlt noch – aus .env.example erstellen: cp .env.example .env && nano .env"
 
 # 4) Sicherheitsnetz: nichts außer httpdocs darf je im Docroot landen
