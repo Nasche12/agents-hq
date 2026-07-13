@@ -17,6 +17,25 @@ const PORT = parseInt(process.env.PORT || process.argv[2] || '8788', 10);
    HOST=0.0.0.0 nur, wenn du bewusst direkt exponierst. */
 const HOST = process.env.HOST || '127.0.0.1';
 
+/* ---------- Basic-Auth (schuetzt das Dashboard hinter dem Reverse-Proxy) ----------
+   Aktiv, sobald HQ_USER und HQ_PASS in der Umgebung gesetzt sind. Ohne sie ist der
+   Server offen (nur fuer lokale Entwicklung gedacht). Der signierte Discord-Endpoint
+   ist ausgenommen (verifiziert selbst per ed25519). */
+const HQ_USER = process.env.HQ_USER || '';
+const HQ_PASS = process.env.HQ_PASS || '';
+function safeEq(a, b) {
+  const A = Buffer.from(String(a)), B = Buffer.from(String(b));
+  return A.length === B.length && crypto.timingSafeEqual(A, B);
+}
+function authOK(req) {
+  if (!HQ_USER || !HQ_PASS) return true;                 // Auth deaktiviert, wenn nicht konfiguriert
+  const m = /^Basic\s+(.+)$/i.exec(req.headers['authorization'] || '');
+  if (!m) return false;
+  let dec = ''; try { dec = Buffer.from(m[1], 'base64').toString('utf8'); } catch (e) { return false; }
+  const i = dec.indexOf(':'); if (i < 0) return false;
+  return safeEq(dec.slice(0, i), HQ_USER) && safeEq(dec.slice(i + 1), HQ_PASS);
+}
+
 const AGENTS = {
   'master': 'Nutze den Subagent kommandant: verschaffe dir den Gesamtüberblick über alle Agents (dashboard/status.json), stimme den Zeitplan (config/schedule.json) ab und stoße fällige Läufe an. Nichts nach außen senden.',
   'wochenreport': 'Nutze den Subagent wochenreport und erstelle den Wochenreport für die abgelaufene Woche.',
@@ -226,6 +245,12 @@ async function umamiSummary(cacheKey, fromMs, toMs, label) {
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x');
   const p = u.pathname;
+
+  /* Basic-Auth-Gate (der signierte Discord-Endpoint ist ausgenommen) */
+  if (p !== '/discord/interactions' && !authOK(req)) {
+    res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Agent HQ", charset="UTF-8"', 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+    return res.end('Authentication required');
+  }
 
   /* ---------- API ---------- */
   if (p === '/api/ping') return send(res, 200, { api: true, agents: Object.keys(AGENTS) });
