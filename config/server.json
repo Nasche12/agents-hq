@@ -1,6 +1,14 @@
 {
   "_hinweis": "Box-spezifische Angaben fuer server-waechter (laeuft READ-ONLY auf dem prod-Server). Von Hand pflegen. Leere Liste/0 = der jeweilige Check wird UEBERSPRUNGEN und als 'n/a' gemeldet, niemals als gruen gewertet.",
   "systemd_units": ["agents-hq.service"],
+  "_datenbanken_hinweis": "Liste der zu pruefenden Datenbanken. Pro DB: name (Anzeige), type (postgres|mysql|mariadb|sqlite|mongodb|redis), host, port. Optional: check (eigenes READ-ONLY-Shell-Kommando, Exit 0 = aktiv) oder file (fuer sqlite: Pfad, existiert+lesbar = aktiv). Leere Liste = DB-Check wird uebersprungen.",
+  "databases": [
+    { "name": "MariaDB (naschberger)", "type": "mariadb", "host": "127.0.0.1", "port": 3306 },
+    { "name": "Redis (naschberger)", "type": "redis", "host": "127.0.0.1", "port": 6379 },
+    { "name": "Supabase · sicherrestaurant.at", "type": "postgres", "check": "docker exec supabase_db_restaurant_sicher pg_isready -U postgres -q" },
+    { "name": "Supabase · ref vvmbtko…", "type": "postgres", "check": "docker exec supabase_db_vvmbtkoeozpqwadigscb pg_isready -U postgres -q" },
+    { "name": "Supabase · ref yhwjewb…", "type": "postgres", "check": "docker exec supabase_db_yhwjewbjtmigthpfqurk pg_isready -U postgres -q" }
+  ],
   "disk_warn_percent": 85,
   "load_warn_per_core": 1.5,
   "backup_dirs": [],

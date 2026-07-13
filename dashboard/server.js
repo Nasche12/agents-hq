@@ -4,6 +4,7 @@
    Aufruf:  node dashboard/server.js [port]
    Läuft lokal (Windows, Git-Bash vorhanden) und am Plesk-Server (bash nativ). */
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -30,7 +31,7 @@ const AGENTS = {
   'ki-influencer': 'Nutze den Subagent ki-influencer und erzeuge EINEN on-brand Tages-Post (Bild + 9:16-Clip + Caption) aus config/influencer.json und liefere ihn nach #content. Nicht selbst auf Social posten.'
 };
 /* Report-Wurzeln: nur diese Ordner sind über /api lesbar */
-const REPORT_ROOTS = ['reports', 'content', 'belege', 'uptime', 'seo', 'rechnungen'];
+const REPORT_ROOTS = ['reports', 'content', 'belege', 'uptime', 'seo', 'rechnungen', 'server', 'mail', 'video', 'influencer'];
 const REPORT_EXT = new Set(['.md', '.html', '.pdf', '.csv', '.txt', '.json']);
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.md': 'text/plain; charset=utf-8',
@@ -128,6 +129,100 @@ function readJson(req, cb) {
 const SCHEDULE_FILE = path.join(BASE, 'config', 'schedule.json');
 function readSchedule() { try { return JSON.parse(fs.readFileSync(SCHEDULE_FILE, 'utf8')); } catch (e) { return { agents: {} }; } }
 
+/* ---------- Analytics-Proxy (Umami, server-seitig) ----------
+   Login mit UMAMI_*-Credentials aus der Umgebung; Kennzahlen der letzten 7 Tage
+   je Website + Vorwochenvergleich. Token (55 min) und Ergebnis (5 min) werden
+   gecacht, damit der 30-Sekunden-Refresh des Dashboards Umami nicht flutet.
+   Credentials verlassen den Server nie – der Browser sieht nur aggregierte Zahlen. */
+const UMAMI = {
+  base: (process.env.UMAMI_BASE_URL || '').replace(/\/+$/, ''),
+  user: process.env.UMAMI_USERNAME || '',
+  pass: process.env.UMAMI_PASSWORD || ''
+};
+let _umamiCache = {};                 // pro Zeitspanne gecacht: { <rangeKey>: { t, data } }
+let _umamiTok = { t: 0, token: '' };
+const RANGES = {
+  '24h': { ms: 864e5, label: 'Last 24 hours' },
+  '7d':  { ms: 7 * 864e5, label: 'Last 7 days' },
+  '30d': { ms: 30 * 864e5, label: 'Last 30 days' }
+};
+
+function httpsJson(urlStr, { method = 'GET', headers = {}, body = null } = {}) {
+  return new Promise((resolve, reject) => {
+    let u; try { u = new URL(urlStr); } catch (e) { return reject(e); }
+    const data = body ? JSON.stringify(body) : null;
+    const opt = {
+      method, hostname: u.hostname, port: u.port || 443, path: u.pathname + u.search,
+      headers: Object.assign({ 'Accept': 'application/json' }, headers)
+    };
+    if (data) { opt.headers['Content-Type'] = 'application/json'; opt.headers['Content-Length'] = Buffer.byteLength(data); }
+    const req = https.request(opt, r => {
+      const chunks = [];
+      r.on('data', c => chunks.push(c));
+      r.on('end', () => {
+        const txt = Buffer.concat(chunks).toString('utf8');
+        if (r.statusCode >= 400) return reject(new Error('HTTP ' + r.statusCode + ': ' + txt.slice(0, 160)));
+        try { resolve(txt ? JSON.parse(txt) : {}); } catch (e) { reject(new Error('kein JSON von ' + u.pathname)); }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(9000, () => req.destroy(new Error('timeout')));
+    if (data) req.write(data);
+    req.end();
+  });
+}
+const numv = x => (x && typeof x === 'object') ? (+x.value || 0) : (+x || 0);
+async function umamiToken() {
+  if (_umamiTok.token && Date.now() - _umamiTok.t < 55 * 60 * 1000) return _umamiTok.token;
+  const j = await httpsJson(UMAMI.base + '/api/auth/login', { method: 'POST', body: { username: UMAMI.user, password: UMAMI.pass } });
+  const tok = j.token || (j.data && j.data.token);
+  if (!tok) throw new Error('Login ohne Token');
+  _umamiTok = { t: Date.now(), token: tok };
+  return tok;
+}
+async function umamiSummary(cacheKey, fromMs, toMs, label) {
+  const cached = _umamiCache[cacheKey];
+  if (cached && Date.now() - cached.t < 5 * 60 * 1000) return cached.data;
+  const token = await umamiToken();
+  const H = { Authorization: 'Bearer ' + token };
+  const raw = await httpsJson(UMAMI.base + '/api/websites', { headers: H });
+  const list = Array.isArray(raw) ? raw : (raw.data || raw.websites || []);
+  const win = toMs - fromMs;
+  const out = [];
+  for (const w of list) {
+    const id = w.id || w.websiteId; if (!id) continue;
+    const q = (a, b) => `${UMAMI.base}/api/websites/${id}/stats?startAt=${a}&endAt=${b}`;
+    let cur = {}, prev = {};
+    try { cur = await httpsJson(q(fromMs, toMs), { headers: H }); } catch (e) {}
+    try { prev = await httpsJson(q(fromMs - win, fromMs), { headers: H }); } catch (e) {}
+    const pv = numv(cur.pageviews), vs = numv(cur.visitors);
+    const pvp = numv(prev.pageviews) || numv(cur.pageviews && cur.pageviews.prev);
+    const vsp = numv(prev.visitors) || numv(cur.visitors && cur.visitors.prev);
+    const visits = numv(cur.visits), bounces = numv(cur.bounces), totaltime = numv(cur.totaltime);
+    const pct = (a, b) => b ? Math.round((a - b) / b * 100) : null;
+    out.push({
+      name: w.name || w.domain || String(id), domain: w.domain || '',
+      pageviews: pv, visitors: vs, visits,
+      avg_seconds: visits ? Math.round(totaltime / visits) : 0,
+      bounce_rate: visits ? Math.round(bounces / visits * 100) : 0,
+      prev: { pageviews: pvp, visitors: vsp },
+      change: { pageviews: pct(pv, pvp), visitors: pct(vs, vsp) }
+    });
+  }
+  out.sort((a, b) => b.pageviews - a.pageviews);
+  const data = {
+    configured: true, generated: new Date().toISOString(), range: label,
+    from: fromMs, to: toMs,
+    total: {
+      pageviews: out.reduce((s, x) => s + x.pageviews, 0),
+      visitors: out.reduce((s, x) => s + x.visitors, 0)
+    },
+    sites: out
+  };
+  _umamiCache[cacheKey] = { t: Date.now(), data };
+  return data;
+}
+
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x');
   const p = u.pathname;
@@ -218,6 +313,24 @@ const server = http.createServer((req, res) => {
 
   if (p === '/api/reports') return send(res, 200, listReports());
 
+  /* Website-Analytics (Umami) – server-seitig aggregiert, Credentials bleiben hier */
+  if (p === '/api/analytics') {
+    if (!UMAMI.base || !UMAMI.user || !UMAMI.pass)
+      return send(res, 200, { configured: false, sites: [], reason: 'UMAMI_BASE_URL/USERNAME/PASSWORD nicht gesetzt' });
+    const from = +u.searchParams.get('from'), to = +u.searchParams.get('to');
+    let key, f, t, label;
+    const fmtD = ms => new Date(ms).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    if (from && to && to > from) {
+      f = from; t = to; key = 'c' + from + '-' + to; label = fmtD(from) + ' – ' + fmtD(to);
+    } else {
+      const rk = RANGES[u.searchParams.get('range')] ? u.searchParams.get('range') : '7d';
+      t = Date.now(); f = t - RANGES[rk].ms; key = rk; label = RANGES[rk].label;
+    }
+    return umamiSummary(key, f, t, label)
+      .then(d => send(res, 200, d))
+      .catch(e => send(res, 200, { configured: false, sites: [], error: String(e.message || e) }));
+  }
+
   if (p === '/api/file') {
     const abs = safeFile(u.searchParams.get('p'));
     if (!abs) return send(res, 404, { error: 'nicht gefunden' });
@@ -232,10 +345,17 @@ const server = http.createServer((req, res) => {
     const f = path.join(BASE, 'uptime', 'uptime.json');
     try { return send(res, 200, fs.readFileSync(f), MIME['.json']); } catch (e) { return send(res, 200, { sites: [], history: [] }); }
   }
+  if (rel === '/server.json') {
+    const f = path.join(BASE, 'server', 'server-status.json');
+    try { return send(res, 200, fs.readFileSync(f), MIME['.json']); } catch (e) { return send(res, 200, {}); }
+  }
   const abs = path.resolve(WEB, '.' + rel);
-  if (!abs.startsWith(WEB) || !fs.existsSync(abs) || !fs.statSync(abs).isFile())
-    return send(res, 404, 'not found', 'text/plain');
-  send(res, 200, fs.readFileSync(abs), MIME[path.extname(abs).toLowerCase()] || 'application/octet-stream');
+  if (abs.startsWith(WEB) && fs.existsSync(abs) && fs.statSync(abs).isFile())
+    return send(res, 200, fs.readFileSync(abs), MIME[path.extname(abs).toLowerCase()] || 'application/octet-stream');
+  /* SPA-Fallback: unbekannte GET-Route ohne Dateiendung (z. B. /agents, /systems) -> index.html */
+  if (req.method === 'GET' && !path.extname(p))
+    return send(res, 200, fs.readFileSync(path.join(WEB, 'index.html')), MIME['.html']);
+  return send(res, 404, 'not found', 'text/plain');
 });
 
 fs.mkdirSync(path.join(BASE, 'logs'), { recursive: true });
