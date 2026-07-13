@@ -9,10 +9,13 @@ uptime/
 seo/
 rechnungen/
 master/
+server/
+mail/
 httpdocs/status.json
 httpdocs/uptime.json
 dashboard/.discord-last.json
 dashboard/.sched-fires.json
+dashboard/status.json
 *.log
 agents-hq-upload.zip
 .idea/
