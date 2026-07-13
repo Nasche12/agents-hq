@@ -24,7 +24,7 @@ Du überwachst Sebastians Kunden-Websites – nicht nur „antwortet der Server"
    - **TLS-Ablauf:** `curl -sSv --max-time 20 <url> 2>&1` → Zeile `expire date`/notAfter; Resttage **per Skript** rechnen (siehe Regel 1), nie im Kopf.
    - **Inhalt (`expect`):** falls gesetzt, die Startseite laden (`curl -sS -L --max-time 20 <url>`) und prüfen, ob der `expect`-String im HTML vorkommt. Fehlt er → die Seite liefert eine Fehler-/Platzhalterseite statt echtem Inhalt.
    - **Bilder (`assets`):** falls gesetzt. `"auto"` → alle `<img src>` aus dem geladenen HTML ziehen (relative Pfade an die Site-URL hängen); Liste → genau diese Pfade. Jedes Bild `curl -sS -o /dev/null -w '%{http_code} %{content_type} %{size_download}'` prüfen: OK nur bei 200 **und** `content_type` beginnt mit `image/` **und** `size_download` > 0. Sonst gilt das Bild als kaputt. (Hat eine Site keine `<img>` im HTML, ist `"auto"` = 0 Bilder – dann NICHT als geprüft/grün werten, sondern `assets: "n/a"` melden.)
-   - **Backend/DB (`health`):** falls gesetzt. `curl -sS -w '\n%{http_code}' --max-time 20 <health-url>` → **nur** dann DB=ok, wenn HTTP 200 UND der Body valides JSON mit `"ok": true` ist. Alles andere (503, Timeout, `ok:false`, kein JSON) = DB **down**.
+   - **Backend/DB (`health`):** falls gesetzt. `curl -sS -o /dev/null -w '%{http_code}' -L --max-time 20 <health-url>` → **Backend lebt** bei HTTP-Status **< 500** (auch 401/403 – die Kundensites sind statische Exporte; das Supabase hinter dem `/api/supabase`-Proxy antwortet keyless mit 401 = erreichbar). **down** nur bei **5xx, Timeout oder DNS-/Verbindungsfehler**. Kein JSON/kein `{ok}` erwartet.
 3. Klassifizieren je Site:
    - `down` – Startseite nicht erreichbar (4xx/5xx/Timeout/DNS-/TLS-Fehler), **oder** `expect` fehlt, **oder** `health` nicht ok. Das sind echte Ausfälle → Alert.
    - `slow` – erreichbar & funktional, aber Antwort ≥ 3 s.
@@ -54,7 +54,7 @@ Du überwachst Sebastians Kunden-Websites – nicht nur „antwortet der Server"
 
 - [ ] `uptime/uptime.json` wurde über `bin/uptime-record.py` geschrieben, ist valides JSON und enthält jede Site aus sites.json plus einen neuen Historienpunkt.
 - [ ] Jeder `state`, `ms`, `ssl_days`, `expect_ok`, `assets`, `db` ist durch echten curl-Output belegbar; nichts geschätzt, nichts hartkodiert.
-- [ ] Für jede Site mit `health` wurde der Endpoint wirklich abgefragt und nur bei HTTP 200 + `{"ok":true}` als DB=ok gewertet.
+- [ ] Für jede Site mit `health` wurde die URL wirklich abgefragt; DB=ok bei HTTP < 500 (auch 401/403), DB=down nur bei 5xx/Timeout/DNS-Fehler.
 - [ ] `down` wurde mit zweiter Messung bestätigt.
 - [ ] Für jedes echte Problem (down / ssl_days<21 / kaputte Bilder) existiert genau ein Alert-Entwurf.
 - [ ] Kein fehlendes Werkzeug wurde durch erfundene Werte kaschiert – im Zweifel Status **error**.

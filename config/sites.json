@@ -1,5 +1,5 @@
 {
-  "_hinweis": "Kunden-Websites, die uptime-waechter und seo-audit pruefen. Von Hand pflegen. name=Anzeigename, url=Live-URL. Optionale Funktionschecks pro Site: 'expect'=String, der im HTML stehen MUSS (echter Inhalt statt Fehlerseite); 'assets'=\"auto\" (jedes <img> der Startseite GETen: 200 + image/* + >0 Byte) oder Liste kritischer Pfade wie [\"/assets/logo.png\"]; 'health'=URL eines JSON-Health-Endpoints ({\"ok\":true} = 200, sonst defekt) fuers Backend/DB-Lebenszeichen. Fehlt ein Feld, wird der jeweilige Check uebersprungen (nicht als gruen gewertet).",
+  "_hinweis": "Kunden-Websites, die uptime-waechter und seo-audit pruefen. Von Hand pflegen. name=Anzeigename, url=Live-URL. Optionale Funktionschecks pro Site: 'expect'=String, der im HTML stehen MUSS (echter Inhalt statt Fehlerseite); 'assets'=\"auto\" (jedes <img> der Startseite GETen: 200 + image/* + >0 Byte) oder Liste kritischer Pfade wie [\"/assets/logo.png\"]; 'health'=Backend-Liveness-URL: HTTP-Antwort < 500 (auch 401/403) = Backend erreichbar/lebt, Timeout/5xx/DNS-Fehler = down. Statische Sites haben keinen Server-Health-Endpoint; nimm z.B. den Supabase-REST-Root ueber den Plesk-Proxy (antwortet keyless mit 401 = lebt). Fehlt ein Feld, wird der jeweilige Check uebersprungen (nicht als gruen gewertet).",
   "sites": [
     {
       "name": "naschberger.info",
@@ -11,7 +11,7 @@
       "url": "https://sicherrestaurant.at",
       "expect": "Restaurant Sicher",
       "assets": "auto",
-      "health": "https://sicherrestaurant.at/api/health"
+      "health": "https://sicherrestaurant.at/api/supabase/rest/v1/"
     },
     {
       "name": "ursulakircher.at",
