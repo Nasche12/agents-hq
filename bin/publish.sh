@@ -20,9 +20,11 @@ if [ -d dashboard/assets ]; then
   find dashboard/assets -maxdepth 1 -type f -exec cp -f {} httpdocs/assets/ \;
 fi
 
-# Runtime-JSON NICHT überschreiben – die Agents schreiben httpdocs/status.json &
-# httpdocs/uptime.json selbst. Nur anlegen, falls noch nichts da ist.
+# Runtime-JSON NICHT überschreiben – die Agents spiegeln httpdocs/status.json,
+# httpdocs/uptime.json & httpdocs/server.json selbst (bin/run-agent.sh).
+# Nur seed anlegen, falls noch nichts da ist, damit der Browser nicht 404 pollt.
 [ -f httpdocs/status.json ] || cp -f dashboard/status.json httpdocs/status.json 2>/dev/null || true
+[ -f httpdocs/server.json ] || cp -f server/server-status.json httpdocs/server.json 2>/dev/null || true
 
 # Sicherheitsnetz: kein Verzeichnis-Listing im Docroot
 printf 'Options -Indexes\n' > httpdocs/.htaccess

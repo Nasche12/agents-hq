@@ -157,4 +157,5 @@ esac
 
 # Dashboard-Datenfiles ins statische Docroot spiegeln (index.html liest sie ohne server.js)
 [ -f "$BASE/uptime/uptime.json" ] && cp -f "$BASE/uptime/uptime.json" "$WEBDIR/uptime.json" 2>/dev/null
+[ -f "$BASE/server/server-status.json" ] && cp -f "$BASE/server/server-status.json" "$WEBDIR/server.json" 2>/dev/null
 exit "$RC"
