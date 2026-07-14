@@ -655,10 +655,17 @@ a.doc-row:hover{border-color:rgba(84,226,255,.45);background:rgba(84,226,255,.06
 .st-sec-head:first-child{margin-top:4px}
 .st-sec-head h3{font-size:15px;margin:4px 0 0;letter-spacing:-.2px}
 .st-demo{font-size:9px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--yellow);background:rgba(248,212,92,.1);border:1px solid rgba(248,212,92,.25);border-radius:7px;padding:3px 8px}
-.st-charts{display:grid;grid-template-columns:1.6fr 1fr 1fr;gap:12px;padding:4px 14px 16px}
-.st-chart{border:1px solid var(--panel-border);background:rgba(255,255,255,.02);border-radius:13px;padding:10px 12px 6px}
-.st-chart-h{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:2px}
-.st-chart .trend-chart{height:172px;padding:6px 2px 2px}
+.st-charts{display:grid;grid-template-columns:1fr;gap:12px;padding:4px 14px 16px}
+.st-chart{border:1px solid var(--panel-border);background:rgba(255,255,255,.02);border-radius:13px;padding:10px 14px 8px}
+.st-chart-h{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
+/* Verlaufscharts: proportional skalieren (kein Verzerren), volle Breite -> Achsen/Text lesbar */
+.st-trend{padding:4px 2px 0}
+.st-trend svg{width:100%;height:auto;display:block;overflow:visible}
+.st-trend .gl{stroke:rgba(137,164,201,.12);stroke-width:1;vector-effect:non-scaling-stroke}
+.st-trend .gt{fill:var(--muted-2);font-size:10px;font-family:ui-monospace,monospace}
+.st-trend .hv{fill:transparent;cursor:crosshair}
+.st-trend .hv:hover{fill:rgba(255,255,255,.05)}
+.st-trend .chart-empty{margin:6px 0}
 .srv-chips{display:flex;flex-wrap:wrap;gap:6px}
 .srv-cols{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:2px 16px 12px}
 .srv-col .srv-lbl{font-size:10px;color:var(--muted-2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:7px;display:flex;align-items:center;gap:8px}

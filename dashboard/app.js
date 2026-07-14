@@ -1220,7 +1220,7 @@ let TREND_SEQ=0;
 /* Mehrlinien-Trend über Zeit (gleiche Einheit). times:ISO[], series:[{name,color,vals[],dash?}] */
 function svgTrend(times,series,opt){
  opt=opt||{};const n=times.length;
- if(n<2)return '<div class="trend-chart"><div class="chart-empty">'+esc(opt.empty||'Sammle Daten – mind. 2 Messpunkte nötig.')+'</div></div>';
+ if(n<2)return '<div class="st-trend"><div class="chart-empty">'+esc(opt.empty||'Sammle Daten – mind. 2 Messpunkte nötig.')+'</div></div>';
  const W=720,H=opt.h||188,pl=46,pr=14,tp=14,bt=24;
  const tms=times.map(t=>new Date(t).getTime());
  const tmode=tms.every(v=>!isNaN(v))&&tms[n-1]>tms[0],t0=tmode?tms[0]:0,t1=tmode?tms[n-1]:n-1;
@@ -1238,7 +1238,7 @@ function svgTrend(times,series,opt){
  const lines=series.map(s=>{const d=mkPath(s);return d?`<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" ${s.dash?'stroke-dasharray="1 5"':''} vector-effect="non-scaling-stroke"/>`:'';}).join('');
  const hov=times.map((t,i)=>{const w=(W-pl-pr)/Math.max(1,n-1);const info=series.map(s=>s.name+': '+(s.vals[i]==null?'–':(opt.vfmt?opt.vfmt(s.vals[i]):num(Math.round(s.vals[i])))+(opt.pct?'%':(opt.unit?' '+opt.unit:'')))).join('\n');
   return `<rect class="hv" x="${(X(i)-w/2).toFixed(1)}" y="${tp}" width="${w.toFixed(1)}" height="${H-tp-bt}"><title>${esc((tmode?fmtStamp(t):('#'+(i+1)))+'\n'+info)}</title></rect>`;}).join('');
- return `<div class="trend-chart"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(opt.aria||'Trend')}">${grad}${grid}${areaPath}${lines}${xax}${hov}</svg></div>`;
+ return `<div class="st-trend"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opt.aria||'Trend')}">${grad}${grid}${areaPath}${lines}${xax}${hov}</svg></div>`;
 }
 
 /* Gestapelte Balken über Zeit (Token: Input unten, Output oben). buckets:[{t,parts:[{name,v,color}]}] */
@@ -1302,52 +1302,10 @@ function tokenAgg(){
   recent:recent.sort((a,b)=>new Date(b.t)-new Date(a.t)).slice(0,12),demo:false};
 }
 
-/* Demo-Token-Daten (nur bis echte Läufe mit usage vorliegen). Klar als Demo markiert. */
-function demoTokenAgg(){
- const now=Date.now(),win=rangeWinMs(),hour=win<=2*864e5;
- const perAgent={},perModel={},buckets={},recent=[];
- const tot={in:0,out:0,cw:0,cr:0,tokens:0,cost:0,runs:0,turns:0,withTok:0};
- const models=['haiku','haiku','haiku','sonnet','opus'];
- const nRuns=Math.max(24,Math.round(win/864e5*7));
- for(let k=0;k<nRuns;k++){
-  const id=FLEET_IDS[Math.floor(Math.random()*FLEET_IDS.length)];
-  const ts=new Date(now-Math.random()*win).toISOString();
-  const model=(id==='server-waechter'||id==='uptime-waechter')?'haiku':models[Math.floor(Math.random()*models.length)];
-  const scale=model==='opus'?6:model==='sonnet'?2.4:1;
-  const inp=Math.round((3000+Math.random()*12000)*scale),out=Math.round((400+Math.random()*3000)*scale);
-  const cw=Math.round(inp*0.7),cr=Math.round(inp*4+Math.random()*40000),tk=inp+out+cw+cr;
-  const cost=+((inp*3+out*15+cw*3.75+cr*0.3)/1e6*scale).toFixed(4),turns=Math.round(2+Math.random()*10);
-  tot.in+=inp;tot.out+=out;tot.cw+=cw;tot.cr+=cr;tot.tokens+=tk;tot.cost+=cost;tot.runs++;tot.turns+=turns;tot.withTok++;
-  const a=perAgent[id]||(perAgent[id]={id,name:agName(id),tokens:0,cost:0,runs:0,in:0,out:0});a.tokens+=tk;a.cost+=cost;a.runs++;a.in+=inp;a.out+=out;
-  const m=perModel[model]||(perModel[model]={model,tokens:0,cost:0,runs:0});m.tokens+=tk;m.cost+=cost;m.runs++;
-  const d=new Date(ts);if(hour)d.setMinutes(0,0,0,0);else d.setHours(0,0,0,0);const bk=d.toISOString();
-  const b=buckets[bk]||(buckets[bk]={t:bk,in:0,out:0,tokens:0,cost:0,runs:0});b.in+=inp;b.out+=out;b.tokens+=tk;b.cost+=cost;b.runs++;
-  recent.push({id,name:agName(id),t:ts,model,in:inp,out:out,tokens:tk,cost,status:'ok',rc:0});
- }
- return {total:tot,
-  byAgent:Object.values(perAgent).sort((a,b)=>b.tokens-a.tokens),
-  byModel:Object.values(perModel).sort((a,b)=>b.tokens-a.tokens),
-  series:Object.values(buckets).sort((a,b)=>new Date(a.t)-new Date(b.t)),
-  recent:recent.sort((a,b)=>new Date(b.t)-new Date(a.t)).slice(0,12),demo:true};
-}
-
-/* Demo-Server-Verlauf (bis der Server-Wächter echte Samples schreibt). */
-function demoSrvHist(){
- const now=Date.now(),win=Math.max(rangeWinMs(),7*864e5),stepMs=rangeWinMs()<=2*864e5?36e5:864e5;
- const n=Math.min(60,Math.max(6,Math.round(win/stepMs))),out=[];
- let disk=54,mem=58,load=0.4,ssl=40;
- for(let i=n-1;i>=0;i--){const t=new Date(now-i*stepMs).toISOString();
-  disk=clamp(disk+(Math.random()-0.45)*2,40,82);mem=clamp(mem+(Math.random()-0.5)*6,45,88);
-  load=clamp(load+(Math.random()-0.5)*0.25,0.1,1.6);ssl=clamp(ssl-Math.random()*0.4,20,45);
-  out.push({t,state:'ok',disk:Math.round(disk),mem:Math.round(mem),load:+load.toFixed(2),ssl:Math.round(ssl),log_mb:Math.round(100+Math.random()*80),failed_ssh:Math.round(Math.random()*4),services_up:3,services_total:3,db_up:5,db_total:5,backups_ok:2,backups_total:2});}
- return out;
-}
-
 /* Server-Block: aktuelle Gauges + Verlaufsgraphen + Dienste/DB/Backups. */
 function serverBlock(){
  const s=SERVER,arr=v=>Array.isArray(v)?v:[];
- let hist=(SRVHIST||[]).filter(p=>inSelRange(p.t)),demo=false;
- if(hist.length<2){hist=demoSrvHist();demo=true;}
+ const hist=(SRVHIST||[]).filter(p=>inSelRange(p.t));
  const times=hist.map(p=>p.t),gv=k=>hist.map(p=>p[k]);
  const diskS={name:'Disk',color:'#2f9be0',vals:gv('disk')},memS={name:'Memory',color:'#e05aa8',vals:gv('mem')};
  const loadS={name:'Load/Core',color:'#14a87c',vals:gv('load')},sslS={name:'SSL Tage',color:'#bb840f',vals:gv('ssl')};
@@ -1364,7 +1322,8 @@ function serverBlock(){
    <div class="srv-stat"><span>Load / Core</span><b>${load.per_core!=null?load.per_core:'–'}</b><small>${(s&&s.load&&s.load.cores)?s.load.cores+' Cores':''}</small></div>
    <div class="srv-stat"><span>SSL min.</span><b style="color:${sslDays!=null&&sslDays<21?'var(--red)':'inherit'}">${sslDays!=null?sslDays+' T':'–'}</b><small>${s&&s.uptime?'up '+esc(s.uptime):''}</small></div>
  </div>`;
- const empty=(!s)?`<div class="srv-empty">Noch keine echten Server-Daten. Die Graphen unten zeigen Demo-Werte, bis der 🐧 Server-Wächter läuft (misst Disk, RAM, Load, SSL, Dienste & Backups und schreibt die Historie fort).</div>`:'';
+ const empty=(!s)?`<div class="srv-empty">Noch keine Server-Daten. Der 🐧 Server-Wächter misst Disk, RAM, Load, SSL, Dienste & Backups und schreibt sie hierher – starte ihn mit „Check jetzt".</div>`:'';
+ const histNote=(hist.length<2)?`<div class="srv-foot">Verlauf sammelt sich – ab dem 2. Server-Wächter-Lauf erscheinen die Kurven (aktuell ${hist.length} Messpunkt${hist.length===1?'':'e'}).</div>`:'';
  const charts=`<div class="st-charts">
    <div class="st-chart"><div class="st-chart-h"><span class="eyebrow">DISK &amp; MEMORY</span><div class="chart-legend inline"><span><i style="background:${diskS.color}"></i>Disk</span><span><i style="background:${memS.color}"></i>Mem</span></div></div>${svgTrend(times,[diskS,memS],{pct:true,area:true,aria:'Disk & Memory %'})}</div>
    <div class="st-chart"><div class="st-chart-h"><span class="eyebrow">LOAD / CORE</span></div>${svgTrend(times,[loadS],{area:true,kfmt:v=>(+v).toFixed(1),vfmt:v=>(+v).toFixed(2),aria:'Load per core'})}</div>
@@ -1376,15 +1335,15 @@ function serverBlock(){
    <div class="srv-col"><div class="srv-lbl">Backups <b class="srv-bk ${backups.length&&okBk===backups.length?'ok':'bad'}">${okBk}/${backups.length}</b></div><div class="srv-chips">${backups.map(b=>`<span class="srv-chip ${b.ok?'ok':'bad'}">${b.ok?'✓':'⚠'} ${esc(b.name)} · ${b.age_hours}h</span>`).join('')||'<small>–</small>'}</div></div>
  </div>`:'';
  const foot=s?`<div class="srv-foot">Fehlgeschlagene SSH-Logins: ${(s.logins&&s.logins.failed_ssh)||0} · Log-Verzeichnis ${s.log_dir_mb!=null?s.log_dir_mb+' MB':'–'} · Stand ${s.stand?fmtStamp(s.stand):'–'}</div>`:'';
- return `<div class="st-sec-head"><div><span class="eyebrow">LIVE</span><h3>Serverauslastung</h3></div><div class="ph-right">${s?`<span class="status-chip ${state==='down'?'bad':state==='warn'?'warn':'good'}">${state==='down'?'Down':state==='warn'?'Watch':'Healthy'}</span>`:''}${demo?'<span class="st-demo">Verlauf: Demo</span>':''}<button class="secondary-button" id="stSrvRun" ${API?'':'disabled'} data-tip="Server-Wächter jetzt laufen lassen">Check jetzt</button></div></div>
- <section class="panel">${gauges}${empty}${charts}${cols}${foot}</section>`;
+ return `<div class="st-sec-head"><div><span class="eyebrow">LIVE</span><h3>Serverauslastung</h3></div><div class="ph-right">${s?`<span class="status-chip ${state==='down'?'bad':state==='warn'?'warn':'good'}">${state==='down'?'Down':state==='warn'?'Watch':'Healthy'}</span>`:''}<button class="secondary-button" id="stSrvRun" ${API?'':'disabled'} data-tip="Server-Wächter jetzt laufen lassen">Check jetzt</button></div></div>
+ <section class="panel">${gauges}${empty}${charts}${histNote}${cols}${foot}</section>`;
 }
 
 /* Token-Block: KPIs + Hauptchart (Agent/Timeline umschaltbar) + Pro-Agent-Tabelle + Modell-Donut + letzte Läufe. */
 function tokenBlock(){
- let agg=tokenAgg(),demo=false;
- if(agg.total.runs===0||agg.total.withTok===0){agg=demoTokenAgg();demo=true;}
+ const agg=tokenAgg();
  const T=agg.total,cols5='minmax(120px,1.6fr) repeat(5,1fr)',cols5b='minmax(120px,1.5fr) 1fr 1fr 1fr 1fr';
+ const noTok=T.withTok===0;   // keine Läufe mit echter Token-Erfassung im Zeitraum
  const kpis=[
   {l:'Tokens gesamt',v:kfmt(T.tokens)},{l:'Input',v:kfmt(T.in)},{l:'Output',v:kfmt(T.out)},{l:'Cache read',v:kfmt(T.cr)},
   {l:'Kosten (gesch.)',v:'$'+(T.cost||0).toFixed(2)},{l:'Läufe',v:num(T.runs)},{l:'Ø $/Lauf',v:'$'+(T.runs?(T.cost/T.runs):0).toFixed(3)},{l:'Turns',v:num(T.turns)}
@@ -1398,7 +1357,8 @@ function tokenBlock(){
  const donut=donutMini(modelItems,kfmt(T.tokens),'Tokens');
  const agentTable=`<div class="dtbl"><div class="dtbl-head" style="grid-template-columns:${cols5}"><span>Agent</span><span>Läufe</span><span>Input</span><span>Output</span><span>Tokens</span><span>Kosten</span></div>${agg.byAgent.map((a,i)=>`<div class="dtbl-row" style="grid-template-columns:${cols5}"><span class="dtbl-name"><i style="background:${ACCENT[a.id]||CHART_PAL[i%CHART_PAL.length]}"></i>${esc(a.name)}</span><span>${num(a.runs)}</span><span>${kfmt(a.in)}</span><span>${kfmt(a.out)}</span><span>${kfmt(a.tokens)}</span><span>$${a.cost.toFixed(2)}</span></div>`).join('')||'<div class="data-empty">Keine Daten.</div>'}</div>`;
  const recent=`<div class="dtbl"><div class="dtbl-head" style="grid-template-columns:${cols5b}"><span>Agent</span><span>Zeit</span><span>Modell</span><span>Tokens</span><span>Kosten</span></div>${agg.recent.map(r=>`<div class="dtbl-row" style="grid-template-columns:${cols5b}"><span class="dtbl-name"><i style="background:${modelColor(r.model)}"></i>${esc(r.name)}</span><span>${esc(fmtStamp(r.t))}</span><span>${esc(modelLabel(r.model))}</span><span>${kfmt(r.tokens)}</span><span>$${(r.cost||0).toFixed(3)}</span></div>`).join('')||'<div class="data-empty">Keine Läufe.</div>'}</div>`;
- return `<div class="st-sec-head"><div><span class="eyebrow">CLAUDE-NUTZUNG</span><h3>Token-Verbrauch &amp; Kosten</h3></div>${demo?'<span class="st-demo">Demo-Daten</span>':'<span class="status-chip good">echte Läufe</span>'}</div>
+ return `<div class="st-sec-head"><div><span class="eyebrow">CLAUDE-NUTZUNG</span><h3>Token-Verbrauch &amp; Kosten</h3></div>${noTok?`<span class="status-chip warn">${num(T.runs)} Läufe · noch keine Token erfasst</span>`:`<span class="status-chip good">${num(T.withTok)} Läufe erfasst</span>`}</div>
+ ${noTok?'<div class="srv-empty" style="margin:0 0 12px">Noch keine Läufe mit Token-Erfassung im Zeitraum. Die Werte füllen sich, sobald Agents mit der neuen Erfassung laufen (jeder Lauf schreibt input/output/cache-Tokens + geschätzte Kosten). Alte Läufe von vor dem Update haben keine Token-Daten.</div>':''}
  ${kpiHtml}
  <section class="panel tok-main"><div class="panel-header compact"><div><span class="eyebrow">TOKEN-VERBRAUCH</span><h3 id="tokChartTitle">${esc(mainTitle)}</h3></div><div class="seg-toggle" id="tokModeToggle"><button data-tokmode="agent" class="${TOKMODE==='agent'?'active':''}">Nach Agent</button><button data-tokmode="timeline" class="${TOKMODE==='timeline'?'active':''}">Timeline</button></div></div><div id="tokMainChart">${mainChart}</div></section>
  <div class="st-grid2">
