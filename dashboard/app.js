@@ -6,8 +6,12 @@
      /api/runs, /api/analytics (Umami-Proxy).
    ================================================================ */
 const COLORS={running:'#ff2e9e',ok:'#5bd9a0',idle:'#8a8a96',waiting:'#e6c766',error:'#f4707f'};
-/* Cleane, reduzierte Chart-/Serien-Palette (Violett/Blau/Teal statt Regenbogen) */
-const CHART_PAL=['#ff2e9e','#54c8e0','#5bd9a0','#ff74c4','#6d8bff','#8f9bd0'];
+/* Kategoriale Serien-Palette – gegen die dunkle Dashboard-Flaeche validiert
+   (dataviz-Skill: Lightness-Band, Chroma-Floor, CVD ΔE 32, Kontrast ≥3:1 – alles PASS).
+   Feste Reihenfolge, nie zyklisch neu einfaerben; Identitaet zusaetzlich per Label. */
+const CHART_PAL=['#2f9be0','#14a87c','#bb840f','#e05aa8','#8f7bf0','#e2574f','#2ba3b3','#e0713a'];
+/* Sequenzielle Blau-Rampe fuer Magnitude-Balkenlisten (eine Kennzahl, nicht Identitaet) */
+const SEQ_BLUE=['#0d366b','#184f95','#256abf','#2a78d6','#3987e5','#5598e7','#6da7ec','#86b6ef'];
 const LABELS={running:'running',ok:'done',idle:'ready',waiting:'waiting for you',error:'error'};
 const RM=matchMedia('(prefers-reduced-motion:reduce)').matches;
 const MOBILE=matchMedia('(max-width:900px)').matches;
@@ -43,12 +47,14 @@ const META=id=>id==='master'?{icon:'🧠',role:'Mission orchestration',accent:MA
 
 /* ===== Laufzeit-Zustand ===== */
 let DATA=null,SEL=null,API=false,UPTIME=null,SCHEDULE=null,ANALYTICS=null,RUNCOUNT={},SERVER=null;
+let RUNS={},SRVHIST=null;                                  // Lauf-Datensätze (mit Tokens) + Server-Verlauf
 let VIEW='overview',booted=false,theatreOn=false,builtAuto=false,placeNavActive=()=>{},RANGE='7d';
+let ANTAB='website',TOKMODE='agent';                      // Analytics-Tab + Token-Chart-Modus
 
 /* ===== Mini-Helfer ===== */
 const $=(s,r=document)=>r.querySelector(s);
 const $$=(s,r=document)=>[...r.querySelectorAll(s)];
-const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 const dstr=d=>typeof d==='string'?d:(d&&typeof d==='object'
  ?Object.entries(d).map(([k,v])=>k+': '+(v==null?'–':(typeof v==='object'?JSON.stringify(v):v))).join(', '):String(d));
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -820,8 +826,13 @@ async function loadSchedule(){try{const r=await fetch('/api/schedule?ts='+Date.n
 async function loadAnalytics(){try{const r=await fetch('/api/analytics?'+analyticsQuery()+'&ts='+Date.now(),{cache:'no-store'});ANALYTICS=r.ok?await r.json():null;}catch(e){ANALYTICS=null;}if(DATA&&VIEW==='analytics')renderAnalytics();if(DATA&&VIEW==='overview')renderOverview();}
 async function loadRunCounts(){
  try{const res=await Promise.all(FLEET_IDS.map(id=>fetch('/api/runs/'+id).then(r=>r.ok?r.json():[]).catch(()=>[])));
-  RUNCOUNT={};FLEET_IDS.forEach((id,i)=>RUNCOUNT[id]=Array.isArray(res[i])?res[i].length:0);}catch(e){}
+  RUNS={};RUNCOUNT={};FLEET_IDS.forEach((id,i)=>{RUNS[id]=Array.isArray(res[i])?res[i]:[];RUNCOUNT[id]=RUNS[id].length;});}catch(e){}
  if(DATA&&VIEW==='analytics')renderAnalytics();
+}
+/* Server-Verlauf (aus dem gespiegelten server-history.json) – funktioniert auch ohne API. */
+async function loadServerHistory(){
+ try{const r=await fetch('server-history.json?ts='+Date.now(),{cache:'no-store'});const j=r.ok?await r.json():null;SRVHIST=Array.isArray(j)?j:null;}catch(e){SRVHIST=null;}
+ if(DATA&&VIEW==='analytics'&&ANTAB==='server')renderServerTokens();
 }
 async function load(){
  if(FORCE_DEMO){DATA=DEMO;DATA.demo=true;}
@@ -830,6 +841,7 @@ async function load(){
  try{const ur=await fetch('uptime.json?ts='+Date.now(),{cache:'no-store'});UPTIME=ur.ok?await ur.json():null;}catch(e){UPTIME=null;}
  if((!UPTIME||!(UPTIME.sites||[]).length)&&DATA.demo)UPTIME=DEMO_UPTIME;
  try{const sr=await fetch('server.json?ts='+Date.now(),{cache:'no-store'});const sj=sr.ok?await sr.json():null;SERVER=(sj&&sj.stand)?sj:null;}catch(e){SERVER=null;}
+ loadServerHistory();
  applyData();
  const anyRunning=Object.values(DATA.agents||{}).some(a=>a.status==='running');
  if(FORCE_DEMO)startTheatre();
@@ -1082,47 +1094,327 @@ async function saveSchedule(){
  finally{btn.disabled=!API;}
 }
 
-/* ===== ANALYTICS (Umami) – per-website breakdown, multiple fields ===== */
+/* ===== ANALYTICS (Umami) – kompletter Report: KPIs, Trend, Mix, Per-Site, Breakdowns ===== */
+const kfmt=n=>n==null?'–':(Math.abs(n)>=1e6?(n/1e6).toFixed(1)+'M':Math.abs(n)>=1000?(n/1000).toFixed(n<1e4?1:0)+'k':String(n));
+const durMS=sec=>sec==null?'–':Math.floor(sec/60)+':'+String(Math.round(sec%60)).padStart(2,'0');
+const cap=s=>{s=String(s||'');return s?s[0].toUpperCase()+s.slice(1):s;};
+const flag=cc=>{cc=String(cc||'').trim().toUpperCase();return /^[A-Z]{2}$/.test(cc)?cc.replace(/./g,c=>String.fromCodePoint(127397+c.charCodeAt(0))):'🏳';};
+/* sequenzielle Magnitude-Balkenliste – EINE Kennzahl, EINE Blaurampe (keine Identitaet) */
+function barList(items){
+ if(!items||!items.length)return '<p class="bd-empty">No data yet.</p>';
+ const max=Math.max(1,...items.map(i=>+i.value||0));
+ return items.map(i=>{const w=Math.max(2,Math.round((+i.value||0)/max*100));
+  return `<div class="bl-row" data-tip="${esc(i.label)} · ${num(i.value)}"><span class="bl-fill" style="width:${w}%"></span><span class="bl-label">${esc(i.label)}</span><span class="bl-val">${num(i.value)}</span></div>`;}).join('');
+}
+/* Trend-Chart: Pageviews + Visitors auf EINER Achse.
+   Nutzt svgLine → beschriftete X/Y-Achse + Crosshair-Tooltip (Werte pro Zeitpunkt ablesbar). */
+const trendISO=d=>(''+d).trim().replace(' ','T');
+function anTrend(series,unit){
+ const el=$('#trendChart'),lg=$('#trendLegend');if(!el)return;
+ const pts=(series||[]).filter(p=>p&&p.date!=null);
+ if(pts.length<2){el.innerHTML='<div class="chart-empty">Collecting data – needs 2+ time buckets.</div>';if(lg)lg.innerHTML='';return;}
+ const cPv=CHART_PAL[0],cVs=CHART_PAL[1];
+ const s=[{name:'Pageviews',color:cPv,pts:pts.map(p=>+p.pageviews||0)},
+          {name:'Visitors',color:cVs,pts:pts.map(p=>+p.sessions||0)}];
+ const times=pts.map(p=>trendISO(p.date));
+ const xf=iso=>{const t=new Date(iso);if(isNaN(t))return String(iso).slice(5,10);
+  return unit==='hour'?t.toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'})
+   :unit==='month'?t.toLocaleDateString('de-AT',{month:'short',year:'2-digit'})
+   :t.toLocaleDateString('de-AT',{day:'2-digit',month:'2-digit'});};
+ el.innerHTML=svgLine(s,{w:760,h:224,zero:true,unit:'views',vfmt:v=>num(v),nullLabel:'0',times,xfmt:xf,aria:'Pageviews and visitors over time'});
+ hydrateCharts(el);
+ if(lg)lg.innerHTML=`<span><i style="background:${cPv}"></i>Pageviews</span><span><i style="background:${cVs}"></i>Visitors</span>`;
+}
+/* Dispatcher: gemeinsamer Kopf (Zeitraum) + aktiver Tab. */
 function renderAnalytics(){
  const ar=$('#anRange');if(ar)ar.innerHTML=rangeBtnHtml();
- const a=ANALYTICS,tbl=$('#analyticsTable');
+ const website=ANTAB==='website';
+ const pw=$('#anTabWebsite'),ps=$('#anTabServer');
+ if(pw)pw.classList.toggle('active',website);
+ if(ps)ps.classList.toggle('active',!website);
+ $$('.an-tab-btn').forEach(b=>{const on=b.dataset.antab===ANTAB;b.classList.toggle('active',on);b.setAttribute('aria-selected',on?'true':'false');});
+ const eb=$('#anEyebrow'),tt=$('#anTitle');
+ if(website){if(eb)eb.textContent='WEBSITE INTELLIGENCE';if(tt)tt.textContent='Umami traffic report';renderAnalyticsWebsite();}
+ else{if(eb)eb.textContent='INFRASTRUCTURE & COST';if(tt)tt.textContent='Server & Token analytics';renderServerTokens();}
+}
+function renderAnalyticsWebsite(){
+ const a=ANALYTICS,tbl=$('#analyticsTable'),grid=$('#breakdownGrid');
+ const clear=()=>{$('#analyticsKpis').innerHTML='';$('#trendChart').innerHTML='';$('#trendLegend').innerHTML='';$('#barChart').innerHTML='';$('#barLegend').innerHTML='';$('#donutLegend').innerHTML='';$('#donutTotal').textContent='–';$('#donut').style.background='';if(grid)grid.innerHTML='';};
  if(!a||!a.configured){
-  $('#analyticsRange').textContent='not connected';$('#analyticsRange').className='status-chip warn';
-  $('#analyticsKpis').innerHTML='';
-  $('#barChart').innerHTML=`<div class="chart-empty">${a&&a.reason?esc(a.reason):'Analytics not configured.'} – add the Umami credentials (UMAMI_*) on the server.</div>`;
-  $('#barLegend').innerHTML='';$('#donutLegend').innerHTML='';$('#donutTotal').textContent='–';
+  $('#analyticsRange').textContent='not connected';$('#analyticsRange').className='status-chip warn';clear();
+  $('#trendChart').innerHTML=`<div class="chart-empty">${a&&a.reason?esc(a.reason):'Analytics not configured.'} – add the Umami credentials (UMAMI_*) on the server.</div>`;
   if(tbl)tbl.innerHTML='<div class="data-empty">No analytics data.</div>';return;
  }
  $('#analyticsRange').textContent=a.range||'7 days';$('#analyticsRange').className='status-chip good';
- const sites=a.sites||[];
+ const sites=a.sites||[],T=a.total||{},pal=CHART_PAL;
  const prevPv=sites.reduce((s,x)=>s+(x.prev&&x.prev.pageviews||0),0),prevVs=sites.reduce((s,x)=>s+(x.prev&&x.prev.visitors||0),0);
  const chg=(now,prev)=>prev?Math.round((now-prev)/prev*100):null;
- const dur=sec=>sec==null?'–':Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0');
- const avgBounce=sites.length?Math.round(sites.reduce((s,x)=>s+(x.bounce_rate||0),0)/sites.length):null;
- const avgDur=sites.length?Math.round(sites.reduce((s,x)=>s+(x.avg_seconds||0),0)/sites.length):null;
+ // --- KPI-Leiste ---
  const kpis=[
-  {v:num(a.total.visitors),l:'Visitors',c:pct(chg(a.total.visitors,prevVs)),cc:chgClass(chg(a.total.visitors,prevVs))},
-  {v:num(a.total.pageviews),l:'Pageviews',c:pct(chg(a.total.pageviews,prevPv)),cc:chgClass(chg(a.total.pageviews,prevPv))},
-  {v:dur(avgDur),l:'Avg. time',c:'min',cc:'flat'},
-  {v:avgBounce!=null?avgBounce+'%':'–',l:'Bounce rate',c:'',cc:'flat'}
+  {v:num(T.visitors),l:'Visitors',c:pct(chg(T.visitors,prevVs)),cc:chgClass(chg(T.visitors,prevVs))},
+  {v:num(T.pageviews),l:'Pageviews',c:pct(chg(T.pageviews,prevPv)),cc:chgClass(chg(T.pageviews,prevPv))},
+  {v:num(T.visits),l:'Visits',c:'',cc:'flat'},
+  {v:T.views_per_visit!=null?T.views_per_visit:'–',l:'Views / visit',c:'',cc:'flat'},
+  {v:durMS(T.avg_seconds),l:'Avg. visit time',c:'min',cc:'flat'},
+  {v:T.bounce_rate!=null?T.bounce_rate+'%':'–',l:'Bounce rate',c:'',cc:'flat'}
  ];
  $('#analyticsKpis').innerHTML=kpis.map(k=>`<div class="analytics-kpi"><span>${esc(k.l)}</span><strong>${esc(k.v)}</strong><small class="chg ${k.cc}">${esc(k.c)}</small></div>`).join('');
+ // --- Trend ---
+ anTrend(a.series,a.unit);
+ // --- Per-Site-Balken (this vs last) ---
  const maxPv=Math.max(1,...sites.map(s=>Math.max(s.pageviews,s.prev&&s.prev.pageviews||0)));
- $('#barChart').innerHTML=sites.map(s=>`<div class="bar-group"><div class="bars"><div class="bar" style="height:${Math.round((s.pageviews/maxPv)*100)}%"></div><div class="bar secondary" style="height:${Math.round(((s.prev&&s.prev.pageviews||0)/maxPv)*100)}%"></div></div><label>${esc((s.name||'').split('.')[0])}</label></div>`).join('')||'<div class="chart-empty">No websites in Umami.</div>';
- $('#barLegend').innerHTML='<span><i style="background:var(--accent)"></i>This week</span><span><i style="background:#3a3a52"></i>Last week</span>';
- const total=sites.reduce((s,x)=>s+x.pageviews,0)||1;const pal=CHART_PAL;
+ $('#barChart').innerHTML=sites.map(s=>{const cv=chg(s.pageviews,s.prev&&s.prev.pageviews);return `<div class="bar-group" data-tip="${esc(s.name)} · ${num(s.pageviews)} views · prev ${num(s.prev&&s.prev.pageviews||0)}${cv!=null?' · '+pct(cv):''}"><b class="bar-val">${kfmt(s.pageviews)}</b><div class="bars"><div class="bar cur" style="height:${Math.round((s.pageviews/maxPv)*100)}%"></div><div class="bar prev" style="height:${Math.round(((s.prev&&s.prev.pageviews||0)/maxPv)*100)}%"></div></div><label>${esc((s.name||'').split('.')[0])}</label></div>`;}).join('')||'<div class="chart-empty">No websites in Umami.</div>';
+ $('#barLegend').innerHTML=`<span><i style="background:${pal[0]}"></i>This period</span><span><i style="background:#3a4a63"></i>Previous</span>`;
+ // --- Traffic-Mix Donut ---
+ const total=sites.reduce((s,x)=>s+x.pageviews,0)||1;
  let acc=0;const stops=sites.map((s,i)=>{const from=acc/total*360;acc+=s.pageviews;const to=acc/total*360;return `${pal[i%pal.length]} ${from}deg ${to}deg`;}).join(',');
  $('#donut').style.background=`conic-gradient(${stops||'#26364d 0deg 360deg'})`;
- $('#donutTotal').textContent=num(total);
- $('#donutLegend').innerHTML=sites.map((s,i)=>`<div class="donut-legend-row" style="--legend-color:${pal[i%pal.length]}"><i></i><span>${esc(s.name)}</span><b>${Math.round(s.pageviews/total*100)}%</b></div>`).join('');
- // Per-website breakdown: multiple fields per site
+ $('#donutTotal').textContent=kfmt(total);
+ $('#donutLegend').innerHTML=sites.map((s,i)=>`<div class="donut-legend-row" style="--legend-color:${pal[i%pal.length]}" data-tip="${esc(s.name)} · ${num(s.pageviews)} views · ${Math.round(s.pageviews/total*100)}%"><i></i><span>${esc(s.name)}</span><b>${Math.round(s.pageviews/total*100)}%</b></div>`).join('');
+ // --- Per-Website-Tabelle ---
  if(tbl){
   const head=`<div class="atbl-head"><span>Website</span><span>Visitors</span><span>Views</span><span>Avg. time</span><span>Bounce</span><span>Trend</span></div>`;
   const rows=sites.map((s,i)=>{const cv=chg(s.pageviews,s.prev&&s.prev.pageviews);
-   return `<div class="atbl-row is-click" data-openurl="https://${esc(s.name)}" data-tip="Open ${esc(s.name)}"><span class="atbl-site"><i style="background:${pal[i%pal.length]}"></i><span>${esc(s.name)}<small>${esc(s.domain||'')}</small></span></span><span>${num(s.visitors)}</span><span>${num(s.pageviews)}</span><span>${dur(s.avg_seconds)}</span><span>${s.bounce_rate!=null?s.bounce_rate+'%':'–'}</span><span class="chg ${chgClass(cv)}">${pct(cv)||'–'}</span></div>`;}).join('');
+   return `<div class="atbl-row is-click" data-openurl="https://${esc(s.name)}" data-tip="Open ${esc(s.name)}"><span class="atbl-site"><i style="background:${pal[i%pal.length]}"></i><span>${esc(s.name)}<small>${esc(s.domain||'')}</small></span></span><span>${num(s.visitors)}</span><span>${num(s.pageviews)}</span><span>${durMS(s.avg_seconds)}</span><span>${s.bounce_rate!=null?s.bounce_rate+'%':'–'}</span><span class="chg ${chgClass(cv)}">${pct(cv)||'–'}</span></div>`;}).join('');
   tbl.innerHTML=head+rows;
   tbl.querySelectorAll('[data-openurl]').forEach(el=>el.addEventListener('click',()=>window.open(el.dataset.openurl,'_blank','noopener')));
  }
+ // --- Breakdown-Karten (aggregiert ueber alle Sites) ---
+ if(grid){
+  const bd=a.breakdowns||{};
+  const cards=[
+   {key:'pages',title:'Top pages',icon:'📄',fmt:x=>x||'/'},
+   {key:'referrers',title:'Top sources',icon:'🔗',fmt:x=>x?String(x).replace(/^https?:\/\//,''):'Direct / none'},
+   {key:'browsers',title:'Browsers',icon:'🧭',fmt:cap},
+   {key:'os',title:'Operating systems',icon:'💻',fmt:x=>x||'–'},
+   {key:'devices',title:'Devices',icon:'📱',fmt:cap},
+   {key:'countries',title:'Countries',icon:'🌍',fmt:x=>flag(x)+'  '+String(x||'').toUpperCase()}
+  ];
+  grid.innerHTML=cards.map(c=>{const rows=(bd[c.key]||[]).map(r=>({label:c.fmt(r.x),value:r.y}));
+   return `<section class="panel bd-card"><div class="bd-head"><span class="eyebrow">${c.icon} ${esc(c.title)}</span><small>${rows.length||''}</small></div><div class="bd-list">${barList(rows)}</div></section>`;}).join('');
+ }
+}
+
+/* ================================================================
+   SERVER & TOKEN – Analytics-Tab: Auslastung + Verlauf + Token-Kosten
+   Datenquellen: SRVHIST (server-history.json), RUNS (/api/runs mit usage),
+   SERVER (server.json). Fehlt Echtdaten, wird klar markiert mit Demo-Werten
+   gefüllt, damit der Tab auch vor dem ersten Server-Lauf lebt.
+   ================================================================ */
+function agName(id){return (DATA&&DATA.agents&&DATA.agents[id]&&DATA.agents[id].name)||CFG_NAME[id]||id;}
+function modelColor(m){const l=(''+m).toLowerCase();if(l.includes('opus'))return '#e05aa8';if(l.includes('sonnet'))return '#14a87c';if(l.includes('haiku'))return '#2f9be0';return '#8f9bd0';}
+function modelLabel(m){const s=''+m,l=s.toLowerCase();if(l.includes('opus'))return 'Opus';if(l.includes('sonnet'))return 'Sonnet';if(l.includes('haiku'))return 'Haiku';return s==='?'?'?':s;}
+
+/* Zeitfilter passend zum gewählten Zeitraum (24h/7d/30d/custom). */
+function inSelRange(iso){const d=new Date(iso).getTime();if(isNaN(d))return true;
+ return RANGE==='custom'?(d>=RFROM&&d<=RTO):(d>=Date.now()-rangeWinMs());}
+/* Bucket-Schlüssel: Stundenraster bei ≤2 Tagen, sonst Tagesraster. */
+function bucketOf(iso){const d=new Date(iso);if(isNaN(d))return null;if(rangeWinMs()<=2*864e5)d.setMinutes(0,0,0,0);else d.setHours(0,0,0,0);return d.toISOString();}
+/* Nette Y-Grenze + Ticks (1/2/5·10^n); pct erzwingt 0..100. */
+function niceScale(maxV,pctMode){
+ if(pctMode)return {hi:100,ticks:[0,25,50,75,100]};
+ const m=Math.max(1,maxV||1),mag=Math.pow(10,Math.floor(Math.log10(m))),nrm=m/mag,step=(nrm>5?2:nrm>2?1:nrm>1?.5:.2)*mag;
+ const hi=Math.max(step,Math.ceil(m/step)*step),ticks=[];for(let v=0;v<=hi+1e-6;v+=step)ticks.push(v);return {hi,ticks};}
+
+let TREND_SEQ=0;
+/* Mehrlinien-Trend über Zeit (gleiche Einheit). times:ISO[], series:[{name,color,vals[],dash?}] */
+function svgTrend(times,series,opt){
+ opt=opt||{};const n=times.length;
+ if(n<2)return '<div class="trend-chart"><div class="chart-empty">'+esc(opt.empty||'Sammle Daten – mind. 2 Messpunkte nötig.')+'</div></div>';
+ const W=720,H=opt.h||188,pl=46,pr=14,tp=14,bt=24;
+ const tms=times.map(t=>new Date(t).getTime());
+ const tmode=tms.every(v=>!isNaN(v))&&tms[n-1]>tms[0],t0=tmode?tms[0]:0,t1=tmode?tms[n-1]:n-1;
+ const all=series.flatMap(s=>s.vals).filter(v=>v!=null&&!isNaN(v));
+ const {hi,ticks}=niceScale(Math.max(1,...all),opt.pct);
+ const kf=opt.kfmt||kfmt,xf=opt.xfmt||xFmt();
+ const X=i=>pl+(tmode?(tms[i]-t0)/(t1-t0):i/(n-1))*(W-pl-pr);
+ const Y=v=>tp+(1-clamp(v,0,hi)/hi)*(H-tp-bt);
+ const grid=ticks.map(v=>`<line class="gl" x1="${pl}" y1="${Y(v).toFixed(1)}" x2="${W-pr}" y2="${Y(v).toFixed(1)}"/><text class="gt" x="${pl-6}" y="${(Y(v)+3).toFixed(1)}" text-anchor="end">${esc(kf(v))}${opt.pct?'%':''}</text>`).join('');
+ const xi=[0,1,2,3].map(k=>({x:pl+k/3*(W-pl-pr),l:tmode?xf(new Date(t0+k/3*(t1-t0)).toISOString()):(times[Math.round(k/3*(n-1))]||'')}));
+ const xax=xi.map(t=>`<text class="gt" x="${t.x.toFixed(1)}" y="${H-7}" text-anchor="middle">${esc(t.l)}</text>`).join('');
+ const mkPath=s=>{let d='',pen=false;s.vals.forEach((v,i)=>{if(v==null||isNaN(v)){pen=false;return;}d+=(pen?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1)+' ';pen=true;});return d;};
+ const gid='tr'+(++TREND_SEQ);let grad='',areaPath='';
+ if(opt.area&&series[0]){const d=mkPath(series[0]);if(d){grad=`<defs><linearGradient id="${gid}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${series[0].color}" stop-opacity=".28"/><stop offset="1" stop-color="${series[0].color}" stop-opacity="0"/></linearGradient></defs>`;areaPath=`<path d="${d} L${X(n-1).toFixed(1)} ${Y(0).toFixed(1)} L${X(0).toFixed(1)} ${Y(0).toFixed(1)} Z" fill="url(#${gid})" stroke="none"/>`;}}
+ const lines=series.map(s=>{const d=mkPath(s);return d?`<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" ${s.dash?'stroke-dasharray="1 5"':''} vector-effect="non-scaling-stroke"/>`:'';}).join('');
+ const hov=times.map((t,i)=>{const w=(W-pl-pr)/Math.max(1,n-1);const info=series.map(s=>s.name+': '+(s.vals[i]==null?'–':(opt.vfmt?opt.vfmt(s.vals[i]):num(Math.round(s.vals[i])))+(opt.pct?'%':(opt.unit?' '+opt.unit:'')))).join('\n');
+  return `<rect class="hv" x="${(X(i)-w/2).toFixed(1)}" y="${tp}" width="${w.toFixed(1)}" height="${H-tp-bt}"><title>${esc((tmode?fmtStamp(t):('#'+(i+1)))+'\n'+info)}</title></rect>`;}).join('');
+ return `<div class="trend-chart"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(opt.aria||'Trend')}">${grad}${grid}${areaPath}${lines}${xax}${hov}</svg></div>`;
+}
+
+/* Gestapelte Balken über Zeit (Token: Input unten, Output oben). buckets:[{t,parts:[{name,v,color}]}] */
+function svgStackBars(buckets,opt){
+ opt=opt||{};const n=buckets.length;
+ if(!n)return '<div class="tok-chart"><div class="chart-empty">'+esc(opt.empty||'Keine Läufe im Zeitraum.')+'</div></div>';
+ const W=720,H=opt.h||210,pl=48,pr=14,tp=14,bt=26;
+ const totals=buckets.map(b=>b.parts.reduce((s,p)=>s+(p.v||0),0));
+ const {hi,ticks}=niceScale(Math.max(1,...totals));
+ const kf=opt.kfmt||kfmt,xf=opt.xfmt||xFmt();
+ const bw=(W-pl-pr)/n,barW=Math.max(4,Math.min(40,bw*0.6));
+ const Y=v=>tp+(1-v/hi)*(H-tp-bt);
+ const grid=ticks.map(v=>`<line class="gl" x1="${pl}" y1="${Y(v).toFixed(1)}" x2="${W-pr}" y2="${Y(v).toFixed(1)}"/><text class="gt" x="${pl-6}" y="${(Y(v)+3).toFixed(1)}" text-anchor="end">${esc(kf(v))}</text>`).join('');
+ const bars=buckets.map((b,i)=>{const cx=pl+bw*i+bw/2;let acc=0;
+  const segs=b.parts.map(p=>{const val=p.v||0;if(val<=0)return '';const y=Y(acc+val),h=Math.max(0,Y(acc)-Y(acc+val));acc+=val;return `<rect x="${(cx-barW/2).toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="${p.color}"/>`;}).join('');
+  const tip=b.parts.map(p=>p.name+': '+num(Math.round(p.v||0))).join('\n');
+  return segs+`<rect class="hv" x="${(cx-bw/2).toFixed(1)}" y="${tp}" width="${bw.toFixed(1)}" height="${H-tp-bt}"><title>${esc(fmtStamp(b.t)+'\n'+tip+'\nGesamt: '+num(Math.round(totals[i])))}</title></rect>`;}).join('');
+ const step=Math.max(1,Math.ceil(n/4)),xi=[];for(let i=0;i<n;i+=step)xi.push(i);if(xi[xi.length-1]!==n-1)xi.push(n-1);
+ const xax=xi.map(i=>`<text class="gt" x="${(pl+bw*i+bw/2).toFixed(1)}" y="${H-8}" text-anchor="middle">${esc(xf(buckets[i].t))}</text>`).join('');
+ return `<div class="tok-chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opt.aria||'Token bars')}">${grid}${bars}${xax}</svg></div>`;
+}
+
+/* Horizontale Balkenliste (Liste + Graph in einem) – für Token pro Agent. */
+function tbList(items,opt){
+ opt=opt||{};if(!items.length)return '<p class="bd-empty">'+esc(opt.empty||'Keine Daten.')+'</p>';
+ const max=Math.max(1,...items.map(i=>+i.value||0));
+ return '<div class="tb-list">'+items.map(i=>{const w=Math.max(2,Math.round((+i.value||0)/max*100));const c=i.color||CHART_PAL[0];
+  return `<div class="tb-row"><span class="tb-label"><i style="background:${c}"></i>${esc(i.label)}</span><span class="tb-track"><span class="tb-fill" style="width:${w}%;background:${c}"></span></span><span class="tb-val">${esc(i.valLabel!=null?i.valLabel:kfmt(i.value))}${i.sub?'<small>'+esc(i.sub)+'</small>':''}</span></div>`;}).join('')+'</div>';
+}
+
+/* Donut (conic-gradient) mit Legende – für Modell-Anteil. */
+function donutMini(items,center,centerSub){
+ const total=items.reduce((s,x)=>s+(+x.value||0),0)||1;let acc=0;
+ const stops=items.map(i=>{const from=acc/total*360;acc+=(+i.value||0);const to=acc/total*360;return `${i.color} ${from}deg ${to}deg`;}).join(',');
+ const legend=items.map(i=>`<div class="donut-legend-row" style="--legend-color:${i.color}"><i></i><span>${esc(i.label)}</span><b>${Math.round((+i.value||0)/total*100)}%</b></div>`).join('');
+ return `<div class="donut-wrap"><div class="donut" style="background:conic-gradient(${stops||'#26364d 0deg 360deg'})"><div><strong>${esc(center||kfmt(total))}</strong><span>${esc(centerSub||'')}</span></div></div><div class="donut-legend">${legend||'<small>keine Daten</small>'}</div></div>`;
+}
+
+/* Token-Aggregation aus den echten Lauf-Datensätzen (RUNS) im gewählten Zeitraum. */
+function tokenAgg(){
+ const perAgent={},perModel={},buckets={},recent=[];
+ const tot={in:0,out:0,cw:0,cr:0,tokens:0,cost:0,runs:0,turns:0,withTok:0};
+ FLEET_IDS.forEach(id=>{(RUNS[id]||[]).forEach(r=>{
+  const ts=r.t0||r.t1;if(!inSelRange(ts))return;
+  const u=r.usage||{};
+  const tk=r.tokens!=null?r.tokens:(u.tokens!=null?u.tokens:0);
+  const cost=(r.cost_usd!=null?r.cost_usd:(u.cost_usd!=null?u.cost_usd:0))||0;
+  const hasTok=r.tokens!=null||u.tokens!=null||r.cost_usd!=null;
+  tot.in+=u.input||0;tot.out+=u.output||0;tot.cw+=u.cache_write||0;tot.cr+=u.cache_read||0;
+  tot.tokens+=tk;tot.cost+=cost;tot.runs++;tot.turns+=u.turns||0;if(hasTok)tot.withTok++;
+  const a=perAgent[id]||(perAgent[id]={id,name:agName(id),tokens:0,cost:0,runs:0,in:0,out:0});
+  a.tokens+=tk;a.cost+=cost;a.runs++;a.in+=u.input||0;a.out+=u.output||0;
+  const mk=r.model||u.model_used||'?';const m=perModel[mk]||(perModel[mk]={model:mk,tokens:0,cost:0,runs:0});m.tokens+=tk;m.cost+=cost;m.runs++;
+  const bk=bucketOf(ts);if(bk){const b=buckets[bk]||(buckets[bk]={t:bk,in:0,out:0,tokens:0,cost:0,runs:0});b.in+=u.input||0;b.out+=u.output||0;b.tokens+=tk;b.cost+=cost;b.runs++;}
+  recent.push({id,name:agName(id),t:ts,model:mk,in:u.input||0,out:u.output||0,tokens:tk,cost,status:r.status,rc:r.rc});
+ });});
+ return {total:tot,
+  byAgent:Object.values(perAgent).sort((a,b)=>b.tokens-a.tokens),
+  byModel:Object.values(perModel).sort((a,b)=>b.tokens-a.tokens),
+  series:Object.values(buckets).sort((a,b)=>new Date(a.t)-new Date(b.t)),
+  recent:recent.sort((a,b)=>new Date(b.t)-new Date(a.t)).slice(0,12),demo:false};
+}
+
+/* Demo-Token-Daten (nur bis echte Läufe mit usage vorliegen). Klar als Demo markiert. */
+function demoTokenAgg(){
+ const now=Date.now(),win=rangeWinMs(),hour=win<=2*864e5;
+ const perAgent={},perModel={},buckets={},recent=[];
+ const tot={in:0,out:0,cw:0,cr:0,tokens:0,cost:0,runs:0,turns:0,withTok:0};
+ const models=['haiku','haiku','haiku','sonnet','opus'];
+ const nRuns=Math.max(24,Math.round(win/864e5*7));
+ for(let k=0;k<nRuns;k++){
+  const id=FLEET_IDS[Math.floor(Math.random()*FLEET_IDS.length)];
+  const ts=new Date(now-Math.random()*win).toISOString();
+  const model=(id==='server-waechter'||id==='uptime-waechter')?'haiku':models[Math.floor(Math.random()*models.length)];
+  const scale=model==='opus'?6:model==='sonnet'?2.4:1;
+  const inp=Math.round((3000+Math.random()*12000)*scale),out=Math.round((400+Math.random()*3000)*scale);
+  const cw=Math.round(inp*0.7),cr=Math.round(inp*4+Math.random()*40000),tk=inp+out+cw+cr;
+  const cost=+((inp*3+out*15+cw*3.75+cr*0.3)/1e6*scale).toFixed(4),turns=Math.round(2+Math.random()*10);
+  tot.in+=inp;tot.out+=out;tot.cw+=cw;tot.cr+=cr;tot.tokens+=tk;tot.cost+=cost;tot.runs++;tot.turns+=turns;tot.withTok++;
+  const a=perAgent[id]||(perAgent[id]={id,name:agName(id),tokens:0,cost:0,runs:0,in:0,out:0});a.tokens+=tk;a.cost+=cost;a.runs++;a.in+=inp;a.out+=out;
+  const m=perModel[model]||(perModel[model]={model,tokens:0,cost:0,runs:0});m.tokens+=tk;m.cost+=cost;m.runs++;
+  const d=new Date(ts);if(hour)d.setMinutes(0,0,0,0);else d.setHours(0,0,0,0);const bk=d.toISOString();
+  const b=buckets[bk]||(buckets[bk]={t:bk,in:0,out:0,tokens:0,cost:0,runs:0});b.in+=inp;b.out+=out;b.tokens+=tk;b.cost+=cost;b.runs++;
+  recent.push({id,name:agName(id),t:ts,model,in:inp,out:out,tokens:tk,cost,status:'ok',rc:0});
+ }
+ return {total:tot,
+  byAgent:Object.values(perAgent).sort((a,b)=>b.tokens-a.tokens),
+  byModel:Object.values(perModel).sort((a,b)=>b.tokens-a.tokens),
+  series:Object.values(buckets).sort((a,b)=>new Date(a.t)-new Date(b.t)),
+  recent:recent.sort((a,b)=>new Date(b.t)-new Date(a.t)).slice(0,12),demo:true};
+}
+
+/* Demo-Server-Verlauf (bis der Server-Wächter echte Samples schreibt). */
+function demoSrvHist(){
+ const now=Date.now(),win=Math.max(rangeWinMs(),7*864e5),stepMs=rangeWinMs()<=2*864e5?36e5:864e5;
+ const n=Math.min(60,Math.max(6,Math.round(win/stepMs))),out=[];
+ let disk=54,mem=58,load=0.4,ssl=40;
+ for(let i=n-1;i>=0;i--){const t=new Date(now-i*stepMs).toISOString();
+  disk=clamp(disk+(Math.random()-0.45)*2,40,82);mem=clamp(mem+(Math.random()-0.5)*6,45,88);
+  load=clamp(load+(Math.random()-0.5)*0.25,0.1,1.6);ssl=clamp(ssl-Math.random()*0.4,20,45);
+  out.push({t,state:'ok',disk:Math.round(disk),mem:Math.round(mem),load:+load.toFixed(2),ssl:Math.round(ssl),log_mb:Math.round(100+Math.random()*80),failed_ssh:Math.round(Math.random()*4),services_up:3,services_total:3,db_up:5,db_total:5,backups_ok:2,backups_total:2});}
+ return out;
+}
+
+/* Server-Block: aktuelle Gauges + Verlaufsgraphen + Dienste/DB/Backups. */
+function serverBlock(){
+ const s=SERVER,arr=v=>Array.isArray(v)?v:[];
+ let hist=(SRVHIST||[]).filter(p=>inSelRange(p.t)),demo=false;
+ if(hist.length<2){hist=demoSrvHist();demo=true;}
+ const times=hist.map(p=>p.t),gv=k=>hist.map(p=>p[k]);
+ const diskS={name:'Disk',color:'#2f9be0',vals:gv('disk')},memS={name:'Memory',color:'#e05aa8',vals:gv('mem')};
+ const loadS={name:'Load/Core',color:'#14a87c',vals:gv('load')},sslS={name:'SSL Tage',color:'#bb840f',vals:gv('ssl')};
+ const last=hist[hist.length-1]||{};
+ const disk=s?(s.disk||{}):{used_percent:last.disk,free_gb:last.disk_free_gb};
+ const mem=s?(s.memory||{}):{used_percent:last.mem,used_gb:last.mem_used_gb};
+ const load=s?(s.load||{}):{per_core:last.load};
+ const sslDays=s?s.ssl_min_days:last.ssl;
+ const services=s?arr(s.services):[],databases=s?arr(s.databases):[],backups=s?arr(s.backups):[];
+ const okDb=databases.filter(d=>d.active).length,okBk=backups.filter(b=>b.ok).length,state=s?s.state:'ok';
+ const gauges=`<div class="srv-grid">
+   <div class="srv-gauge"><div class="srv-gh"><span>Disk</span><b>${disk.used_percent!=null?disk.used_percent+'%':'–'}</b></div>${meterHtml(disk.used_percent,(s&&s.disk&&s.disk.warn)||85)}<small>${disk.free_gb!=null?disk.free_gb+' GB frei':''}</small></div>
+   <div class="srv-gauge"><div class="srv-gh"><span>Memory</span><b>${mem.used_percent!=null?mem.used_percent+'%':'–'}</b></div>${meterHtml(mem.used_percent,90)}<small>${mem.used_gb!=null?mem.used_gb+(s&&s.memory&&s.memory.total_gb?' / '+s.memory.total_gb+' GB':' GB'):''}</small></div>
+   <div class="srv-stat"><span>Load / Core</span><b>${load.per_core!=null?load.per_core:'–'}</b><small>${(s&&s.load&&s.load.cores)?s.load.cores+' Cores':''}</small></div>
+   <div class="srv-stat"><span>SSL min.</span><b style="color:${sslDays!=null&&sslDays<21?'var(--red)':'inherit'}">${sslDays!=null?sslDays+' T':'–'}</b><small>${s&&s.uptime?'up '+esc(s.uptime):''}</small></div>
+ </div>`;
+ const empty=(!s)?`<div class="srv-empty">Noch keine echten Server-Daten. Die Graphen unten zeigen Demo-Werte, bis der 🐧 Server-Wächter läuft (misst Disk, RAM, Load, SSL, Dienste & Backups und schreibt die Historie fort).</div>`:'';
+ const charts=`<div class="st-charts">
+   <div class="st-chart"><div class="st-chart-h"><span class="eyebrow">DISK &amp; MEMORY</span><div class="chart-legend inline"><span><i style="background:${diskS.color}"></i>Disk</span><span><i style="background:${memS.color}"></i>Mem</span></div></div>${svgTrend(times,[diskS,memS],{pct:true,area:true,aria:'Disk & Memory %'})}</div>
+   <div class="st-chart"><div class="st-chart-h"><span class="eyebrow">LOAD / CORE</span></div>${svgTrend(times,[loadS],{area:true,kfmt:v=>(+v).toFixed(1),vfmt:v=>(+v).toFixed(2),aria:'Load per core'})}</div>
+   <div class="st-chart"><div class="st-chart-h"><span class="eyebrow">SSL RESTLAUFZEIT</span></div>${svgTrend(times,[sslS],{area:true,unit:'Tage',aria:'SSL Tage'})}</div>
+ </div>`;
+ const cols=s?`<div class="srv-cols">
+   <div class="srv-col"><div class="srv-lbl">Datenbanken <b class="srv-bk ${databases.length&&okDb===databases.length?'ok':databases.length?'bad':''}">${databases.length?okDb+'/'+databases.length:''}</b></div><div class="srv-chips">${databases.map(d=>`<span class="srv-chip ${d.active?'ok':'bad'}"><i></i>${esc(d.name)}${d.latency_ms!=null?' · '+d.latency_ms+'ms':''}</span>`).join('')||'<small>–</small>'}</div></div>
+   <div class="srv-col"><div class="srv-lbl">Dienste</div><div class="srv-chips">${services.map(v=>`<span class="srv-chip ${v.active?'ok':'bad'}"><i></i>${esc(v.name)}</span>`).join('')||'<small>–</small>'}</div></div>
+   <div class="srv-col"><div class="srv-lbl">Backups <b class="srv-bk ${backups.length&&okBk===backups.length?'ok':'bad'}">${okBk}/${backups.length}</b></div><div class="srv-chips">${backups.map(b=>`<span class="srv-chip ${b.ok?'ok':'bad'}">${b.ok?'✓':'⚠'} ${esc(b.name)} · ${b.age_hours}h</span>`).join('')||'<small>–</small>'}</div></div>
+ </div>`:'';
+ const foot=s?`<div class="srv-foot">Fehlgeschlagene SSH-Logins: ${(s.logins&&s.logins.failed_ssh)||0} · Log-Verzeichnis ${s.log_dir_mb!=null?s.log_dir_mb+' MB':'–'} · Stand ${s.stand?fmtStamp(s.stand):'–'}</div>`:'';
+ return `<div class="st-sec-head"><div><span class="eyebrow">LIVE</span><h3>Serverauslastung</h3></div><div class="ph-right">${s?`<span class="status-chip ${state==='down'?'bad':state==='warn'?'warn':'good'}">${state==='down'?'Down':state==='warn'?'Watch':'Healthy'}</span>`:''}${demo?'<span class="st-demo">Verlauf: Demo</span>':''}<button class="secondary-button" id="stSrvRun" ${API?'':'disabled'} data-tip="Server-Wächter jetzt laufen lassen">Check jetzt</button></div></div>
+ <section class="panel">${gauges}${empty}${charts}${cols}${foot}</section>`;
+}
+
+/* Token-Block: KPIs + Hauptchart (Agent/Timeline umschaltbar) + Pro-Agent-Tabelle + Modell-Donut + letzte Läufe. */
+function tokenBlock(){
+ let agg=tokenAgg(),demo=false;
+ if(agg.total.runs===0||agg.total.withTok===0){agg=demoTokenAgg();demo=true;}
+ const T=agg.total,cols5='minmax(120px,1.6fr) repeat(5,1fr)',cols5b='minmax(120px,1.5fr) 1fr 1fr 1fr 1fr';
+ const kpis=[
+  {l:'Tokens gesamt',v:kfmt(T.tokens)},{l:'Input',v:kfmt(T.in)},{l:'Output',v:kfmt(T.out)},{l:'Cache read',v:kfmt(T.cr)},
+  {l:'Kosten (gesch.)',v:'$'+(T.cost||0).toFixed(2)},{l:'Läufe',v:num(T.runs)},{l:'Ø $/Lauf',v:'$'+(T.runs?(T.cost/T.runs):0).toFixed(3)},{l:'Turns',v:num(T.turns)}
+ ];
+ const kpiHtml=`<div class="analytics-kpis">${kpis.map(k=>`<div class="analytics-kpi"><span>${esc(k.l)}</span><strong>${esc(k.v)}</strong></div>`).join('')}</div>`;
+ const agentBars=tbList(agg.byAgent.map((a,i)=>({label:a.name,value:a.tokens,color:ACCENT[a.id]||CHART_PAL[i%CHART_PAL.length],valLabel:kfmt(a.tokens),sub:'$'+a.cost.toFixed(2)+' · '+a.runs+'×'})),{empty:'Keine Token-Daten im Zeitraum.'});
+ const timeline=svgStackBars(agg.series.map(b=>({t:b.t,parts:[{name:'Input',v:b.in,color:'#2f9be0'},{name:'Output',v:b.out,color:'#e05aa8'}]})),{aria:'Token über Zeit'})+`<div class="chart-legend inline" style="padding:0 14px 12px"><span><i style="background:#2f9be0"></i>Input</span><span><i style="background:#e05aa8"></i>Output</span></div>`;
+ const mainChart=TOKMODE==='timeline'?timeline:agentBars;
+ const mainTitle=TOKMODE==='timeline'?'Verbrauch über Zeit':'Verbrauch pro Agent';
+ const modelItems=agg.byModel.map(m=>({label:modelLabel(m.model),value:m.tokens,color:modelColor(m.model)}));
+ const donut=donutMini(modelItems,kfmt(T.tokens),'Tokens');
+ const agentTable=`<div class="dtbl"><div class="dtbl-head" style="grid-template-columns:${cols5}"><span>Agent</span><span>Läufe</span><span>Input</span><span>Output</span><span>Tokens</span><span>Kosten</span></div>${agg.byAgent.map((a,i)=>`<div class="dtbl-row" style="grid-template-columns:${cols5}"><span class="dtbl-name"><i style="background:${ACCENT[a.id]||CHART_PAL[i%CHART_PAL.length]}"></i>${esc(a.name)}</span><span>${num(a.runs)}</span><span>${kfmt(a.in)}</span><span>${kfmt(a.out)}</span><span>${kfmt(a.tokens)}</span><span>$${a.cost.toFixed(2)}</span></div>`).join('')||'<div class="data-empty">Keine Daten.</div>'}</div>`;
+ const recent=`<div class="dtbl"><div class="dtbl-head" style="grid-template-columns:${cols5b}"><span>Agent</span><span>Zeit</span><span>Modell</span><span>Tokens</span><span>Kosten</span></div>${agg.recent.map(r=>`<div class="dtbl-row" style="grid-template-columns:${cols5b}"><span class="dtbl-name"><i style="background:${modelColor(r.model)}"></i>${esc(r.name)}</span><span>${esc(fmtStamp(r.t))}</span><span>${esc(modelLabel(r.model))}</span><span>${kfmt(r.tokens)}</span><span>$${(r.cost||0).toFixed(3)}</span></div>`).join('')||'<div class="data-empty">Keine Läufe.</div>'}</div>`;
+ return `<div class="st-sec-head"><div><span class="eyebrow">CLAUDE-NUTZUNG</span><h3>Token-Verbrauch &amp; Kosten</h3></div>${demo?'<span class="st-demo">Demo-Daten</span>':'<span class="status-chip good">echte Läufe</span>'}</div>
+ ${kpiHtml}
+ <section class="panel tok-main"><div class="panel-header compact"><div><span class="eyebrow">TOKEN-VERBRAUCH</span><h3 id="tokChartTitle">${esc(mainTitle)}</h3></div><div class="seg-toggle" id="tokModeToggle"><button data-tokmode="agent" class="${TOKMODE==='agent'?'active':''}">Nach Agent</button><button data-tokmode="timeline" class="${TOKMODE==='timeline'?'active':''}">Timeline</button></div></div><div id="tokMainChart">${mainChart}</div></section>
+ <div class="st-grid2">
+   <section class="panel"><div class="panel-header compact"><div><span class="eyebrow">PRO AGENT</span><h3>Verbrauch je Agent</h3></div></div>${agentTable}</section>
+   <section class="panel"><div class="panel-header compact"><div><span class="eyebrow">NACH MODELL</span><h3>Token-Anteil</h3></div></div>${donut}</section>
+ </div>
+ <section class="panel"><div class="panel-header compact"><div><span class="eyebrow">LETZTE LÄUFE</span><h3>Verlauf</h3></div></div>${recent}</section>`;
+}
+
+/* Render des Server-&-Token-Tabs. */
+function renderServerTokens(){
+ const host=$('#serverTokens');if(!host)return;
+ const chip=$('#analyticsRange');if(chip){chip.textContent=rangeLabel();chip.className='status-chip good';}
+ host.innerHTML=serverBlock()+tokenBlock();
+ const rb=$('#stSrvRun');if(rb)rb.addEventListener('click',e=>startRun('server-waechter',e.currentTarget));
+ $$('#tokModeToggle button').forEach(b=>b.addEventListener('click',()=>{TOKMODE=b.dataset.tokmode;renderServerTokens();}));
 }
 
 /* ===== SERVER- & BACKUP-HEALTH (aus server.json) ===== */
@@ -1138,7 +1430,8 @@ function renderServerHealth(){
   const rb=$('#srvRun');if(rb)rb.addEventListener('click',e=>startRun('server-waechter',e.currentTarget));
   return;
  }
- const disk=s.disk||{},mem=s.memory||{},load=s.load||{},services=s.services||[],backups=s.backups||[],databases=s.databases||[];
+ const arr=v=>Array.isArray(v)?v:[];
+ const disk=s.disk||{},mem=s.memory||{},load=s.load||{},services=arr(s.services),backups=arr(s.backups),databases=arr(s.databases);
  const loadWarn=load.warn||1.5,loadBad=load.per_core!=null&&load.per_core>loadWarn;
  const sslWarn=s.ssl_min_days!=null&&s.ssl_min_days<21,okBk=backups.filter(b=>b.ok).length,okDb=databases.filter(d=>d.active).length;
  el.innerHTML=`<section class="panel srv-panel">
@@ -1207,7 +1500,7 @@ function miniGraph(points,color){
 const CHARTREG=new Map();let chartSeq=0;
 function regChart(m){const id='ch'+(++chartSeq);CHARTREG.set(id,m);return id;}
 function svgLine(series,o){
- o=o||{};const W=344,H=o.h||182,pl=34,pr=10,pt=12,pb=24;const times=o.times||[];
+ o=o||{};const W=o.w||344,H=o.h||182,pl=34,pr=10,pt=12,pb=24;const times=o.times||[];
  const n=Math.max(0,...series.map(s=>s.pts.length));
  const vals=series.flatMap(s=>s.pts).filter(v=>v!=null&&!isNaN(v));
  if(n<2||vals.length<2)return '<div class="chart-empty">Collecting data – line needs 2+ points.</div>';
@@ -1228,10 +1521,10 @@ function svgLine(series,o){
  if(timeMode){xticks=[0,1,2,3].map(k=>({x:pl+k/3*plotW,l:xf(new Date(t0+k/3*(t1-t0)).toISOString())}));}
  else{const idx=[...new Set([0,Math.round((n-1)/3),Math.round(2*(n-1)/3),n-1])].filter(i=>i>=0&&i<n);xticks=idx.map(i=>({x:X(i),l:times[i]?xf(times[i]):'#'+(i+1)}));}
  const xax=xticks.map(t=>`<text class="gt" x="${t.x.toFixed(1)}" y="${H-9}" text-anchor="middle">${esc(t.l)}</text>`).join('');
- const unit=`<text class="gt" x="${pl-5}" y="10" text-anchor="end" opacity=".85">ms</text>`;
+ const unit=`<text class="gt" x="${pl-5}" y="10" text-anchor="end" opacity=".85">${esc(o.unit!=null?o.unit:'ms')}</text>`;
  const lines=series.map(s=>{let d='',pen=false;s.pts.forEach((v,i)=>{if(v==null||isNaN(v)){pen=false;return;}d+=(pen?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1)+' ';pen=true;});return d?`<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`:'';}).join('');
  const dots=series.map(s=>{for(let i=s.pts.length-1;i>=0;i--){const v=s.pts[i];if(v!=null&&!isNaN(v))return `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="3" fill="${s.color}"/>`;}return '';}).join('');
- const id=regChart({type:'line',series,times,tms,timeMode,t0,t1,W,H,pl,pr,n});
+ const id=regChart({type:'line',series,times,tms,timeMode,t0,t1,W,H,pl,pr,n,vfmt:o.vfmt||(v=>v+' ms'),nullLabel:o.nullLabel||'— down'});
  return `<div class="chartwrap" data-chart="${id}"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.aria||'Chart')}">${grid}${unit}${xax}${lines}${dots}</svg><div class="cguide"></div><div class="ctip"></div></div>`;
 }
 function svgBars(rows,o){
@@ -1258,7 +1551,7 @@ function hydrateCharts(root){
     const Xi=m.timeMode?(m.pl+(m.tms[i]-m.t0)/(m.t1-m.t0)*plotW):(m.pl+(i/(m.n-1))*plotW);
     const px=(Xi/m.W)*r.width+(r.left-wr.left);
     if(guide)guide.style.left=px.toFixed(1)+'px';
-    const trs=m.series.map(s=>{const v=s.pts[i];return `<div class="tr"><span class="nm"><i style="background:${s.color}"></i>${esc(s.name)}</span><b>${v==null||isNaN(v)?'— down':v+' ms'}</b></div>`;}).join('');
+    const trs=m.series.map(s=>{const v=s.pts[i];return `<div class="tr"><span class="nm"><i style="background:${s.color}"></i>${esc(s.name)}</span><b>${v==null||isNaN(v)?m.nullLabel:m.vfmt(v)}</b></div>`;}).join('');
     tip.innerHTML=`<div class="tt">${esc(m.times[i]?fmtStamp(m.times[i]):'Messpunkt '+(i+1))}</div>${trs}`;
     const tw=tip.offsetWidth||150;tip.style.left=clamp(px-tw/2,4,wr.width-tw-4).toFixed(1)+'px';tip.style.top='4px';
    }else{
@@ -1278,6 +1571,63 @@ function hydrateCharts(root){
    DRAWER (Agent-Detail) + Auswahl aus der Karte
    ================================================================ */
 function select(id){openAgent(id);}
+
+/* ---- Dokumente: jeder Bot schreibt in einen Report-Root; Dateien direkt oeffnbar ---- */
+const AGENT_ROOT={ 'wochenreport':'reports','content-recherche':'content','belege-buchhaltung':'belege',
+ 'uptime-waechter':'uptime','seo-audit':'seo','rechnungssteller':'rechnungen','server-waechter':'server',
+ 'mail-assistent':'mail','video-producent':'video','ki-influencer':'influencer' };
+let REPORTS=null;                     // Cache der /api/reports-Liste
+const fileHref=rel=>'/api/file?p='+encodeURIComponent(rel);
+const docIcon=ext=>({'.md':'📄','.txt':'📄','.html':'🌐','.htm':'🌐','.pdf':'📕','.csv':'📊','.json':'🧾'}[String(ext||'').toLowerCase()]||'📎');
+const extOf=s=>{const m=/\.([a-z0-9]{1,5})$/i.exec(String(s||''));return m?'.'+m[1].toLowerCase():'';};
+const fmtBytes=n=>n==null?'':n<1024?n+' B':n<1048576?(n/1024).toFixed(0)+' KB':(n/1048576).toFixed(1)+' MB';
+/* macht aus String ODER Objekt eine anklickbare Dokumentzeile */
+function docRowHtml({label,rel,url,ext,meta}){
+ const ic=docIcon(ext||extOf(rel||url||label));
+ const inner=`<span class="doc-ic">${ic}</span><span class="doc-name">${esc(label)}</span>${meta?`<span class="doc-meta">${esc(meta)}</span>`:''}`;
+ if(url&&/^https?:/i.test(url)) return `<a class="doc-row" href="${esc(url)}" target="_blank" rel="noopener" data-tip="Open in new tab">${inner}<span class="doc-go">↗</span></a>`;
+ if(rel) return `<a class="doc-row" href="${esc(fileHref(rel))}" target="_blank" rel="noopener" data-tip="Open ${esc(label)}">${inner}<span class="doc-go">↗</span></a>`;
+ return `<div class="doc-row is-static">${inner}</div>`;
+}
+function outputRowHtml(o){
+ if(o==null) return '';
+ if(typeof o==='string'){
+  const looksFile=/[\/\\]/.test(o)||extOf(o);
+  return docRowHtml(looksFile?{label:o.split(/[\/\\]/).pop(),rel:o,ext:extOf(o)}:{label:o});
+ }
+ const label=o.name||o.label||o.title||o.file||o.rel||o.path||o.url||JSON.stringify(o);
+ const rel=o.rel||o.path||o.file, url=o.url||o.href;
+ return docRowHtml({label,rel:(url?null:rel),url,ext:extOf(rel||url||label),meta:o.meta||o.note||(o.size!=null?fmtBytes(o.size):'')});
+}
+/* ---- Strukturierte Detail-Karten: Ampel/Status, Kennzahlen, Befund-Listen ---- */
+const STATUS_RE=[[/(rot|red|kritisch|critical|error|fehler|down|offline|fail)/i,'var(--red)'],
+ [/(gelb|yellow|warn|watch|mittel|medium|degraded)/i,'var(--yellow)'],
+ [/(gr[üu]n|green|\bok\b|gut|good|healthy|online|pass|bestanden|clean)/i,'var(--green)']];
+const statusColor=v=>{const s=String(v==null?'':v);for(const[re,c]of STATUS_RE)if(re.test(s))return c;return '';};
+function detailCardHtml(d){
+ if(d==null)return '';
+ if(typeof d!=='object')return `<div class="det-card det-plain">${esc(String(d))}</div>`;
+ const titleKey=['site','website','name','url','host','domain','kunde','title','file','betreff','thread'].find(k=>d[k]!=null&&d[k]!=='');
+ const statusKey=['ampel','status','severity','level','state','zustand','result','ergebnis'].find(k=>d[k]!=null&&d[k]!=='');
+ const arrKey=Object.keys(d).find(k=>Array.isArray(d[k]));
+ const title=titleKey?d[titleKey]:null, stVal=statusKey?d[statusKey]:null, col=statusColor(stVal)||statusColor(title);
+ const arr=arrKey?d[arrKey]:null;
+ const skip=new Set([titleKey,statusKey,arrKey].filter(Boolean));
+ const chips=Object.entries(d).filter(([k,v])=>!skip.has(k)&&v!=null&&v!==''&&typeof v!=='object')
+  .map(([k,v])=>`<span class="det-chip"><b>${esc(k)}</b>${esc(String(v))}</span>`).join('');
+ const list=arr&&arr.length?`<ul class="det-top">${arr.slice(0,8).map(x=>`<li>${esc(typeof x==='object'?dstr(x):String(x))}</li>`).join('')}</ul>`:'';
+ const head=(title!=null||stVal!=null)?`<header class="det-head">${col?`<span class="det-dot" style="background:${col}"></span>`:''}${title!=null?`<strong>${esc(String(title))}</strong>`:''}${stVal!=null?`<span class="det-badge" style="${col?`color:${col};border-color:${col}`:''}">${esc(String(stVal))}</span>`:''}</header>`:'';
+ if(!head&&!chips&&!list)return `<div class="det-card det-plain">${esc(dstr(d))}</div>`;
+ return `<article class="det-card">${head}${chips?`<div class="det-chips">${chips}</div>`:''}${list}</article>`;
+}
+function renderDrawerDocs(id){
+ const box=$('#drawerDocs');if(!box)return;
+ const root=AGENT_ROOT[id];
+ if(!root){box.innerHTML='<p class="doc-empty">No document folder for this agent.</p>';return;}
+ const list=(REPORTS||[]).filter(r=>r.root===root).sort((a,b)=>(b.mtime||0)-(a.mtime||0)).slice(0,14);
+ if(!list.length){box.innerHTML='<p class="doc-empty">No files yet in <code>'+esc(root)+'/</code>.</p>';return;}
+ box.innerHTML=list.map(r=>docRowHtml({label:r.name,rel:r.rel,ext:extOf(r.name),meta:fmtStamp(r.mtime)+' · '+fmtBytes(r.size)})).join('');
+}
 function openAgent(id){
  SEL=id;const a=agent(id);const c=COLORS[a.status]||COLORS.idle;
  const isUptime=id==='uptime-waechter';
@@ -1287,8 +1637,8 @@ function openAgent(id){
    const series=sites.map((s,i)=>({name:s.name,color:pal[i%pal.length],pts:hist.map(pt=>{const q=(pt.p||[]).find(x=>x.n===s.name);return q?q.ms:null;})}));
    uptimeHtml=`<div class="drawer-section"><h4>RESPONSE TIME</h4>${svgLine(series,{zero:true,times:hist.map(h=>h.t),xfmt:xFmt(),aria:'Response time'})}</div><div class="drawer-section"><h4>SSL REMAINING</h4>${svgBars(sites.map(s=>({label:s.name,value:s.ssl_days})),{threshold:21})}</div>`;}
  }
- const outs=(a.outputs&&a.outputs.length)?'<ul style="margin:4px 0 0 16px;font-size:11px;line-height:1.6">'+a.outputs.map(o=>'<li><code>'+esc(o)+'</code></li>').join('')+'</ul>':'<p style="font-size:11px;color:var(--muted)">none yet</p>';
- const dets=(a.details&&a.details.length)?'<ul style="margin:4px 0 0 16px;font-size:11px;line-height:1.6">'+a.details.map(d=>'<li>'+esc(dstr(d))+'</li>').join('')+'</ul>':'<p style="font-size:11px;color:var(--muted)">–</p>';
+ const outs=(a.outputs&&a.outputs.length)?'<div class="doc-list">'+a.outputs.map(outputRowHtml).join('')+'</div>':'<p class="doc-empty">none yet</p>';
+ const dets=(a.details&&a.details.length)?'<div class="det-list">'+a.details.map(detailCardHtml).join('')+'</div>':'<p class="doc-empty">–</p>';
  $('#drawerContent').innerHTML=`
   <div class="drawer-hero" style="--drawer-color:${a.accent}"><div class="drawer-avatar">${a.icon}</div><h2>${esc(a.name)}</h2><p>${esc(a.role)}</p><span class="drawer-status" style="color:${c}">● ${esc(LABELS[a.status]||a.status)}</span></div>
   <div class="drawer-section"><h4>CURRENT STATUS</h4><div class="drawer-task"><strong>${esc(a.phase||'–')}</strong><p>${esc(a.message||'–')}</p><div class="progress"><span style="width:${clamp(a.progress||0,0,100)}%;background:${c}"></span></div></div></div>
@@ -1296,11 +1646,17 @@ function openAgent(id){
   ${uptimeHtml}
   <div class="drawer-section"><h4>RECENT DETAILS</h4>${dets}</div>
   <div class="drawer-section"><h4>OUTPUTS</h4>${outs}</div>
+  ${AGENT_ROOT[id]?`<div class="drawer-section"><div class="drawer-sec-head"><h4>DOCUMENTS</h4><span class="doc-count" id="drawerDocCount"></span></div><div class="doc-list" id="drawerDocs"><p class="doc-empty">Loading…</p></div></div>`:''}
   ${API?`<div class="drawer-section"><h4>LOG</h4><div class="drawer-log" id="drawerLog">…</div></div><div class="drawer-section"><h4>RECENT RUNS</h4><div class="drawer-runs" id="drawerRuns"><span style="font-size:11px;color:var(--muted)">…</span></div></div>`:''}
   <div class="drawer-actions"><button class="primary-button" id="drawerRun">▶ Start now</button><button class="secondary-button" id="drawerMission">Send order</button></div>`;
  $('#drawerRun').addEventListener('click',e=>startRun(id,e.currentTarget));
  $('#drawerMission').addEventListener('click',()=>{closeDrawer();openMissionFor(id);});
  hydrateCharts($('#drawerContent'));
+ if(AGENT_ROOT[id]){
+  const paint=()=>{renderDrawerDocs(id);const c=$('#drawerDocCount'),n=(REPORTS||[]).filter(r=>r.root===AGENT_ROOT[id]).length;if(c)c.textContent=n?n+' file'+(n>1?'s':''):'';};
+  if(REPORTS)paint();
+  if(API)fetch('/api/reports').then(r=>r.json()).then(list=>{REPORTS=Array.isArray(list)?list:[];if(SEL===id)paint();}).catch(()=>{if(!REPORTS){const b=$('#drawerDocs');if(b)b.innerHTML='<p class="doc-empty">Could not load documents.</p>';}});
+ }
  if(API){
   fetch('/api/log/'+id).then(r=>r.json()).then(d=>{const el=$('#drawerLog');if(el)el.textContent=(d&&d.text)||a.log_tail||'(empty)';}).catch(()=>{const el=$('#drawerLog');if(el)el.textContent=a.log_tail||'(empty)';});
   fetch('/api/runs/'+id).then(r=>r.json()).then(runs=>{const el=$('#drawerRuns');if(!el)return;
@@ -1358,6 +1714,7 @@ function viewFromPath(){const seg=location.pathname.replace(/^\/+|\/+$/g,'').spl
 function switchView(name,push){
  if(!VIEWS.includes(name))name='overview';
  if(push===undefined)push=true;
+ if(name==='analytics'&&location.hash==='#server')ANTAB='server';
  VIEW=name;
  $$('.view').forEach(v=>v.classList.remove('active'));const el=$('#'+name+'View');if(el)el.classList.add('active');
  $$('.line-sidebar__item').forEach(n=>{const on=n.dataset.view===name;n.classList.toggle('active',on);if(on)n.setAttribute('aria-current','true');else n.removeAttribute('aria-current');});
@@ -1451,6 +1808,7 @@ function setupChrome(){
 function bindEvents(){
  $$('.line-sidebar__item').forEach(n=>n.addEventListener('click',()=>switchView(n.dataset.view)));
  $$('[data-goview]').forEach(b=>b.addEventListener('click',()=>switchView(b.dataset.goview)));
+ $$('.an-tab-btn').forEach(b=>b.addEventListener('click',()=>{ANTAB=b.dataset.antab;try{history.replaceState(history.state,'',location.pathname+(ANTAB==='server'?'#server':''));}catch(e){}if(ANTAB==='server'){if(API)loadRunCounts();if(!SRVHIST)loadServerHistory();}if(DATA)renderAnalytics();}));
  $('#seeMissionsBtn').addEventListener('click',()=>switchView('missions'));
  $('#refreshBtn').addEventListener('click',()=>load());
  $('#fitMapBtn').addEventListener('click',()=>{if(typeof camFit==='function')camFit();});

@@ -212,15 +212,36 @@
 
       <!-- ANALYTICS -->
       <section class="view" id="analyticsView">
-        <div class="analytics-grid">
-          <section class="panel analytics-hero">
-            <div class="panel-header"><div><span class="eyebrow">WEBSITE INTELLIGENCE</span><h3>Traffic &amp; trend</h3></div><div class="ph-right"><div id="anRange"></div><span class="status-chip" id="analyticsRange">–</span></div></div>
-            <div class="analytics-kpis" id="analyticsKpis"></div>
-            <div class="bar-chart" id="barChart"></div>
-            <div class="chart-legend" id="barLegend"></div>
+        <div class="an-toolbar">
+          <div><span class="eyebrow" id="anEyebrow">WEBSITE INTELLIGENCE</span><h3 class="an-title" id="anTitle">Umami traffic report</h3></div>
+          <div class="ph-right"><div id="anRange"></div><span class="status-chip" id="analyticsRange">–</span></div>
+        </div>
+        <div class="an-tabs" role="tablist">
+          <button class="an-tab-btn active" data-antab="website" role="tab" aria-selected="true"><span class="an-tab-ic">🌐</span>Website</button>
+          <button class="an-tab-btn" data-antab="server" role="tab" aria-selected="false"><span class="an-tab-ic">🖥️</span>Server &amp; Token</button>
+        </div>
+
+        <!-- TAB: WEBSITE -->
+        <div class="an-tabpane active" id="anTabWebsite">
+          <div class="analytics-kpis" id="analyticsKpis"></div>
+          <section class="panel trend-panel">
+            <div class="panel-header compact"><div><span class="eyebrow">OVER TIME</span><h3>Pageviews &amp; visitors</h3></div><div class="chart-legend inline" id="trendLegend"></div></div>
+            <div class="trend-chart" id="trendChart"></div>
           </section>
-          <section class="panel donut-panel"><div class="panel-header compact"><div><span class="eyebrow">TRAFFIC MIX</span><h3>Views by website</h3></div></div><div class="donut-wrap"><div class="donut" id="donut"><div><strong id="donutTotal">–</strong><span>Views</span></div></div><div class="donut-legend" id="donutLegend"></div></div></section>
+          <div class="analytics-grid mix">
+            <section class="panel bars-panel">
+              <div class="panel-header compact"><div><span class="eyebrow">THIS VS LAST PERIOD</span><h3>Pageviews by website</h3></div><div class="chart-legend inline" id="barLegend"></div></div>
+              <div class="bar-chart" id="barChart"></div>
+            </section>
+            <section class="panel donut-panel"><div class="panel-header compact"><div><span class="eyebrow">TRAFFIC MIX</span><h3>Views by website</h3></div></div><div class="donut-wrap"><div class="donut" id="donut"><div><strong id="donutTotal">–</strong><span>Views</span></div></div><div class="donut-legend" id="donutLegend"></div></div></section>
+          </div>
           <section class="panel table-panel wide"><div class="panel-header compact"><div><span class="eyebrow">PER WEBSITE</span><h3>Breakdown</h3></div></div><div class="analytics-table" id="analyticsTable"></div></section>
+          <div class="breakdown-grid" id="breakdownGrid"></div>
+        </div>
+
+        <!-- TAB: SERVER & TOKEN -->
+        <div class="an-tabpane" id="anTabServer">
+          <div id="serverTokens"></div>
         </div>
       </section>
 

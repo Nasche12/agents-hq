@@ -191,6 +191,15 @@ function httpsJson(urlStr, { method = 'GET', headers = {}, body = null } = {}) {
   });
 }
 const numv = x => (x && typeof x === 'object') ? (+x.value || 0) : (+x || 0);
+const UMAMI_TZ = process.env.UMAMI_TIMEZONE || 'Europe/Berlin';
+const BREAKDOWNS = [
+  { key: 'pages',     type: 'url' },
+  { key: 'referrers', type: 'referrer' },
+  { key: 'browsers',  type: 'browser' },
+  { key: 'os',        type: 'os' },
+  { key: 'devices',   type: 'device' },
+  { key: 'countries', type: 'country' }
+];
 async function umamiToken() {
   if (_umamiTok.token && Date.now() - _umamiTok.t < 55 * 60 * 1000) return _umamiTok.token;
   const j = await httpsJson(UMAMI.base + '/api/auth/login', { method: 'POST', body: { username: UMAMI.user, password: UMAMI.pass } });
@@ -199,6 +208,20 @@ async function umamiToken() {
   _umamiTok = { t: Date.now(), token: tok };
   return tok;
 }
+// tolerant gegenueber v1/v2-Antwortformen ([{x,y}] oder {data:[...]})
+const asRows = r => Array.isArray(r) ? r : (r && Array.isArray(r.data) ? r.data : []);
+// summiert value->count in eine Map (verschmilzt gleiche Labels ueber mehrere Sites)
+function mergeInto(map, rows) {
+  for (const row of asRows(rows)) {
+    const x = row.x, y = +row.y || 0;
+    if (x == null) continue;
+    map.set(x, (map.get(x) || 0) + y);
+  }
+}
+const topN = (map, n) => [...map.entries()]
+  .map(([x, y]) => ({ x, y })).filter(r => r.y > 0)
+  .sort((a, b) => b.y - a.y).slice(0, n);
+
 async function umamiSummary(cacheKey, fromMs, toMs, label) {
   const cached = _umamiCache[cacheKey];
   if (cached && Date.now() - cached.t < 5 * 60 * 1000) return cached.data;
@@ -207,36 +230,67 @@ async function umamiSummary(cacheKey, fromMs, toMs, label) {
   const raw = await httpsJson(UMAMI.base + '/api/websites', { headers: H });
   const list = Array.isArray(raw) ? raw : (raw.data || raw.websites || []);
   const win = toMs - fromMs;
-  const out = [];
-  for (const w of list) {
-    const id = w.id || w.websiteId; if (!id) continue;
-    const q = (a, b) => `${UMAMI.base}/api/websites/${id}/stats?startAt=${a}&endAt=${b}`;
-    let cur = {}, prev = {};
-    try { cur = await httpsJson(q(fromMs, toMs), { headers: H }); } catch (e) {}
-    try { prev = await httpsJson(q(fromMs - win, fromMs), { headers: H }); } catch (e) {}
-    const pv = numv(cur.pageviews), vs = numv(cur.visitors);
-    const pvp = numv(prev.pageviews) || numv(cur.pageviews && cur.pageviews.prev);
-    const vsp = numv(prev.visitors) || numv(cur.visitors && cur.visitors.prev);
-    const visits = numv(cur.visits), bounces = numv(cur.bounces), totaltime = numv(cur.totaltime);
+  const unit = win <= 2 * 864e5 ? 'hour' : (win <= 90 * 864e5 ? 'day' : 'month');
+  const get = url => httpsJson(url, { headers: H }).catch(() => null);
+  const B = UMAMI.base;
+
+  // Zeitreihe (pageviews/sessions) ueber alle Sites nach Zeit-Bucket verschmelzen
+  const tsMap = new Map();  // bucket -> { pageviews, sessions }
+  const brk = {};           // key -> Map(label -> count)
+  BREAKDOWNS.forEach(b => brk[b.key] = new Map());
+
+  const perSite = await Promise.all(list.map(async w => {
+    const id = w.id || w.websiteId; if (!id) return null;
+    const stats = (a, b) => `${B}/api/websites/${id}/stats?startAt=${a}&endAt=${b}`;
+    const pvUrl = `${B}/api/websites/${id}/pageviews?startAt=${fromMs}&endAt=${toMs}&unit=${unit}&timezone=${encodeURIComponent(UMAMI_TZ)}`;
+    const mUrl = t => `${B}/api/websites/${id}/metrics?startAt=${fromMs}&endAt=${toMs}&type=${t}&limit=20`;
+    const [cur, prev, pvSeries, ...mets] = await Promise.all([
+      get(stats(fromMs, toMs)), get(stats(fromMs - win, fromMs)), get(pvUrl),
+      ...BREAKDOWNS.map(b => get(mUrl(b.type)))
+    ]);
+    // Zeitreihe einmischen
+    if (pvSeries) {
+      const pvArr = asRows(pvSeries.pageviews), seArr = asRows(pvSeries.sessions);
+      for (const r of pvArr) { const k = r.x; if (k == null) continue; const e = tsMap.get(k) || { pageviews: 0, sessions: 0 }; e.pageviews += +r.y || 0; tsMap.set(k, e); }
+      for (const r of seArr) { const k = r.x; if (k == null) continue; const e = tsMap.get(k) || { pageviews: 0, sessions: 0 }; e.sessions += +r.y || 0; tsMap.set(k, e); }
+    }
+    // Breakdowns einmischen
+    BREAKDOWNS.forEach((b, i) => mergeInto(brk[b.key], mets[i]));
+    const c = cur || {}, p = prev || {};
+    const pv = numv(c.pageviews), vs = numv(c.visitors);
+    const pvp = numv(p.pageviews) || numv(c.pageviews && c.pageviews.prev);
+    const vsp = numv(p.visitors) || numv(c.visitors && c.visitors.prev);
+    const visits = numv(c.visits), bounces = numv(c.bounces), totaltime = numv(c.totaltime);
     const pct = (a, b) => b ? Math.round((a - b) / b * 100) : null;
-    out.push({
+    return {
       name: w.name || w.domain || String(id), domain: w.domain || '',
-      pageviews: pv, visitors: vs, visits,
+      pageviews: pv, visitors: vs, visits, bounces, totaltime,
       avg_seconds: visits ? Math.round(totaltime / visits) : 0,
       bounce_rate: visits ? Math.round(bounces / visits * 100) : 0,
       prev: { pageviews: pvp, visitors: vsp },
       change: { pageviews: pct(pv, pvp), visitors: pct(vs, vsp) }
-    });
-  }
-  out.sort((a, b) => b.pageviews - a.pageviews);
+    };
+  }));
+  const out = perSite.filter(Boolean).sort((a, b) => b.pageviews - a.pageviews);
+
+  const series = [...tsMap.entries()]
+    .map(([date, v]) => ({ date, pageviews: v.pageviews, sessions: v.sessions }))
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const breakdowns = {};
+  BREAKDOWNS.forEach(b => breakdowns[b.key] = topN(brk[b.key], 10));
+
+  const sum = f => out.reduce((s, x) => s + f(x), 0);
+  const totVisits = sum(x => x.visits), totTime = sum(x => x.totaltime), totBounce = sum(x => x.bounces);
   const data = {
-    configured: true, generated: new Date().toISOString(), range: label,
+    configured: true, generated: new Date().toISOString(), range: label, unit,
     from: fromMs, to: toMs,
     total: {
-      pageviews: out.reduce((s, x) => s + x.pageviews, 0),
-      visitors: out.reduce((s, x) => s + x.visitors, 0)
+      pageviews: sum(x => x.pageviews), visitors: sum(x => x.visitors), visits: totVisits,
+      avg_seconds: totVisits ? Math.round(totTime / totVisits) : 0,
+      bounce_rate: totVisits ? Math.round(totBounce / totVisits * 100) : 0,
+      views_per_visit: totVisits ? +(sum(x => x.pageviews) / totVisits).toFixed(1) : 0
     },
-    sites: out
+    series, breakdowns, sites: out
   };
   _umamiCache[cacheKey] = { t: Date.now(), data };
   return data;
@@ -373,6 +427,10 @@ const server = http.createServer((req, res) => {
   if (rel === '/server.json') {
     const f = path.join(BASE, 'server', 'server-status.json');
     try { return send(res, 200, fs.readFileSync(f), MIME['.json']); } catch (e) { return send(res, 200, {}); }
+  }
+  if (rel === '/server-history.json') {
+    const f = path.join(BASE, 'server', 'server-history.json');
+    try { return send(res, 200, fs.readFileSync(f), MIME['.json']); } catch (e) { return send(res, 200, []); }
   }
   const abs = path.resolve(WEB, '.' + rel);
   if (abs.startsWith(WEB) && fs.existsSync(abs) && fs.statSync(abs).isFile())

@@ -68,6 +68,8 @@ CHAN="$("$NODE" "$HQ" cfg "$SCHED" "$AGENT" channel 2>/dev/null)"; [ -n "$CHAN" 
 RUN_TS="$(date +%Y%m%dT%H%M%S)"
 RUNDIR="$LOGDIR/$AGENT"; mkdir -p "$RUNDIR"
 RUNLOG="$RUNDIR/$RUN_TS.log"
+RUNJSON="$RUNDIR/$RUN_TS.json"                 # Roh-JSON des Laufs (usage/cost/result)
+RUNERR="$RUNDIR/$RUN_TS.err"                   # stderr getrennt (sonst zerschiesst es das JSON)
 T0="$(date -Is)"
 
 upd running "Gestartet" 5 "Ich lege los…"
@@ -86,8 +88,12 @@ ZUSÄTZLICH (Status fürs Dashboard): Rufe während der Arbeit bei jedem größe
   $BASE/bin/status-update.sh $AGENT running \"<Phase>\" <Fortschritt 0-100> \"<kurze Sprechblasen-Nachricht, max 34 Zeichen>\"
 und ganz am Ende mit Status ok (oder waiting, falls du auf Sebastians Go wartest) inkl. Details/Outputs:
   $BASE/bin/status-update.sh $AGENT ok \"Fertig\" 100 \"<Kurzfazit>\" '<json-array details>' '<json-array outputs>'" \
-  --model "$MODEL" --dangerously-skip-permissions < /dev/null 2>&1 | tee -a "$RUNLOG" >> "$LOG"
-RC=${PIPESTATUS[0]}
+  --model "$MODEL" --output-format json --dangerously-skip-permissions < /dev/null > "$RUNJSON" 2> "$RUNERR"
+RC=$?
+# stderr in die Logs spiegeln, damit errtail + Dashboard-Drawer Fehler sehen
+[ -s "$RUNERR" ] && cat "$RUNERR" | tee -a "$RUNLOG" >> "$LOG"
+# lesbaren Ergebnistext aus dem JSON in die Logs schreiben (statt Roh-JSON)
+"$NODE" "$HQ" resulttext "$RUNJSON" 2>/dev/null | tee -a "$RUNLOG" >> "$LOG"
 
 if [ "$RC" -eq 0 ]; then
   # Falls der Agent selbst keinen Endstatus gesetzt hat: ok setzen
@@ -102,7 +108,14 @@ T1="$(date -Is)"
 { echo "=== $T1 ENDE rc=$RC ==="; } | tee -a "$RUNLOG" >> "$LOG"
 
 # ---- Report-Datensatz: EIN JSONL-Eintrag pro Lauf (fürs Dashboard-Verlauf) ----
-"$NODE" "$HQ" record "$STATUS" "$LOGDIR/$AGENT.jsonl" "$AGENT" "$T0" "$T1" "$RC" "$MODEL" "$RUN_TS" 2>/dev/null || true
+# inkl. Token-/Kosten-Nutzung aus dem Roh-JSON dieses Laufs
+"$NODE" "$HQ" record "$STATUS" "$LOGDIR/$AGENT.jsonl" "$AGENT" "$T0" "$T1" "$RC" "$MODEL" "$RUN_TS" "$RUNJSON" 2>/dev/null || true
+
+# ---- Server-Verlauf fortschreiben: nach jedem Server-Wächter-Lauf einen Snapshot anhängen ----
+if [ "$AGENT" = server-waechter ] && [ -f "$BASE/server/server-status.json" ]; then
+  "$NODE" "$HQ" srvhist "$BASE/server/server-status.json" \
+    "$BASE/server/server-history.jsonl" "$BASE/server/server-history.json" 2>/dev/null || true
+fi
 
 # Endstatus nach Discord melden (waiting -> Kommando-Kanal fürs Go, sonst Log-/Themen-Kanal)
 FINAL="$("$NODE" "$HQ" final "$STATUS" "$AGENT" 2>/dev/null)"
@@ -158,4 +171,5 @@ esac
 # Dashboard-Datenfiles ins statische Docroot spiegeln (index.html liest sie ohne server.js)
 [ -f "$BASE/uptime/uptime.json" ] && cp -f "$BASE/uptime/uptime.json" "$WEBDIR/uptime.json" 2>/dev/null
 [ -f "$BASE/server/server-status.json" ] && cp -f "$BASE/server/server-status.json" "$WEBDIR/server.json" 2>/dev/null
+[ -f "$BASE/server/server-history.json" ] && cp -f "$BASE/server/server-history.json" "$WEBDIR/server-history.json" 2>/dev/null
 exit "$RC"

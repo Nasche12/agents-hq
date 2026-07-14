@@ -548,3 +548,163 @@ body{background:#000000 !important}
 .status-banner{background:#0b0b0e;border-color:var(--panel-border)}
 .status-banner:before{display:none}
 .metric-card:after{display:none}
+
+/* ==================================================================
+   Runde 14 — Website-Intelligence (voller Umami-Report) + Dokumente
+   + Missions/Automations aufgeraeumt
+   ================================================================== */
+
+/* --- Analytics: Kopf + KPI-Leiste --- */
+.an-toolbar{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin:2px 2px 14px;flex-wrap:wrap}
+.an-title{font-size:19px;margin:5px 0 0;letter-spacing:-.3px}
+.analytics-kpis{grid-template-columns:repeat(auto-fit,minmax(132px,1fr));margin-bottom:12px}
+.analytics-kpi{display:flex;flex-direction:column;gap:2px}
+.analytics-kpi .chg.up{color:var(--green)}.analytics-kpi .chg.down{color:var(--red)}.analytics-kpi .chg.flat{color:var(--muted-2)}
+
+/* --- Trend-Chart (Pageviews-Flaeche + Visitors-Linie) --- */
+.trend-panel{margin-bottom:12px}
+.trend-chart{padding:10px 12px 6px;min-height:190px}
+.chart-legend.inline{padding:0;gap:14px;justify-content:flex-end;font-size:10px}
+.chart-legend.inline i{width:14px;height:3px;border-radius:2px;margin-right:6px}
+
+/* --- Bars vs. Donut nebeneinander --- */
+.analytics-grid.mix{grid-template-columns:minmax(0,1.55fr) minmax(260px,.7fr);margin-bottom:12px}
+.bars-panel{min-height:260px}
+.bar.cur{background:linear-gradient(180deg,#4fb0ea,#2f7fc4)}
+.bar.prev{background:linear-gradient(180deg,#46587a,#2f3d55)}
+.bar-group{cursor:default}
+.bar-val{font-size:11px;font-family:ui-monospace,monospace;color:#dbe7f6;font-variant-numeric:tabular-nums;order:-1}
+.bar-group:hover .bar-val{color:#fff}
+
+/* --- Breakdown-Karten (Top pages / sources / browsers / os / devices / countries) --- */
+.breakdown-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;margin-top:12px}
+.bd-card{padding:14px 15px 15px}
+.bd-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}
+.bd-head .eyebrow{color:#8ba0bb;letter-spacing:1px}
+.bd-head small{font-size:10px;color:var(--muted-2);font-family:ui-monospace,monospace;background:rgba(255,255,255,.05);border-radius:7px;padding:1px 7px}
+.bd-list{display:flex;flex-direction:column;gap:3px}
+.bl-row{position:relative;display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;overflow:hidden;isolation:isolate}
+.bl-row:hover{background:rgba(255,255,255,.03)}
+.bl-fill{position:absolute;left:0;top:0;bottom:0;z-index:-1;border-radius:8px;background:linear-gradient(90deg,rgba(57,135,229,.16),rgba(90,163,240,.5))}
+.bl-label{flex:1;min-width:0;font-size:12px;color:#d7e2f1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bl-val{font-size:12px;font-family:ui-monospace,monospace;color:#fff;font-variant-numeric:tabular-nums}
+.bd-empty{font-size:11px;color:var(--muted);padding:8px 10px;margin:0}
+
+/* --- Dokumente pro Bot (Drawer) + robuste Outputs --- */
+.drawer-sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.doc-count{font-size:10px;color:var(--muted-2);font-family:ui-monospace,monospace}
+.doc-list{display:flex;flex-direction:column;gap:5px;margin-top:4px}
+.doc-row{display:flex;align-items:center;gap:9px;padding:8px 10px;border:1px solid var(--panel-border);border-radius:9px;background:rgba(255,255,255,.025);text-decoration:none;color:inherit;transition:border-color .15s,background .15s}
+a.doc-row:hover{border-color:rgba(84,226,255,.45);background:rgba(84,226,255,.06)}
+.doc-row.is-static{cursor:default}
+.doc-ic{font-size:14px;flex:0 0 auto}
+.doc-name{flex:1;min-width:0;font-size:12px;color:#dbe4f2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.doc-meta{font-size:9px;color:var(--muted-2);font-family:ui-monospace,monospace;white-space:nowrap}
+.doc-go{color:var(--accent-2);font-size:12px;flex:0 0 auto}
+.doc-empty{font-size:11px;color:var(--muted);margin:2px 0 0}
+
+/* --- Missions: klarere Karten, farbiger Anker, ruhigeres Raster --- */
+.mc-wrap{gap:26px}
+.mc-grid{grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:13px}
+.mc-card{background:linear-gradient(160deg,rgba(15,30,50,.92),rgba(8,19,33,.9));padding:14px 15px 15px;border-radius:15px}
+.mc-card:hover{border-color:color-mix(in srgb,var(--agent-color,var(--accent)) 45%,transparent)}
+.mc-ico{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-size:17px;background:color-mix(in srgb,var(--agent-color,var(--accent)) 15%,transparent);border:1px solid color-mix(in srgb,var(--agent-color,var(--accent)) 30%,transparent)}
+.mc-head h3{letter-spacing:-.2px}
+.mc-section>.mc-head{border-bottom:1px solid rgba(137,164,201,.1);padding-bottom:8px}
+
+/* --- Automations: aufgeraeumte Zeilen-Karten --- */
+.auto-cards{grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px}
+.auto-card{position:relative;padding:0;overflow:hidden;background:linear-gradient(160deg,rgba(15,30,50,.9),rgba(8,19,33,.88));gap:0}
+.auto-top{padding:13px 15px 11px;border-bottom:1px solid rgba(137,164,201,.1);gap:11px}
+.auto-ico{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;font-size:16px;background:rgba(255,255,255,.04)}
+.auto-field{padding:12px 15px 4px}
+.auto-flags{padding:8px 15px 14px;gap:10px 14px;border-top:1px solid rgba(137,164,201,.07);margin-top:4px}
+.auto-status{font-size:10px}
+.mini-run{width:28px;height:28px;border-radius:8px;border:1px solid rgba(84,226,255,.35);background:rgba(84,226,255,.08);color:var(--accent-2);cursor:pointer;font-size:11px;transition:.15s}
+.mini-run:hover{background:rgba(84,226,255,.16)}
+.mini-run:disabled{opacity:.4;cursor:not-allowed}
+
+/* --- Strukturierte Detail-Karten im Bot-Drawer --- */
+.det-list{display:flex;flex-direction:column;gap:8px;margin-top:5px}
+.det-card{border:1px solid var(--panel-border);background:rgba(255,255,255,.022);border-radius:12px;padding:11px 13px}
+.det-card.det-plain{font-size:12px;color:#cdd8e8;line-height:1.5}
+.det-head{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+.det-dot{width:10px;height:10px;border-radius:50%;flex:0 0 auto}
+.det-head strong{font-size:13px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.det-badge{font-size:9px;text-transform:uppercase;letter-spacing:.6px;font-weight:800;border:1px solid var(--muted-2);color:var(--muted);border-radius:20px;padding:2px 9px;white-space:nowrap}
+.det-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.det-chips:last-child{margin-bottom:0}
+.det-chip{font-size:11px;color:#cdd9ea;background:rgba(255,255,255,.05);border-radius:7px;padding:3px 9px}
+.det-chip b{color:var(--muted-2);font-weight:700;margin-right:6px;text-transform:uppercase;font-size:9px;letter-spacing:.4px}
+.det-top{margin:0;padding-left:17px;display:flex;flex-direction:column;gap:5px}
+.det-top li{font-size:12px;color:#bccadd;line-height:1.5}
+.det-top li::marker{color:var(--accent-2)}
+.drawer-log{font-size:11.5px;line-height:1.6;max-height:280px}
+
+/* --- Analytics-Tabs (Website / Server & Token) --- */
+.an-tabs{display:flex;gap:6px;margin:0 2px 16px;border-bottom:1px solid rgba(137,164,201,.12);padding-bottom:0}
+.an-tab-btn{appearance:none;border:0;background:transparent;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.2px;cursor:pointer;padding:10px 14px 12px;border-bottom:2px solid transparent;margin-bottom:-1px;display:flex;align-items:center;gap:8px;transition:color .16s,border-color .16s}
+.an-tab-btn:hover{color:#cad6e7}
+.an-tab-btn.active{color:#fff;border-bottom-color:var(--accent)}
+.an-tab-btn .an-tab-ic{font-size:14px}
+.an-tabpane{display:none}
+.an-tabpane.active{display:block;animation:fadeIn .28s ease}
+
+/* --- Server & Token: gemeinsame Bausteine --- */
+.st-sec-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin:20px 2px 12px;flex-wrap:wrap}
+.st-sec-head:first-child{margin-top:4px}
+.st-sec-head h3{font-size:15px;margin:4px 0 0;letter-spacing:-.2px}
+.st-demo{font-size:9px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--yellow);background:rgba(248,212,92,.1);border:1px solid rgba(248,212,92,.25);border-radius:7px;padding:3px 8px}
+.st-charts{display:grid;grid-template-columns:1.6fr 1fr 1fr;gap:12px;padding:4px 14px 16px}
+.st-chart{border:1px solid var(--panel-border);background:rgba(255,255,255,.02);border-radius:13px;padding:10px 12px 6px}
+.st-chart-h{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:2px}
+.st-chart .trend-chart{height:172px;padding:6px 2px 2px}
+.srv-chips{display:flex;flex-wrap:wrap;gap:6px}
+.srv-cols{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:2px 16px 12px}
+.srv-col .srv-lbl{font-size:10px;color:var(--muted-2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:7px;display:flex;align-items:center;gap:8px}
+.srv-chip{font-size:11px;color:#cdd9ea;background:rgba(255,255,255,.045);border:1px solid var(--panel-border);border-radius:7px;padding:3px 8px;display:inline-flex;align-items:center;gap:6px}
+.srv-chip i{width:7px;height:7px;border-radius:50%;background:var(--muted-2)}
+.srv-chip.ok i{background:var(--green)}.srv-chip.bad{border-color:rgba(255,107,125,.4)}.srv-chip.bad i{background:var(--red)}
+.srv-bk{font-size:10px;font-family:ui-monospace,monospace;padding:1px 7px;border-radius:6px;background:rgba(255,255,255,.05)}
+.srv-bk.ok{color:var(--green)}.srv-bk.bad{color:var(--red)}
+.srv-foot{font-size:10px;color:var(--muted-2);padding:2px 16px 14px}
+.srv-empty{font-size:12px;color:var(--muted);padding:18px 16px;line-height:1.6}
+
+/* --- Token: KPI + Chart-Modus-Umschalter --- */
+.seg-toggle{display:inline-flex;border:1px solid var(--panel-border);border-radius:9px;overflow:hidden;background:#0a192a}
+.seg-toggle button{appearance:none;border:0;background:transparent;color:#71839d;font-size:10px;font-weight:700;padding:7px 12px;cursor:pointer;transition:.15s}
+.seg-toggle button:hover{color:#c8d5e7}
+.seg-toggle button.active{background:#1b2c46;color:#e5ecf7}
+.tok-main{min-height:250px}
+.tok-chart{padding:10px 14px 14px}
+.tok-chart svg{width:100%;height:auto;display:block;overflow:visible}
+.tok-chart .gl{stroke:rgba(137,164,201,.12);stroke-width:1;vector-effect:non-scaling-stroke}
+.tok-chart .gt{fill:var(--muted-2);font-size:10px;font-family:ui-monospace,monospace}
+.tok-chart .hv{fill:transparent;cursor:crosshair}
+.tok-chart .hv:hover{fill:rgba(255,255,255,.05)}
+
+/* --- Token: horizontale Balken pro Agent (Liste + Graph in einem) --- */
+.tb-list{display:flex;flex-direction:column;gap:5px;padding:8px 14px 14px}
+.tb-row{display:grid;grid-template-columns:minmax(120px,1.1fr) minmax(90px,2fr) auto;gap:12px;align-items:center}
+.tb-label{display:flex;align-items:center;gap:8px;font-size:12px;color:#d7e2f1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-label i{width:9px;height:9px;border-radius:3px;flex:0 0 auto}
+.tb-track{height:12px;border-radius:6px;background:rgba(255,255,255,.05);overflow:hidden}
+.tb-fill{display:block;height:100%;border-radius:6px;transition:width .5s}
+.tb-val{font-size:12px;font-family:ui-monospace,monospace;color:#fff;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.tb-val small{display:block;font-size:10px;color:var(--muted-2);font-weight:400}
+
+/* --- Datentabelle (Token pro Agent / letzte Läufe) --- */
+.dtbl{padding:2px 14px 14px;display:flex;flex-direction:column;gap:4px;overflow-x:auto}
+.dtbl-head,.dtbl-row{display:grid;gap:10px;align-items:center;min-width:520px}
+.dtbl-head{font-size:9px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted-2);padding:4px 10px}
+.dtbl-head span:not(:first-child),.dtbl-row span:not(.dtbl-name){text-align:right}
+.dtbl-row{background:rgba(255,255,255,.025);border:1px solid var(--panel-border);border-radius:10px;padding:9px 10px}
+.dtbl-row span:not(.dtbl-name){font-family:ui-monospace,monospace;font-size:12px;font-variant-numeric:tabular-nums}
+.dtbl-name{display:flex;align-items:center;gap:9px;min-width:0;font-size:12px}
+.dtbl-name i{width:9px;height:9px;border-radius:3px;flex:0 0 auto}
+.dtbl-name small{color:var(--muted-2)}
+.st-grid2{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(260px,.8fr);gap:12px}
+
+@media(max-width:1100px){.st-charts{grid-template-columns:1fr 1fr}}
+@media(max-width:900px){.analytics-grid.mix{grid-template-columns:1fr}.breakdown-grid{grid-template-columns:1fr 1fr}.st-charts{grid-template-columns:1fr}.srv-cols{grid-template-columns:1fr}.st-grid2{grid-template-columns:1fr}}
+@media(max-width:640px){.breakdown-grid{grid-template-columns:1fr}.an-toolbar{align-items:flex-start}.an-tab-btn{padding:9px 10px}}
