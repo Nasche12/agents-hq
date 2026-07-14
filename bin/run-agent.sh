@@ -23,6 +23,18 @@ SCHED="$BASE/config/schedule.json"
 MODEL="${AGENT_MODEL:-$("$NODE" "$HQ" model "$SCHED" "$AGENT" 2>/dev/null)}"
 [ -n "$MODEL" ] || MODEL=sonnet
 
+# ---- Rechte-Profil pro Agent (least-privilege statt --dangerously-skip-permissions) ----
+# --dangerously-skip-permissions ist als root verboten ("cannot be used with root/sudo").
+# dontAsk laeuft vollstaendig headless: Erlaubtes ohne Rueckfrage, Nicht-Erlaubtes wird
+# lautlos verweigert (statt zu haengen). Deny schlaegt Allow -> Schutz gegen Prompt-Injection.
+PERM_DIR="$BASE/.claude/perms"
+PERM_FILE="$PERM_DIR/$AGENT.json"; [ -f "$PERM_FILE" ] || PERM_FILE="$PERM_DIR/default.json"
+PERM_ARGS=(--permission-mode dontAsk)
+[ -f "$PERM_FILE" ] && PERM_ARGS+=(--settings "$PERM_FILE")
+# Die eigenen HQ-Helfer (Status/Discord) muss JEDER Lauf aufrufen duerfen. Sie laufen mit
+# absolutem Pfad, daher hier zur Laufzeit erlauben (merged on top der Settings-Allowlist).
+PERM_ARGS+=(--allowedTools "Bash($BASE/bin/status-update.sh *)" "Bash($BASE/bin/discord.py *)")
+
 LOG_CH="${DISCORD_LOG_CHANNEL:-agent-logs}"
 CMD_CH="${DISCORD_COMMAND_CHANNEL:-freigaben}"
 
@@ -88,7 +100,7 @@ ZUSÄTZLICH (Status fürs Dashboard): Rufe während der Arbeit bei jedem größe
   $BASE/bin/status-update.sh $AGENT running \"<Phase>\" <Fortschritt 0-100> \"<kurze Sprechblasen-Nachricht, max 34 Zeichen>\"
 und ganz am Ende mit Status ok (oder waiting, falls du auf Sebastians Go wartest) inkl. Details/Outputs:
   $BASE/bin/status-update.sh $AGENT ok \"Fertig\" 100 \"<Kurzfazit>\" '<json-array details>' '<json-array outputs>'" \
-  --model "$MODEL" --output-format json --dangerously-skip-permissions < /dev/null > "$RUNJSON" 2> "$RUNERR"
+  --model "$MODEL" --output-format json "${PERM_ARGS[@]}" < /dev/null > "$RUNJSON" 2> "$RUNERR"
 RC=$?
 # stderr in die Logs spiegeln, damit errtail + Dashboard-Drawer Fehler sehen
 [ -s "$RUNERR" ] && cat "$RUNERR" | tee -a "$RUNLOG" >> "$LOG"
