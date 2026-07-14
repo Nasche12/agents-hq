@@ -11,8 +11,9 @@ rechnungen/
 master/
 server/
 mail/
-httpdocs/status.json
-httpdocs/uptime.json
+# httpdocs/ = generierter Deploy-Output (bin/publish.sh aus dashboard/) + Runtime-JSON der Agents.
+# Nie tracken, sonst kollidiert jeder Pull mit publish.sh.
+httpdocs/
 dashboard/.discord-last.json
 dashboard/.sched-fires.json
 dashboard/status.json
