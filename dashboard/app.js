@@ -899,6 +899,24 @@ function histInRange(hist){
  if(RANGE==='custom')return (hist||[]).filter(p=>{const d=new Date(p.t).getTime();return isNaN(d)||(d>=RFROM&&d<=RTO);});
  const cut=Date.now()-rangeWinMs();return (hist||[]).filter(p=>{const d=new Date(p.t).getTime();return isNaN(d)||d>=cut;});
 }
+/* Mess-Lücken sichtbar machen: lief der Recorder eine Weile nicht (z.B. Cron aus),
+   schieben wir einen Null-Punkt ein → die Chart-Linie bricht dort, statt den Sprung
+   geradlinig zu überbrücken. Schwelle = 3× der übliche Abstand, min. 2,5 h. */
+function histWithGaps(hist){
+ if(!hist||hist.length<3)return hist||[];
+ const ts=hist.map(p=>new Date(p.t).getTime()),d=[];
+ for(let i=1;i<ts.length;i++)if(!isNaN(ts[i])&&!isNaN(ts[i-1]))d.push(ts[i]-ts[i-1]);
+ if(!d.length)return hist;
+ const med=[...d].sort((a,b)=>a-b)[Math.floor(d.length/2)]||0;
+ const thr=Math.max(med*3,2.5*3600*1000);
+ const out=[hist[0]];
+ for(let i=1;i<hist.length;i++){
+  if(!isNaN(ts[i])&&!isNaN(ts[i-1])&&ts[i]-ts[i-1]>thr)
+   out.push({t:new Date((ts[i-1]+ts[i])/2).toISOString(),p:null,_gap:true});
+  out.push(hist[i]);
+ }
+ return out;
+}
 function rangeBtnHtml(){return `<button class="range-btn" data-rangebtn data-tip="Choose time range (presets or custom date/time)">${esc(rangeLabel())} <i>▾</i></button>`;}
 function analyticsQuery(){return RANGE==='custom'?('from='+RFROM+'&to='+RTO):('range='+RANGE);}
 function applyRange(){if(API)loadAnalytics();if(DATA)renderView(VIEW);}   // Analytics vom Server, Uptime client-seitig
@@ -977,10 +995,22 @@ function renderOverview(){
  const acts=f.filter(a=>a.last_run||a.status!=='idle').sort((a,b)=>new Date(b.last_run||0)-new Date(a.last_run||0)).slice(0,7);
  $('#activityList').innerHTML=acts.length?acts.map(a=>`<div class="activity-item is-click" data-agent="${a.id}"><span class="activity-icon" style="color:${COLORS[a.status]}">${a.icon}</span><div><strong>${esc(a.name)}</strong><p>${esc(a.message||a.phase||LABELS[a.status])}</p></div><time>${esc(a.last_run?relTime(a.last_run):LABELS[a.status])}</time></div>`).join(''):'<div class="data-empty">No activity recorded yet.</div>';
  $$('#activityList [data-agent]').forEach(el=>el.addEventListener('click',()=>openAgent(el.dataset.agent)));
- // Active missions → click opens the agent
- const miss=f.filter(a=>a.status==='running'||a.status==='waiting'||a.status==='error').sort((a,b)=>(b.progress||0)-(a.progress||0)).slice(0,5);
- $('#missionList').innerHTML=miss.length?miss.map(a=>{const pr=a.status==='error'?'critical':a.status==='waiting'?'high':'normal',pl=pr==='critical'?'Error':pr==='high'?'Waiting':'Running';
-  return `<div class="mission-row is-click" data-agent="${a.id}"><div class="mission-head"><strong>${esc(a.name)}</strong><span class="priority ${pr}">${pl}</span></div><div class="mission-meta"><span>${esc(a.phase||'–')}</span><span>${a.progress||0}%</span></div><div class="progress"><span style="width:${clamp(a.progress||0,0,100)}%;background:${COLORS[a.status]}"></span></div></div>`;}).join(''):'<div class="data-empty">No active missions – all agents idle.</div>';
+ // Active missions → click opens the agent (Reihenfolge: Fehler > Wartet > Läuft)
+ const MORD={error:0,waiting:1,running:2};
+ const miss=f.filter(a=>a.status==='running'||a.status==='waiting'||a.status==='error')
+   .sort((a,b)=>(MORD[a.status]-MORD[b.status])||((b.progress||0)-(a.progress||0))).slice(0,5);
+ $('#missionList').innerHTML=miss.length?miss.map(a=>{
+  const st=a.status,desc=esc(a.message||a.phase||LABELS[st]);
+  let foot='';
+  if(st==='running'){const p=clamp(a.progress||0,0,100);
+   foot=`<span class="mrow-run"><span class="mrow-track"><i style="width:${p}%"></i></span><b>${p}%</b></span>`;}
+  else if(st==='waiting')foot='<span class="mrow-cue"><span class="mrow-pulse"></span>Wartet auf dein Go</span>';
+  else if(st==='error')foot='<span class="mrow-err">Lauf abgebrochen · Details ansehen</span>';
+  return `<button type="button" class="mrow mrow--${st} is-click" data-agent="${a.id}" style="--m-accent:${a.accent};--m-state:${COLORS[st]}" data-tip="${esc(a.name)} öffnen">`
+   +`<span class="mrow-ava"><span class="mrow-ico">${a.icon}</span><i class="mrow-live"></i></span>`
+   +`<span class="mrow-main"><span class="mrow-top"><strong>${esc(a.name)}</strong><span class="mrow-chip">${esc(LABELS[st])}</span></span>`
+   +`<span class="mrow-desc">${desc}</span>${foot}</span></button>`;}).join('')
+  :`<div class="mrow-empty"><span class="mrow-empty-ico">✓</span><strong>Alles ruhig</strong><small>Kein Lauf braucht dich gerade. Sobald ein Agent startet oder auf dein Go wartet, erscheint er hier.</small></div>`;
  $$('#missionList [data-agent]').forEach(el=>el.addEventListener('click',()=>openAgent(el.dataset.agent)));
  // Infrastructure health → click goes to systems / analytics
  const msVals=sites.map(s=>s.ms).filter(v=>v!=null),avgMs=msVals.length?Math.round(msVals.reduce((a,b)=>a+b,0)/msVals.length):null;
@@ -1005,11 +1035,11 @@ function renderOverview(){
  const perf=$('#perfChart');perf.style.height='auto';
  const hist=histInRange((UPTIME&&UPTIME.history)||[]);
  if(sites.length&&hist.length>1){
-  const pal=CHART_PAL;
-  const series=sites.map((s,i)=>({name:s.name,color:pal[i%pal.length],pts:hist.map(pt=>{const q=(pt.p||[]).find(x=>x.n===s.name);return q?q.ms:null;})}));
+  const pal=CHART_PAL,histG=histWithGaps(hist);
+  const series=sites.map((s,i)=>({name:s.name,color:pal[i%pal.length],pts:histG.map(pt=>{if(!pt.p)return null;const q=pt.p.find(x=>x.n===s.name);return q?q.ms:null;})}));
   const last=sites.map(s=>s.ms).filter(v=>v!=null),avg=last.length?Math.round(last.reduce((a,b)=>a+b,0)/last.length):0;
   $('#perfSummary').innerHTML=`<div><strong>${avg} ms</strong><span>avg response now</span></div><div class="trend positive">${hist.length} points</div>`;
-  perf.innerHTML=svgLine(series,{h:150,times:hist.map(h=>h.t),xfmt:xFmt(),aria:'Response time per website'});
+  perf.innerHTML=svgLine(series,{h:150,times:histG.map(h=>h.t),xfmt:xFmt(),aria:'Response time per website'});
   $('#perfLegend').innerHTML=series.map(s=>`<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join('');
   hydrateCharts(perf);
  }else{$('#perfSummary').innerHTML='';$('#perfLegend').innerHTML='';perf.innerHTML='<div class="chart-empty">No data in this range yet.</div>';}
@@ -1039,23 +1069,30 @@ function renderMissions(){
  const done=f.filter(a=>a.status==='ok');
  const upcoming=f.filter(a=>a.status==='idle'&&nextRunOf(a.id)!=='on demand');
  const onDemand=f.filter(a=>a.status==='idle'&&nextRunOf(a.id)==='on demand');
- const card=(a,extra)=>`<article class="mc-card is-click" data-agent="${a.id}" style="--agent-color:${a.accent}">
-   <header><span class="mc-ico">${a.icon}</span><div class="mc-tt"><strong>${esc(a.name)}</strong><small>${esc(a.role)}</small></div>
-   <span class="mc-pill" style="color:${COLORS[a.status]};border-color:${COLORS[a.status]}">${esc(LABELS[a.status])}</span></header>
-   <p>${esc(a.message||a.phase||'—')}</p>${extra||''}</article>`;
- const actions=a=>`<div class="mc-actions"><button class="btn-run" data-run="${a.id}" ${API?'':'disabled'}>▶ Start</button><button class="btn-det">Details</button></div>`;
- const prog=a=>`<div class="progress"><span style="width:${clamp(a.progress||0,0,100)}%;background:${COLORS[a.status]}"></span></div>`;
- const section=(title,items,body)=>items.length?`<section class="mc-section"><div class="mc-head"><h3>${title}</h3><span class="mc-count">${items.length}</span></div><div class="mc-grid">${items.map(body).join('')}</div></section>`:'';
+ // Eine Missions-Zeile in DERSELBEN .mrow-Sprache wie im Overview (Konsistenz + Dichte,
+ // statt eigenem Karten-Raster). right = rechter Slot (next-run/Start), foot = Progress.
+ const row=(a,right,foot)=>{const st=a.status;
+  return `<div class="mrow mrow--mv mrow--${st} is-click" data-agent="${a.id}" tabindex="0" role="button" style="--m-accent:${a.accent};--m-state:${COLORS[st]}" data-tip="${esc(a.name)} öffnen">`
+   +`<span class="mrow-ava"><span class="mrow-ico">${a.icon}</span><i class="mrow-live"></i></span>`
+   +`<span class="mrow-main"><span class="mrow-top"><strong>${esc(a.name)}</strong><span class="mrow-chip">${esc(LABELS[st])}</span></span>`
+   +`<span class="mrow-desc">${esc(a.message||a.phase||a.role||'—')}</span>${foot||''}</span>`
+   +(right?`<span class="mrow-right">${right}</span>`:'')+`</div>`;};
+ const startBtn=a=>`<button type="button" class="mrow-act" data-run="${a.id}"${API?'':' disabled'} data-tip="${esc(a.name)} jetzt starten">▶ Start</button>`;
+ const progFoot=a=>{const p=clamp(a.progress||0,0,100);return `<span class="mrow-run"><span class="mrow-track"><i style="width:${p}%"></i></span><b>${p}%</b></span>`;};
+ const nextR=a=>`<span class="mrow-next">${esc(nextRunOf(a.id))}</span>`;
+ const group=(title,items,body)=>items.length?`<section class="mc-section"><div class="mc-head"><h3>${esc(title)}</h3><span class="mc-count">${items.length}</span></div><div class="mv-rows">${items.map(body).join('')}</div></section>`:'';
+ const fold=(title,items,body)=>items.length?`<details class="mv-fold"><summary><span class="mv-sum-t">${esc(title)}</span><span class="mc-count">${items.length}</span></summary><div class="mv-rows">${items.map(body).join('')}</div></details>`:'';
  let html='';
- html+=section('Needs you',needs,a=>card(a,actions(a)));
- html+=section('In progress',running,a=>card(a,prog(a)));
- html+=section('Upcoming',upcoming,a=>card(a,`<div class="mc-foot"><span>next: ${esc(nextRunOf(a.id))}</span>${actions(a)}</div>`));
- html+=section('Recently done',done,a=>card(a,`<div class="mc-foot"><span>${a.last_run?relTime(a.last_run):''}</span></div>`));
- if(onDemand.length)html+=`<section class="mc-section"><div class="mc-head"><h3>On demand</h3><span class="mc-count">${onDemand.length}</span></div><div class="mc-chips">${onDemand.map(a=>`<button class="mc-chip is-click" data-agent="${a.id}"><i style="background:${a.accent}"></i>${esc(a.name)}</button>`).join('')}</div></section>`;
+ html+=group('Braucht dich',needs,a=>row(a,startBtn(a)));
+ html+=group('Läuft gerade',running,a=>row(a,'',progFoot(a)));
+ html+=group('Geplant',upcoming,a=>row(a,nextR(a)+startBtn(a)));
+ html+=fold('Zuletzt erledigt',done,a=>row(a,`<span class="mrow-next">${a.last_run?esc(relTime(a.last_run)):''}</span>`));
+ if(onDemand.length)html+=`<details class="mv-fold"><summary><span class="mv-sum-t">Auf Abruf</span><span class="mc-count">${onDemand.length}</span></summary><div class="mc-chips">${onDemand.map(a=>`<button class="mc-chip is-click" data-agent="${a.id}"><i style="background:${a.accent}"></i>${esc(a.name)}</button>`).join('')}</div></details>`;
  const board=$('#kanbanBoard');board.className='mc-wrap';
- board.innerHTML=html||'<div class="data-empty">Nothing to show.</div>';
- board.querySelectorAll('.btn-run').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();startRun(b.dataset.run,b);}));
+ board.innerHTML=html||`<div class="mrow-empty"><span class="mrow-empty-ico">✓</span><strong>Alles ruhig</strong><small>Kein Lauf offen. Sobald ein Agent startet oder auf dein Go wartet, taucht er hier auf.</small></div>`;
+ board.querySelectorAll('.mrow-act[data-run]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();startRun(b.dataset.run,b);}));
  board.querySelectorAll('[data-agent]').forEach(el=>el.addEventListener('click',()=>openAgent(el.dataset.agent)));
+ board.querySelectorAll('.mrow[role="button"]').forEach(el=>el.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openAgent(el.dataset.agent);}}));
 }
 
 /* ===== AUTOMATIONS (real schedule control, card-based) ===== */
@@ -1482,7 +1519,7 @@ function svgLine(series,o){
  else{const idx=[...new Set([0,Math.round((n-1)/3),Math.round(2*(n-1)/3),n-1])].filter(i=>i>=0&&i<n);xticks=idx.map(i=>({x:X(i),l:times[i]?xf(times[i]):'#'+(i+1)}));}
  const xax=xticks.map(t=>`<text class="gt" x="${t.x.toFixed(1)}" y="${H-9}" text-anchor="middle">${esc(t.l)}</text>`).join('');
  const unit=`<text class="gt" x="${pl-5}" y="10" text-anchor="end" opacity=".85">${esc(o.unit!=null?o.unit:'ms')}</text>`;
- const lines=series.map(s=>{let d='',pen=false;s.pts.forEach((v,i)=>{if(v==null||isNaN(v)){pen=false;return;}d+=(pen?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1)+' ';pen=true;});return d?`<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`:'';}).join('');
+ const lines=series.map(s=>{let d='',pen=false;s.pts.forEach((v,i)=>{if(v==null||isNaN(v)){pen=false;return;}d+=(pen?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1)+' ';pen=true;});return d?`<path d="${d}" fill="none" stroke="${s.color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`:'';}).join('');
  const dots=series.map(s=>{for(let i=s.pts.length-1;i>=0;i--){const v=s.pts[i];if(v!=null&&!isNaN(v))return `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="3" fill="${s.color}"/>`;}return '';}).join('');
  const id=regChart({type:'line',series,times,tms,timeMode,t0,t1,W,H,pl,pr,n,vfmt:o.vfmt||(v=>v+' ms'),nullLabel:o.nullLabel||'— down'});
  return `<div class="chartwrap" data-chart="${id}"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.aria||'Chart')}">${grid}${unit}${xax}${lines}${dots}</svg><div class="cguide"></div><div class="ctip"></div></div>`;
