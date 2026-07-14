@@ -1670,11 +1670,21 @@ function populateMissionAgents(){$('#missionAgent').innerHTML=FLEET_IDS.map(id=>
 function openMissionFor(id){populateMissionAgents();$('#missionAgent').value=id;openModal('missionModal');}
 window.openMissionFor=openMissionFor;
 const VIEWS=['overview','agents','missions','automations','analytics','systems'];
-function viewFromPath(){const seg=location.pathname.replace(/^\/+|\/+$/g,'').split('/')[0]||'overview';return VIEWS.includes(seg)?seg:'overview';}
+/* Hash-basiertes Routing: /#analytics , /#analytics/server , /#systems …
+   Der Hash geht NIE an den Server -> Reload/Direktaufruf lädt immer die (funktionierende)
+   Startseite "/" und der Client wählt die View. Damit kein 404 hinter Plesk/nginx. */
+function viewFromHash(){
+ let seg=location.hash.replace(/^#\/?/,'').split('/')[0];
+ if(!seg)seg=location.pathname.replace(/^\/+|\/+$/g,'').split('/')[0];   // Fallback: alter Pfad-Link (/analytics)
+ return VIEWS.includes(seg)?seg:'overview';
+}
+function tabFromHash(){return location.hash.replace(/^#\/?/,'').split('/')[1]||'';}
 function switchView(name,push){
  if(!VIEWS.includes(name))name='overview';
  if(push===undefined)push=true;
- if(name==='analytics'&&location.hash==='#server')ANTAB='server';
+ // Navigation läuft über den Hash: setzen -> hashchange rendert (genau einmal).
+ if(push){const want='#'+name+(name==='analytics'&&ANTAB==='server'?'/server':'');if(location.hash!==want){location.hash=want;return;}}
+ if(name==='analytics')ANTAB=(tabFromHash()==='server')?'server':'website';
  VIEW=name;
  $$('.view').forEach(v=>v.classList.remove('active'));const el=$('#'+name+'View');if(el)el.classList.add('active');
  $$('.line-sidebar__item').forEach(n=>{const on=n.dataset.view===name;n.classList.toggle('active',on);if(on)n.setAttribute('aria-current','true');else n.removeAttribute('aria-current');});
@@ -1682,7 +1692,6 @@ function switchView(name,push){
  $('#viewTitle').textContent=titles[name]||name;$('#breadcrumb').textContent=(name==='overview'?'OVERVIEW':name.toUpperCase());
  if(DATA)renderView(name);
  placeNavActive();
- if(push){const path=name==='overview'?'/':'/'+name;if(location.pathname!==path)history.pushState({view:name},'',path);}
  window.scrollTo({top:0,behavior:'smooth'});
 }
 /* Line-Sidebar (React Bits – Proximity-Effekt) + Border-Glow (cursorfolgender Rahmen).
@@ -1768,7 +1777,7 @@ function setupChrome(){
 function bindEvents(){
  $$('.line-sidebar__item').forEach(n=>n.addEventListener('click',()=>switchView(n.dataset.view)));
  $$('[data-goview]').forEach(b=>b.addEventListener('click',()=>switchView(b.dataset.goview)));
- $$('.an-tab-btn').forEach(b=>b.addEventListener('click',()=>{ANTAB=b.dataset.antab;try{history.replaceState(history.state,'',location.pathname+(ANTAB==='server'?'#server':''));}catch(e){}if(ANTAB==='server'){if(API)loadRunCounts();if(!SRVHIST)loadServerHistory();}if(DATA)renderAnalytics();}));
+ $$('.an-tab-btn').forEach(b=>b.addEventListener('click',()=>{const t=b.dataset.antab;if(t==='server'){if(API)loadRunCounts();if(!SRVHIST)loadServerHistory();}location.hash='#analytics'+(t==='server'?'/server':'');}));
  $('#seeMissionsBtn').addEventListener('click',()=>switchView('missions'));
  $('#refreshBtn').addEventListener('click',()=>load());
  $('#fitMapBtn').addEventListener('click',()=>{if(typeof camFit==='function')camFit();});
@@ -1813,6 +1822,8 @@ requestAnimationFrame(()=>requestAnimationFrame(defaultView));
 requestAnimationFrame(t=>{lastT=t;requestAnimationFrame(loop);});
 bindEvents();
 setupChrome();
-switchView(viewFromPath(),false);                    // initiale Ansicht aus der URL
-window.addEventListener('popstate',()=>switchView(viewFromPath(),false));
+// Alt-Pfad-Links (/analytics) beim Laden auf Hash normalisieren -> künftige Reloads treffen "/"
+if(!location.hash){const seg=location.pathname.replace(/^\/+|\/+$/g,'').split('/')[0];if(VIEWS.includes(seg)&&seg!=='overview'){try{history.replaceState(null,'','/#'+seg);}catch(e){}}}
+switchView(viewFromHash(),false);                    // initiale Ansicht aus dem Hash
+window.addEventListener('hashchange',()=>switchView(viewFromHash(),false));
 detectApi().then(load);
