@@ -1054,11 +1054,25 @@ function renderAgents(){
  else if(AGENT_FILTER==='idle')list=list.filter(a=>a.status==='idle'||a.status==='ok');
  else if(AGENT_FILTER==='alert')list=list.filter(a=>a.status==='waiting'||a.status==='error');
  if(q)list=list.filter(a=>(a.name+' '+a.role+' '+(a.message||'')).toLowerCase().includes(q));
- const cat=$('#agentCatalog');
- cat.innerHTML=list.length?list.map(a=>`<article class="agent-card" data-agent="${a.id}" style="--agent-color:${a.accent}"><div class="agent-card-top"><div class="agent-avatar">${a.icon}</div><div><h3>${esc(a.name)}</h3><span class="agent-role">${esc(a.role)}</span></div><span class="agent-status ${a.status}" style="background:${COLORS[a.status]};box-shadow:0 0 8px ${COLORS[a.status]}"></span></div><p>${esc(a.message||a.phase||LABELS[a.status])}</p><div class="agent-stats"><div class="agent-stat"><b style="color:${COLORS[a.status]}">${esc(LABELS[a.status])}</b><span>Status</span></div><div class="agent-stat"><b>${a.progress!=null?a.progress+'%':'–'}</b><span>Progress</span></div><div class="agent-stat"><b>${esc(nextRunOf(a.id))}</b><span>Next run</span></div></div><div class="agent-actions"><button data-run="${a.id}">▶ Start</button><button data-open="${a.id}">Details</button></div></article>`).join(''):'<div class="data-empty">No agents match this filter.</div>';
+ // Wichtigste zuerst: läuft > wartet > Fehler > fertig > bereit, dann alphabetisch.
+ const PRI={running:0,waiting:1,error:2,ok:3,idle:4};
+ list.sort((a,b)=>((PRI[a.status]??9)-(PRI[b.status]??9))||a.name.localeCompare(b.name));
+ const cat=$('#agentCatalog');cat.className='agent-list';
+ if(!list.length){cat.innerHTML='<div class="data-empty">Kein Agent passt zu diesem Filter.</div>';return;}
+ const head=`<div class="arow arow--head"><span>Agent</span><span>Status</span><span>Aktivität</span><span>Nächster Lauf</span><span></span></div>`;
+ const rows=list.map(a=>{const st=a.status,col=COLORS[st]||COLORS.idle;
+  const prog=st==='running'?`<span class="arow-prog" title="${a.progress||0}%"><i style="width:${clamp(a.progress||0,0,100)}%"></i></span>`:'';
+  return `<div class="arow is-click" data-agent="${a.id}" tabindex="0" role="button" style="--agent-color:${a.accent}" data-tip="${esc(a.name)} öffnen">`
+   +`<span class="arow-id"><span class="arow-ava">${a.icon}</span><span class="arow-name"><strong>${esc(a.name)}</strong><small>${esc(a.role)}</small></span></span>`
+   +`<span class="arow-status" style="color:${col}"><i class="dot" style="background:${col};box-shadow:0 0 7px ${col}"></i>${esc(LABELS[st]||st)}</span>`
+   +`<span class="arow-act"><span class="arow-msg">${esc(a.message||a.phase||'—')}</span>${prog}</span>`
+   +`<span class="arow-next">${esc(nextRunOf(a.id))}</span>`
+   +`<span class="arow-do"><button type="button" class="mrow-act" data-run="${a.id}"${API?'':' disabled'} data-tip="${esc(a.name)} jetzt starten">▶ Start</button><button type="button" class="arow-open" data-open="${a.id}">Details</button></span>`
+   +`</div>`;}).join('');
+ cat.innerHTML=head+rows;
  cat.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();openAgent(b.dataset.open);}));
  cat.querySelectorAll('[data-run]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();startRun(b.dataset.run,b);}));
- cat.querySelectorAll('.agent-card').forEach(card=>card.addEventListener('click',()=>openAgent(card.dataset.agent)));
+ cat.querySelectorAll('.arow[role="button"]').forEach(el=>{el.addEventListener('click',()=>openAgent(el.dataset.agent));el.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openAgent(el.dataset.agent);}});});
 }
 
 /* ===== MISSION CONTROL – nach Dringlichkeit gruppiert (aus Live-Status) ===== */
