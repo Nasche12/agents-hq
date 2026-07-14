@@ -16,7 +16,7 @@ mkdir -p logs belege/inbox belege/archiv belege/pakete reports content \
 bash bin/publish.sh
 
 # 3) Rechte
-chmod +x bin/run-agent.sh bin/status-update.sh bin/publish.sh
+chmod +x bin/run-agent.sh bin/status-update.sh bin/publish.sh bin/backup.sh
 [ -f .env ] && chmod 600 .env || echo "!! .env fehlt noch – aus .env.example erstellen: cp .env.example .env && nano .env"
 
 # 4) Sicherheitsnetz: nichts außer httpdocs darf je im Docroot landen

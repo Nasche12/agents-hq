@@ -1,0 +1,39 @@
+{
+  "_comment": "uptime-waechter misst fremde (Kunden-)Sites -> semi-trusted Input. Braucht curl+openssl (Messung) und die beiden Mess-/Record-Skripte. python3 ist NUR auf diese Skripte begrenzt (kein 'python3 -c'), Schreiben nur nach uptime/. Status/Discord-Helfer erlaubt run-agent.sh zur Laufzeit.",
+  "permissions": {
+    "defaultMode": "dontAsk",
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Write(uptime/**)",
+      "Edit(uptime/**)",
+      "Bash(curl:*)",
+      "Bash(openssl:*)",
+      "Bash(python3 bin/uptime-record.py *)",
+      "Bash(python3 bin/measure-sites.py *)",
+      "Bash(python3 bin/measure-sites.py)",
+      "Bash(cat:*)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(egrep:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(sed:*)",
+      "Bash(awk:*)",
+      "Bash(cut:*)",
+      "Bash(date:*)"
+    ],
+    "deny": [
+      "Bash(sudo:*)", "Bash(su:*)", "Bash(doas:*)",
+      "Bash(rm:*)", "Bash(mv:*)", "Bash(dd:*)", "Bash(mkfs:*)", "Bash(shred:*)",
+      "Bash(chmod:*)", "Bash(chown:*)",
+      "Bash(systemctl:*)", "Bash(service:*)", "Bash(kill:*)", "Bash(pkill:*)",
+      "Bash(crontab:*)", "Bash(apt:*)", "Bash(apt-get:*)", "Bash(dnf:*)", "Bash(pip:*)", "Bash(npm:*)",
+      "Bash(wget:*)", "Bash(nc:*)", "Bash(ncat:*)", "Bash(netcat:*)", "Bash(socat:*)",
+      "Bash(ssh:*)", "Bash(scp:*)", "Bash(sftp:*)", "Bash(telnet:*)", "Bash(ftp:*)", "Bash(rsync:*)",
+      "Edit(/etc/**)", "Write(/etc/**)", "Edit(/root/**)", "Write(/root/**)", "Write(/usr/**)", "Write(/var/**)"
+    ]
+  }
+}

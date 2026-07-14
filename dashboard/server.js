@@ -23,12 +23,17 @@ const HOST = process.env.HOST || '127.0.0.1';
    ist ausgenommen (verifiziert selbst per ed25519). */
 const HQ_USER = process.env.HQ_USER || '';
 const HQ_PASS = process.env.HQ_PASS || '';
+const HQ_OPEN = process.env.HQ_OPEN === '1';             // NUR lokal: API bewusst ohne Auth erlauben
+if ((!HQ_USER || !HQ_PASS) && !HQ_OPEN)
+  console.warn('!! HQ_USER/HQ_PASS nicht gesetzt -> /api ist GESPERRT (401). Fuer offenen lokalen Betrieb: HQ_OPEN=1.');
 function safeEq(a, b) {
   const A = Buffer.from(String(a)), B = Buffer.from(String(b));
   return A.length === B.length && crypto.timingSafeEqual(A, B);
 }
 function authOK(req) {
-  if (!HQ_USER || !HQ_PASS) return true;                 // Auth deaktiviert, wenn nicht konfiguriert
+  // Fail-closed: ohne Credentials ist die API ZU (401), ausser HQ_OPEN=1 oeffnet sie
+  // absichtlich (lokale Entwicklung). Verhindert versehentlich offene /api hinter dem Proxy.
+  if (!HQ_USER || !HQ_PASS) return HQ_OPEN;
   const m = /^Basic\s+(.+)$/i.exec(req.headers['authorization'] || '');
   if (!m) return false;
   let dec = ''; try { dec = Buffer.from(m[1], 'base64').toString('utf8'); } catch (e) { return false; }
@@ -66,6 +71,12 @@ function send(res, code, body, type) {
   res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
 }
 
+/* Atomar + eindeutiger Tmp-Name (parallele Schreiber kollidieren sonst auf *.tmp). */
+function writeJsonAtomic(f, obj, spaces) {
+  const tmp = f + '.tmp.' + process.pid + '.' + Math.floor(Math.random() * 1e9);
+  try { fs.writeFileSync(tmp, JSON.stringify(obj, null, spaces || 0)); fs.renameSync(tmp, f); }
+  catch (e) { try { fs.unlinkSync(tmp); } catch (_) {} throw e; }
+}
 function statusPath() {
   const h = path.join(BASE, 'httpdocs', 'status.json');
   return fs.existsSync(h) ? h : path.join(WEB, 'status.json');
@@ -91,6 +102,7 @@ function runAgent(id, prompt) {
     env: Object.assign({}, process.env, { HQ_NODE: process.execPath })
   });
   child.unref();
+  try { fs.closeSync(log); } catch (e) {}   // Kind hat eigene FD-Kopie -> FD-Leak im Server vermeiden
   return child.pid;
 }
 
@@ -146,7 +158,15 @@ function readJson(req, cb) {
 }
 
 const SCHEDULE_FILE = path.join(BASE, 'config', 'schedule.json');
-function readSchedule() { try { return JSON.parse(fs.readFileSync(SCHEDULE_FILE, 'utf8')); } catch (e) { return { agents: {} }; } }
+let _schedWarned = false;
+function readSchedule() {
+  try { const s = JSON.parse(fs.readFileSync(SCHEDULE_FILE, 'utf8')); _schedWarned = false; return s; }
+  catch (e) {
+    // Korruptes schedule.json wuerde SONST lautlos ALLE Agents deaktivieren -> laut warnen (einmal).
+    if (!_schedWarned) { _schedWarned = true; console.error('!! config/schedule.json unlesbar/korrupt (' + (e.message || e) + ') -> Scheduler pausiert alle Termine bis behoben.'); }
+    return { agents: {} };
+  }
+}
 
 /* ---------- Analytics-Proxy (Umami, server-seitig) ----------
    Login mit UMAMI_*-Credentials aus der Umgebung; Kennzahlen der letzten 7 Tage
@@ -353,8 +373,7 @@ const server = http.createServer((req, res) => {
         cur.agents[id] = next;
       }
       try {
-        const tmp = SCHEDULE_FILE + '.tmp';
-        fs.writeFileSync(tmp, JSON.stringify(cur, null, 2)); fs.renameSync(tmp, SCHEDULE_FILE);
+        writeJsonAtomic(SCHEDULE_FILE, cur, 2);
         return send(res, 200, { ok: true, schedule: cur });
       } catch (e) { return send(res, 500, { error: String(e.message || e) }); }
     });
@@ -674,6 +693,28 @@ function handleInteraction(req, res, raw) {
    Wochentag/Uhrzeit-Läufe feuern nur im Nachhol-Fenster (catchup_minuten) – kein „wahllos". */
 const SCHED_ON = (process.env.DISCORD_SCHEDULER || 'on') !== 'off';
 const MASTER_DAILY = (process.env.DISCORD_MASTER_DAILY ?? '07:30').trim();          // '' = aus
+const STUCK_MIN = Math.max(10, parseInt(process.env.HQ_STUCK_MINUTES, 10) || 45);   // Watchdog-Schwelle
+const BACKUP_DAILY = (process.env.HQ_BACKUP_DAILY ?? '').trim();                    // z.B. '03:30'; '' = aus
+/* Watchdog: haengende Laeufe (Status 'running', aber lange kein Lebenszeichen) freigeben.
+   Faengt harte Abbrueche (Reboot/OOM/Kill), bei denen run-agent.sh nie den Endstatus setzt –
+   sonst bliebe der Agent fuer immer 'running' und der Scheduler wuerde ihn nie wieder starten. */
+function reapStuck(sched) {
+  const f = statusPath();
+  let d; try { d = JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { return; }
+  if (!d || !d.agents) return;
+  const now = Date.now(); let dirty = false;
+  for (const [id, ag] of Object.entries(d.agents)) {
+    if (!ag || ag.status !== 'running' || id === 'master') continue;
+    const t = Date.parse(ag.last_run || ag.updated || d.updated || '');
+    if (!t || now - t < STUCK_MIN * 60000) continue;                 // noch am Leben (oder kein Zeitstempel)
+    const mins = Math.round((now - t) / 60000);
+    ag.status = 'error'; ag.phase = 'Abgebrochen (Watchdog)';
+    ag.message = `Seit ${mins} min kein Lebenszeichen – als tot markiert (Reboot/OOM/Kill?).`;
+    dirty = true;
+    try { dpost(chanOf(id, sched), `❌ **${id}** hing (>${STUCK_MIN} min ohne Lebenszeichen) – Watchdog hat ihn freigegeben.`); } catch (e) {}
+  }
+  if (dirty) { try { writeJsonAtomic(f, d, 1); } catch (e) {} }
+}
 const HEARTBEAT = (process.env.DISCORD_HEARTBEAT ?? '').split(',').map(s => s.trim()).filter(Boolean); // Default: aus
 function heartbeatText() {
   let d; try { d = JSON.parse(fs.readFileSync(path.join(BASE, 'uptime', 'uptime.json'), 'utf8')); } catch (e) { return '💓 HQ aktiv.'; }
@@ -754,7 +795,7 @@ function syncNextRuns(sched) {
     const nr = humanNext(sched[id]);
     if (a.next_run !== nr) { a.next_run = nr; dirty = true; }
   }
-  if (dirty) { try { const tmp = f + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(d, null, 1)); fs.renameSync(tmp, f); } catch (e) {} }
+  if (dirty) { try { writeJsonAtomic(f, d, 1); } catch (e) {} }
 }
 function schedTick() {
   const cfgAll = readSchedule();
@@ -762,6 +803,7 @@ function schedTick() {
   const tz = cfgAll.zeitzone || 'Europe/Vienna';
   const catchup = Math.max(5, parseInt(cfgAll.catchup_minuten, 10) || 120);
   const z = zoneNow(tz);
+  reapStuck(sched);                                          // tote 'running'-Laeufe zuerst freigeben
   const st = readStatus().agents || {};
   syncNextRuns(sched);
   for (const [id, cfg] of Object.entries(sched)) {
@@ -776,6 +818,13 @@ function schedTick() {
     }
   }
   for (const hb of HEARTBEAT) { if (dailyDue('__hb_' + hb, hb, z, catchup)) dpost(D.log, heartbeatText()); }
+  if (BACKUP_DAILY && dailyDue('__backup__', BACKUP_DAILY, z, catchup)) {
+    try {
+      const blog = fs.openSync(path.join(BASE, 'logs', 'backup.log'), 'a');
+      const c = spawn(findBash(), [path.join(BASE, 'bin', 'backup.sh')], { cwd: BASE, detached: true, stdio: ['ignore', blog, blog], env: process.env });
+      c.unref(); try { fs.closeSync(blog); } catch (e) {}
+    } catch (e) {}
+  }
   if (MASTER_DAILY && dailyDue('__master__', MASTER_DAILY, z, catchup) && !(st.master && st.master.status === 'running')) {
     try {
       runAgent('master', 'Nutze den Subagent kommandant: verschaffe dir den Gesamtüberblick (dashboard/status.json), '

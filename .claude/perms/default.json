@@ -1,5 +1,5 @@
 {
-  "_comment": "Rechte-Profil fuer die Worker-Agents (belege, wochenreport, seo, rechnung, content, uptime, mail, video, ki, kommandant). Ersetzt --dangerously-skip-permissions (als root verboten). dontAsk laeuft headless: alles Erlaubte laeuft ohne Rueckfrage, alles Nicht-Erlaubte wird lautlos verweigert (statt zu haengen). Deny schlaegt Allow in JEDEM Scope – die Deny-Liste ist der eigentliche Schutz gegen Prompt-Injection ueber untrusted Input (E-Mails, Web-Inhalte).",
+  "_comment": "Fallback-Profil fuer Worker-Agents ohne eigenes Profil (belege, wochenreport, rechnung, mail, video, ki, kommandant). Die untrusted-Input-Agents (content-recherche, seo-audit, uptime-waechter) haben je ein ENGERES eigenes Profil. dontAsk laeuft headless; Deny schlaegt Allow. EHRLICHE GRENZE: 'curl' bleibt erlaubt (uptime/measure/discord brauchen es) -> reine Deny-Liste ist KEIN vollstaendiger Exfil-Schutz. Echter Egress-Schutz = OS-Firewall (nftables-Allowlist). Deny deckt Eskalation, FS-/Service-/Paket-Mutation und Remote-Exec/Tunnel (nc/ssh/scp/wget/...) ab.",
   "permissions": {
     "defaultMode": "dontAsk",
     "allow": [
@@ -67,6 +67,18 @@
       "Bash(modprobe:*)",
       "Bash(insmod:*)",
       "Bash(rmmod:*)",
+      "Bash(nc:*)",
+      "Bash(ncat:*)",
+      "Bash(netcat:*)",
+      "Bash(socat:*)",
+      "Bash(scp:*)",
+      "Bash(sftp:*)",
+      "Bash(ssh:*)",
+      "Bash(telnet:*)",
+      "Bash(wget:*)",
+      "Bash(ftp:*)",
+      "Bash(tftp:*)",
+      "Bash(rsync:*)",
       "Edit(/etc/**)",
       "Write(/etc/**)",
       "Edit(/root/**)",

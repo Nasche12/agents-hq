@@ -1,0 +1,33 @@
+{
+  "_comment": "content-recherche verarbeitet ARBITRÄREN Web-Input (WebSearch/WebFetch) -> primäres Prompt-Injection-Ziel. Darum strikt: KEIN curl, kein freies node/python, nur Web-Tools + Schreiben nach content/ + lesende Shell. Status/Discord-Helfer erlaubt run-agent.sh zur Laufzeit. Fehlt ein wirklich nötiges Kommando im ersten Lauf -> hier gezielt ergänzen.",
+  "permissions": {
+    "defaultMode": "dontAsk",
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "WebSearch",
+      "WebFetch",
+      "Write(content/**)",
+      "Edit(content/**)",
+      "Bash(cat:*)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(date:*)"
+    ],
+    "deny": [
+      "Bash(sudo:*)", "Bash(su:*)", "Bash(doas:*)",
+      "Bash(rm:*)", "Bash(mv:*)", "Bash(dd:*)", "Bash(mkfs:*)", "Bash(shred:*)",
+      "Bash(chmod:*)", "Bash(chown:*)",
+      "Bash(systemctl:*)", "Bash(service:*)", "Bash(kill:*)", "Bash(pkill:*)",
+      "Bash(crontab:*)", "Bash(apt:*)", "Bash(apt-get:*)", "Bash(dnf:*)", "Bash(pip:*)", "Bash(npm:*)",
+      "Bash(curl:*)", "Bash(wget:*)", "Bash(nc:*)", "Bash(ncat:*)", "Bash(netcat:*)", "Bash(socat:*)",
+      "Bash(ssh:*)", "Bash(scp:*)", "Bash(sftp:*)", "Bash(telnet:*)", "Bash(ftp:*)", "Bash(rsync:*)",
+      "Bash(node:*)", "Bash(python:*)", "Bash(python3:*)", "Bash(perl:*)", "Bash(ruby:*)", "Bash(php:*)",
+      "Edit(/etc/**)", "Write(/etc/**)", "Edit(/root/**)", "Write(/root/**)", "Write(/usr/**)", "Write(/var/**)"
+    ]
+  }
+}

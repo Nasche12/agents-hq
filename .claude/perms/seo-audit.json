@@ -1,0 +1,39 @@
+{
+  "_comment": "seo-audit prüft fremde Sites via WebFetch + curl (Header/robots/sitemap). Braucht curl (nur GET/HEAD laut Agent-Regeln), Schreiben nur nach seo/. Kein freies node/python. Status/Discord-Helfer erlaubt run-agent.sh zur Laufzeit.",
+  "permissions": {
+    "defaultMode": "dontAsk",
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "WebFetch",
+      "Write(seo/**)",
+      "Edit(seo/**)",
+      "Bash(curl:*)",
+      "Bash(cat:*)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(egrep:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(sed:*)",
+      "Bash(awk:*)",
+      "Bash(cut:*)",
+      "Bash(sort:*)",
+      "Bash(uniq:*)",
+      "Bash(date:*)"
+    ],
+    "deny": [
+      "Bash(sudo:*)", "Bash(su:*)", "Bash(doas:*)",
+      "Bash(rm:*)", "Bash(mv:*)", "Bash(dd:*)", "Bash(mkfs:*)", "Bash(shred:*)",
+      "Bash(chmod:*)", "Bash(chown:*)",
+      "Bash(systemctl:*)", "Bash(service:*)", "Bash(kill:*)", "Bash(pkill:*)",
+      "Bash(crontab:*)", "Bash(apt:*)", "Bash(apt-get:*)", "Bash(dnf:*)", "Bash(pip:*)", "Bash(npm:*)",
+      "Bash(wget:*)", "Bash(nc:*)", "Bash(ncat:*)", "Bash(netcat:*)", "Bash(socat:*)",
+      "Bash(ssh:*)", "Bash(scp:*)", "Bash(sftp:*)", "Bash(telnet:*)", "Bash(ftp:*)", "Bash(rsync:*)",
+      "Bash(node:*)", "Bash(python:*)", "Bash(python3:*)", "Bash(perl:*)", "Bash(ruby:*)", "Bash(php:*)",
+      "Edit(/etc/**)", "Write(/etc/**)", "Edit(/root/**)", "Write(/root/**)", "Write(/usr/**)", "Write(/var/**)"
+    ]
+  }
+}

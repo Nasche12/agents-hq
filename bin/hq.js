@@ -26,14 +26,23 @@ function localIso(d = new Date()) {
 }
 const readJson = (f, fb) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { return fb; } };
 function writeAtomic(f, obj) {
-  const tmp = f + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(obj, null, 1));
-  fs.renameSync(tmp, f);
+  // Eindeutiger Tmp-Name je Schreiber: sonst kollidieren parallele Agents + Scheduler
+  // auf demselben "*.tmp" und die renameSync interleaven -> Korruption/ENOENT.
+  const tmp = f + '.tmp.' + process.pid + '.' + Math.floor(Math.random() * 1e9);
+  try { fs.writeFileSync(tmp, JSON.stringify(obj, null, 1)); fs.renameSync(tmp, f); }
+  catch (e) { try { fs.unlinkSync(tmp); } catch (_) {} throw e; }
 }
 
 function cmdStatus() {
   const [f, agent, st, phase, prog, msg, det, out] = a;
-  const d = readJson(f, { agents: {} }); d.agents = d.agents || {};
+  let d = readJson(f, null);
+  if (d === null) {
+    // Datei fehlt ODER ist korrupt. Ist sie korrupt (existiert + nicht leer), einmal als
+    // .bad sichern, statt still alle anderen Agent-Status zu ueberschreiben.
+    try { if (fs.existsSync(f) && fs.statSync(f).size > 0) fs.copyFileSync(f, f + '.bad'); } catch (e) {}
+    d = { agents: {} };
+  }
+  d.agents = d.agents || {};
   const ag = d.agents[agent] || (d.agents[agent] = { name: agent });
   ag.status = st; ag.phase = phase; ag.progress = parseInt(prog, 10) || 0; ag.message = msg;
   const now = localIso();

@@ -35,6 +35,13 @@ PERM_ARGS=(--permission-mode dontAsk)
 # absolutem Pfad, daher hier zur Laufzeit erlauben (merged on top der Settings-Allowlist).
 PERM_ARGS+=(--allowedTools "Bash($BASE/bin/status-update.sh *)" "Bash($BASE/bin/discord.py *)")
 
+# ---- Hänge-Schutz: harte Obergrenze pro Lauf (Default 30 min) ----------------
+# Ohne Timeout bleibt ein hängender claude/MCP ewig 'running' und blockiert den Agent.
+# timeout schickt erst TERM, nach 30 s KILL. Fehlt 'timeout', läuft es ungebremst (mit Hinweis).
+TIMEOUT_PFX=""
+if _TB="$(command -v timeout 2>/dev/null)"; then TIMEOUT_PFX="$_TB -k 30 ${HQ_RUN_TIMEOUT:-1800}"
+else echo "run-agent: 'timeout' nicht gefunden – Lauf ohne Hänge-Schutz" >&2; fi
+
 LOG_CH="${DISCORD_LOG_CHANNEL:-agent-logs}"
 CMD_CH="${DISCORD_COMMAND_CHANNEL:-freigaben}"
 
@@ -89,7 +96,7 @@ upd running "Gestartet" 5 "Ich lege los…"
 { echo "=== $T0 START $AGENT (Modell: $MODEL) ==="; } | tee -a "$RUNLOG" >> "$LOG"
 
 cd "$BASE"
-claude -p "$PROMPT
+$TIMEOUT_PFX claude -p "$PROMPT
 
 ZUSÄTZLICH – DISCORD ist Sebastians Kanal. Poste dein Kernergebnis als EINEN knappen Einzeiler (kein Roman, keine Aufzählung, ~1 Zeile) in den passenden Kanal:
   $BASE/bin/discord.py post <kanal> \"<einzeiler>\"                 # Kanäle: reports, belege, content, ideen, verkauf, kunden-notizen, freigaben, agent-logs
@@ -102,6 +109,10 @@ und ganz am Ende mit Status ok (oder waiting, falls du auf Sebastians Go wartest
   $BASE/bin/status-update.sh $AGENT ok \"Fertig\" 100 \"<Kurzfazit>\" '<json-array details>' '<json-array outputs>'" \
   --model "$MODEL" --output-format json "${PERM_ARGS[@]}" < /dev/null > "$RUNJSON" 2> "$RUNERR"
 RC=$?
+# Hänge-Schutz ausgelöst? 124 = TERM-Limit (timeout), 137 = KILL nach -k
+if [ "$RC" = 124 ] || [ "$RC" = 137 ]; then
+  echo "[timeout] Lauf nach ${HQ_RUN_TIMEOUT:-1800}s hart abgebrochen (Hänge-Schutz)." | tee -a "$RUNLOG" >> "$LOG"
+fi
 # stderr in die Logs spiegeln, damit errtail + Dashboard-Drawer Fehler sehen
 [ -s "$RUNERR" ] && cat "$RUNERR" | tee -a "$RUNLOG" >> "$LOG"
 # lesbaren Ergebnistext aus dem JSON in die Logs schreiben (statt Roh-JSON)
@@ -184,4 +195,13 @@ esac
 [ -f "$BASE/uptime/uptime.json" ] && cp -f "$BASE/uptime/uptime.json" "$WEBDIR/uptime.json" 2>/dev/null
 [ -f "$BASE/server/server-status.json" ] && cp -f "$BASE/server/server-status.json" "$WEBDIR/server.json" 2>/dev/null
 [ -f "$BASE/server/server-history.json" ] && cp -f "$BASE/server/server-history.json" "$WEBDIR/server-history.json" 2>/dev/null
+
+# ---- Log-Rotation: nur die letzten HQ_LOG_KEEP Läufe dieses Agents behalten ----
+# (logs/ wächst sonst unbegrenzt – ausgerechnet der server-waechter meldet dann sein eigenes Log.)
+KEEP="${HQ_LOG_KEEP:-40}"
+if [ -d "$RUNDIR" ]; then
+  ls -1t "$RUNDIR"/*.log 2>/dev/null | tail -n +$((KEEP + 1)) | while IFS= read -r old; do
+    b="${old%.log}"; rm -f "$b.log" "$b.json" "$b.err" 2>/dev/null
+  done
+fi
 exit "$RC"
