@@ -33,28 +33,56 @@ function writeAtomic(f, obj) {
   catch (e) { try { fs.unlinkSync(tmp); } catch (_) {} throw e; }
 }
 
+/* Synchron schlafen ohne CPU-Burn (Atomics.wait blockiert den Thread). */
+function sleepSync(ms) {
+  try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); }
+  catch (_) { const t = Date.now() + ms; while (Date.now() < t) {} }
+}
+/* Prozessübergreifender Advisory-Lock via O_CREAT|O_EXCL-Lockfile. Deckt den GANZEN
+   Read-Modify-Write ab -> behebt den Lost-Update-Race auf status.json (Agents + Scheduler
+   schreiben dieselbe Datei). Stale-Lock (>15 s) wird übernommen; nach 5 s Timeout läuft es
+   ohne Lock weiter (eine seltene verlorene Aktualisierung ist besser als ein Deadlock). */
+function withFileLock(target, fn) {
+  const lock = target + '.lock';
+  const start = Date.now();
+  let held = false;
+  while (!held) {
+    try { fs.closeSync(fs.openSync(lock, 'wx')); held = true; break; }
+    catch (e) {
+      if (e.code !== 'EEXIST') break;                              // FS-Problem: ohne Lock weiter
+      try { if (Date.now() - fs.statSync(lock).mtimeMs > 15000) { fs.unlinkSync(lock); continue; } } catch (_) {}
+      if (Date.now() - start > 5000) break;                       // Timeout: ohne Lock weiter statt Hänger
+      sleepSync(15 + Math.floor(Math.random() * 40));
+    }
+  }
+  try { return fn(); }
+  finally { if (held) { try { fs.unlinkSync(lock); } catch (_) {} } }
+}
+
 function cmdStatus() {
   const [f, agent, st, phase, prog, msg, det, out] = a;
-  let d = readJson(f, null);
-  if (d === null) {
-    // Datei fehlt ODER ist korrupt. Ist sie korrupt (existiert + nicht leer), einmal als
-    // .bad sichern, statt still alle anderen Agent-Status zu ueberschreiben.
-    try { if (fs.existsSync(f) && fs.statSync(f).size > 0) fs.copyFileSync(f, f + '.bad'); } catch (e) {}
-    d = { agents: {} };
-  }
-  d.agents = d.agents || {};
-  const ag = d.agents[agent] || (d.agents[agent] = { name: agent });
-  ag.status = st; ag.phase = phase; ag.progress = parseInt(prog, 10) || 0; ag.message = msg;
-  const now = localIso();
-  if (st === 'running') ag.last_run = now;
-  if (det) { try { ag.details = JSON.parse(det); } catch (e) {} }
-  if (out) { try { ag.outputs = JSON.parse(out); } catch (e) {} }
-  try {
-    const lf = path.join(path.dirname(f), '..', 'logs', agent + '.log');
-    ag.log_tail = fs.readFileSync(lf, 'utf8').slice(-1500);
-  } catch (e) {}
-  d.updated = now;
-  writeAtomic(f, d);
+  withFileLock(f, () => {                       // Read-Modify-Write als kritischer Abschnitt
+    let d = readJson(f, null);
+    if (d === null) {
+      // Datei fehlt ODER ist korrupt. Ist sie korrupt (existiert + nicht leer), einmal als
+      // .bad sichern, statt still alle anderen Agent-Status zu ueberschreiben.
+      try { if (fs.existsSync(f) && fs.statSync(f).size > 0) fs.copyFileSync(f, f + '.bad'); } catch (e) {}
+      d = { agents: {} };
+    }
+    d.agents = d.agents || {};
+    const ag = d.agents[agent] || (d.agents[agent] = { name: agent });
+    ag.status = st; ag.phase = phase; ag.progress = parseInt(prog, 10) || 0; ag.message = msg;
+    const now = localIso();
+    if (st === 'running') ag.last_run = now;
+    if (det) { try { ag.details = JSON.parse(det); } catch (e) {} }
+    if (out) { try { ag.outputs = JSON.parse(out); } catch (e) {} }
+    try {
+      const lf = path.join(path.dirname(f), '..', 'logs', agent + '.log');
+      ag.log_tail = fs.readFileSync(lf, 'utf8').slice(-1500);
+    } catch (e) {}
+    d.updated = now;
+    writeAtomic(f, d);
+  });
 }
 function cmdModel() {
   const [f, agent] = a;

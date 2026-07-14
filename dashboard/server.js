@@ -77,6 +77,28 @@ function writeJsonAtomic(f, obj, spaces) {
   try { fs.writeFileSync(tmp, JSON.stringify(obj, null, spaces || 0)); fs.renameSync(tmp, f); }
   catch (e) { try { fs.unlinkSync(tmp); } catch (_) {} throw e; }
 }
+/* Prozessübergreifender Lock – IDENTISCH zu bin/hq.js, damit Scheduler + Agent-CLIs
+   sich denselben "<datei>.lock" teilen und der Read-Modify-Write auf status.json
+   gegenseitig ausschließt (behebt den Lost-Update-Race). */
+function sleepSync(ms) {
+  try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); }
+  catch (_) { const t = Date.now() + ms; while (Date.now() < t) {} }
+}
+function withFileLock(target, fn) {
+  const lock = target + '.lock', start = Date.now();
+  let held = false;
+  while (!held) {
+    try { fs.closeSync(fs.openSync(lock, 'wx')); held = true; break; }
+    catch (e) {
+      if (e.code !== 'EEXIST') break;
+      try { if (Date.now() - fs.statSync(lock).mtimeMs > 15000) { fs.unlinkSync(lock); continue; } } catch (_) {}
+      if (Date.now() - start > 5000) break;
+      sleepSync(15 + Math.floor(Math.random() * 40));
+    }
+  }
+  try { return fn(); }
+  finally { if (held) { try { fs.unlinkSync(lock); } catch (_) {} } }
+}
 function statusPath() {
   const h = path.join(BASE, 'httpdocs', 'status.json');
   return fs.existsSync(h) ? h : path.join(WEB, 'status.json');
@@ -700,20 +722,24 @@ const BACKUP_DAILY = (process.env.HQ_BACKUP_DAILY ?? '').trim();                
    sonst bliebe der Agent fuer immer 'running' und der Scheduler wuerde ihn nie wieder starten. */
 function reapStuck(sched) {
   const f = statusPath();
-  let d; try { d = JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { return; }
-  if (!d || !d.agents) return;
-  const now = Date.now(); let dirty = false;
-  for (const [id, ag] of Object.entries(d.agents)) {
-    if (!ag || ag.status !== 'running' || id === 'master') continue;
-    const t = Date.parse(ag.last_run || ag.updated || d.updated || '');
-    if (!t || now - t < STUCK_MIN * 60000) continue;                 // noch am Leben (oder kein Zeitstempel)
-    const mins = Math.round((now - t) / 60000);
-    ag.status = 'error'; ag.phase = 'Abgebrochen (Watchdog)';
-    ag.message = `Seit ${mins} min kein Lebenszeichen – als tot markiert (Reboot/OOM/Kill?).`;
-    dirty = true;
-    try { dpost(chanOf(id, sched), `❌ **${id}** hing (>${STUCK_MIN} min ohne Lebenszeichen) – Watchdog hat ihn freigegeben.`); } catch (e) {}
-  }
-  if (dirty) { try { writeJsonAtomic(f, d, 1); } catch (e) {} }
+  const alarms = [];
+  withFileLock(f, () => {                        // Status-Reset im kritischen Abschnitt
+    let d; try { d = JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { return; }
+    if (!d || !d.agents) return;
+    const now = Date.now(); let dirty = false;
+    for (const [id, ag] of Object.entries(d.agents)) {
+      if (!ag || ag.status !== 'running' || id === 'master') continue;
+      const t = Date.parse(ag.last_run || ag.updated || d.updated || '');
+      if (!t || now - t < STUCK_MIN * 60000) continue;               // noch am Leben (oder kein Zeitstempel)
+      const mins = Math.round((now - t) / 60000);
+      ag.status = 'error'; ag.phase = 'Abgebrochen (Watchdog)';
+      ag.message = `Seit ${mins} min kein Lebenszeichen – als tot markiert (Reboot/OOM/Kill?).`;
+      dirty = true;
+      alarms.push({ id, msg: `❌ **${id}** hing (>${STUCK_MIN} min ohne Lebenszeichen) – Watchdog hat ihn freigegeben.` });
+    }
+    if (dirty) { try { writeJsonAtomic(f, d, 1); } catch (e) {} }
+  });
+  for (const a of alarms) { try { dpost(chanOf(a.id, sched), a.msg); } catch (e) {} }  // Discord AUSSERHALB des Locks
 }
 const HEARTBEAT = (process.env.DISCORD_HEARTBEAT ?? '').split(',').map(s => s.trim()).filter(Boolean); // Default: aus
 function heartbeatText() {
@@ -787,15 +813,17 @@ function humanNext(cfg) {
 }
 function syncNextRuns(sched) {
   const f = statusPath();
-  let d; try { d = JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { return; }
-  if (!d.agents) return;
-  let dirty = false;
-  for (const [id, a] of Object.entries(d.agents)) {
-    if (id === 'master') continue;
-    const nr = humanNext(sched[id]);
-    if (a.next_run !== nr) { a.next_run = nr; dirty = true; }
-  }
-  if (dirty) { try { writeJsonAtomic(f, d, 1); } catch (e) {} }
+  withFileLock(f, () => {
+    let d; try { d = JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { return; }
+    if (!d.agents) return;
+    let dirty = false;
+    for (const [id, a] of Object.entries(d.agents)) {
+      if (id === 'master') continue;
+      const nr = humanNext(sched[id]);
+      if (a.next_run !== nr) { a.next_run = nr; dirty = true; }
+    }
+    if (dirty) { try { writeJsonAtomic(f, d, 1); } catch (e) {} }
+  });
 }
 function schedTick() {
   const cfgAll = readSchedule();
