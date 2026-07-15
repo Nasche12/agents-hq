@@ -47,7 +47,9 @@ const AGENTS = {
   'belege-buchhaltung': 'Nutze den Subagent belege-buchhaltung und verarbeite alle neuen Belege in belege/inbox/.',
   'content-recherche': 'Nutze den Subagent content-recherche und erstelle den Contentplan für die kommende Woche.',
   'uptime-waechter': 'Nutze den Subagent uptime-waechter und prüfe jetzt alle Sites aus config/sites.json.',
+  'website-guardian': 'Nutze den Subagent website-guardian und mach den wöchentlichen Tiefen-Check aller Sites aus config/sites.json.',
   'seo-audit': 'Nutze den Subagent seo-audit und auditiere alle Sites aus config/sites.json.',
+  'backup-auditor': 'Nutze den Subagent backup-auditor und prüfe die Backups aus config/backups.json (read-only, kein Restore ohne Go).',
   'rechnungssteller': 'Nutze den Subagent rechnungssteller. Falls keine Positionen genannt sind, frage nach, statt zu raten.',
   'server-waechter': 'Nutze den Subagent server-waechter und prüfe jetzt READ-ONLY die Server-Gesundheit (config/server.json). Nichts ändern, nur melden.',
   'mail-assistent': 'Nutze den Subagent mail-assistent und triagiere den Gmail-Posteingang: sortieren, zusammenfassen, Antwort-Entwürfe anlegen. Nichts versenden.',
@@ -55,7 +57,7 @@ const AGENTS = {
   'ki-influencer': 'Nutze den Subagent ki-influencer und erzeuge EINEN on-brand Tages-Post (Bild + 9:16-Clip + Caption) aus config/influencer.json und liefere ihn nach #content. Nicht selbst auf Social posten.'
 };
 /* Report-Wurzeln: nur diese Ordner sind über /api lesbar */
-const REPORT_ROOTS = ['reports', 'content', 'belege', 'uptime', 'seo', 'rechnungen', 'server', 'mail', 'video', 'influencer'];
+const REPORT_ROOTS = ['reports', 'content', 'belege', 'uptime', 'guardian', 'seo', 'rechnungen', 'server', 'backup', 'mail', 'video', 'influencer'];
 const REPORT_EXT = new Set(['.md', '.html', '.pdf', '.csv', '.txt', '.json']);
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.md': 'text/plain; charset=utf-8',
@@ -522,6 +524,8 @@ const ALIAS = {
   beleg: 'belege-buchhaltung', belege: 'belege-buchhaltung', buchhaltung: 'belege-buchhaltung',
   content: 'content-recherche', contentplan: 'content-recherche', recherche: 'content-recherche',
   uptime: 'uptime-waechter', erreichbarkeit: 'uptime-waechter', monitoring: 'uptime-waechter',
+  guardian: 'website-guardian', website: 'website-guardian',
+  backup: 'backup-auditor', backups: 'backup-auditor', sicherung: 'backup-auditor',
   seo: 'seo-audit', audit: 'seo-audit', rechnung: 'rechnungssteller', rechnungen: 'rechnungssteller',
   influencer: 'ki-influencer', persona: 'ki-influencer'
 };

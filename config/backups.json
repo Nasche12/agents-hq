@@ -1,0 +1,4 @@
+{
+  "_hinweis": "Backup-Ziele für den backup-auditor. Leer = Agent meldet 'nicht konfiguriert' und stoppt. Pro Ziel: dir (Ordner mit den Backups), glob (Dateimuster), min_bytes (kleinste plausible Größe), max_age_hours (max. Alter des neuesten Backups), offsite_dir (Kopie außerhalb des Servers, null wenn keine).",
+  "backups": []
+}

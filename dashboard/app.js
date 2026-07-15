@@ -32,8 +32,10 @@ const AGENTS_CFG=[
  {id:'belege-buchhaltung',name:'Belege & Buchhaltung',short:'FINANZ',   cat:'finance',   accent:'#5bd9a0',root:'belege',    icon:'🧾',role:'Buchhaltung'},
  {id:'rechnungssteller',  name:'Rechnungssteller',    short:'RECHNUNG', cat:'finance',   accent:'#6fd0b0',root:'rechnungen',icon:'💶',role:'Rechnungen'},
  {id:'uptime-waechter',   name:'Uptime-Wächter',      short:'UPTIME',   cat:'monitoring',accent:'#5bd9a0',root:'uptime',    icon:'🛡️',role:'Uptime-Monitoring'},
+ {id:'website-guardian',  name:'Website-Guardian',    short:'GUARDIAN', cat:'monitoring',accent:'#6ee7ff',root:'guardian',  icon:'🔬',role:'Website-Tiefencheck'},
  {id:'seo-audit',         name:'SEO-Audit',           short:'SEO',      cat:'monitoring',accent:'#7cc4ff',root:'seo',       icon:'🔎',role:'SEO-Audit'},
  {id:'server-waechter',   name:'Server-Wächter',      short:'SERVER',   cat:'monitoring',accent:'#8f9bd0',root:'server',    icon:'🐧',role:'Linux server monitoring'},
+ {id:'backup-auditor',    name:'Backup-Auditor',      short:'BACKUP',   cat:'monitoring',accent:'#c7f2a4',root:'backup',    icon:'💾',role:'Backup-Prüfung'},
  {id:'mail-assistent',    name:'Mail-Assistent',      short:'MAIL',     cat:'office',    accent:'#54c8e0',root:'mail',      icon:'✉️',role:'Inbox-Triage'}
 ];
 const MASTER_ACCENT='#ff5ca8';

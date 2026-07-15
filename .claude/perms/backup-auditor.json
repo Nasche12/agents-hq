@@ -1,0 +1,48 @@
+{
+  "_comment": "backup-auditor prüft Backups READ-ONLY: nur listen/testen (tar -t, gzip -t, unzip -t, zcat|head/tail), Datei-Metadaten (stat/du/df), Schreiben nur nach backup/. Deny deckt Löschen/Verschieben/Mutation/Eskalation ab. tar/gzip/unzip bleiben erlaubt (zum Testen), das Agent-Prompt begrenzt sie auf -t/-t-Modi. Status/Discord-Helfer erlaubt run-agent.sh zur Laufzeit.",
+  "permissions": {
+    "defaultMode": "dontAsk",
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Write(backup/**)",
+      "Edit(backup/**)",
+      "Bash(ls:*)",
+      "Bash(stat:*)",
+      "Bash(du:*)",
+      "Bash(df:*)",
+      "Bash(find:*)",
+      "Bash(tar:*)",
+      "Bash(gzip:*)",
+      "Bash(gunzip:*)",
+      "Bash(zcat:*)",
+      "Bash(zgrep:*)",
+      "Bash(unzip:*)",
+      "Bash(openssl:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(grep:*)",
+      "Bash(egrep:*)",
+      "Bash(awk:*)",
+      "Bash(sed:*)",
+      "Bash(cut:*)",
+      "Bash(wc:*)",
+      "Bash(sort:*)",
+      "Bash(date:*)"
+    ],
+    "deny": [
+      "Bash(sudo:*)", "Bash(su:*)", "Bash(doas:*)",
+      "Bash(rm:*)", "Bash(mv:*)", "Bash(cp:*)", "Bash(dd:*)", "Bash(mkfs:*)", "Bash(shred:*)",
+      "Bash(chmod:*)", "Bash(chown:*)",
+      "Bash(systemctl:*)", "Bash(service:*)", "Bash(kill:*)", "Bash(pkill:*)",
+      "Bash(docker:*)", "Bash(psql:*)", "Bash(mysql:*)", "Bash(mysqladmin:*)", "Bash(pg_restore:*)", "Bash(mongorestore:*)",
+      "Bash(crontab:*)", "Bash(apt:*)", "Bash(apt-get:*)", "Bash(dnf:*)", "Bash(pip:*)", "Bash(npm:*)",
+      "Bash(curl:*)", "Bash(wget:*)", "Bash(nc:*)", "Bash(ncat:*)", "Bash(netcat:*)", "Bash(socat:*)",
+      "Bash(ssh:*)", "Bash(scp:*)", "Bash(sftp:*)", "Bash(telnet:*)", "Bash(ftp:*)", "Bash(rsync:*)",
+      "Bash(node:*)", "Bash(python:*)", "Bash(python3:*)", "Bash(perl:*)", "Bash(ruby:*)", "Bash(php:*)",
+      "Edit(/etc/**)", "Write(/etc/**)", "Edit(/root/**)", "Write(/root/**)", "Write(/usr/**)", "Write(/var/**)"
+    ]
+  }
+}

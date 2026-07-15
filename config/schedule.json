@@ -1,11 +1,12 @@
 {
   "_hinweis": "Zentraler Zeitplan aller Agents. Zeitbasis = 'zeitzone' (der Scheduler in server.js rechnet zeitzonen-fest via Intl, unabhaengig von der Server-TZ). cadence: 'Fr 08:00' (Wochentag+Uhrzeit) | '06:00' (taeglich) | 'alle 60 min' (Intervall, an der Uhr ausgerichtet) | 'auf Abruf'. schwer=true -> Auto-Start nur nach Rueckfrage in #freigaben (/ja bzw. /nein). enabled=false -> kein Termin. channel = Themen-Kanal fuer knappe Einzeiler. quiet=true -> Routine-Erfolge nicht posten, nur Probleme. catchup_minuten = Nachhol-Fenster: verpasste Wochentag/Uhrzeit-Laeufe feuern nur, wenn der Server innerhalb dieser Zeit nach der Planzeit laeuft.",
+  "_status": "Alle Agents aktuell enabled=false (Sebastian braucht sie atm nicht automatisch). Einzeln per Flag wieder anschalten. cadence-Werte bleiben als Vorgabe erhalten.",
   "zeitzone": "Europe/Vienna",
   "catchup_minuten": 120,
   "agents": {
     "wochenreport": {
       "cadence": "Fr 08:00",
-      "enabled": true,
+      "enabled": false,
       "schwer": true,
       "channel": "reports"
     },
@@ -17,20 +18,27 @@
     },
     "content-recherche": {
       "cadence": "So 17:00",
-      "enabled": true,
+      "enabled": false,
       "schwer": true,
       "channel": "content"
     },
     "uptime-waechter": {
       "cadence": "alle 60 min",
-      "enabled": true,
+      "enabled": false,
       "schwer": false,
       "channel": "agent-logs",
       "quiet": true
     },
+    "website-guardian": {
+      "cadence": "So 06:00",
+      "enabled": false,
+      "schwer": true,
+      "channel": "reports",
+      "quiet": false
+    },
     "seo-audit": {
       "cadence": "Mi 06:00",
-      "enabled": true,
+      "enabled": false,
       "schwer": true,
       "channel": "reports",
       "quiet": false
@@ -43,7 +51,15 @@
     },
     "server-waechter": {
       "cadence": "alle 360 min",
-      "enabled": true,
+      "enabled": false,
+      "schwer": false,
+      "channel": "agent-logs",
+      "quiet": true
+    },
+    "backup-auditor": {
+      "_hinweis": "Braucht Backup-Pfade in config/backups.json (aktuell leer -> Agent meldet 'nicht konfiguriert' und stoppt). Erst Pfade eintragen, dann enabled=true.",
+      "cadence": "täglich 07:00",
+      "enabled": false,
       "schwer": false,
       "channel": "agent-logs",
       "quiet": true

@@ -51,7 +51,9 @@ case "$AGENT" in
   belege-buchhaltung)  ALIAS=belege ;;
   content-recherche)   ALIAS=content ;;
   uptime-waechter)     ALIAS=uptime ;;
+  website-guardian)    ALIAS=guardian ;;
   seo-audit)           ALIAS=seo ;;
+  backup-auditor)      ALIAS=backup ;;
   rechnungssteller)    ALIAS=rechnung ;;
   server-waechter)     ALIAS=server ;;
   mail-assistent)      ALIAS=mail ;;
