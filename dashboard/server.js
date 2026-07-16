@@ -292,14 +292,23 @@ async function umamiSummary(cacheKey, fromMs, toMs, label) {
       get(stats(fromMs, toMs)), get(stats(fromMs - win, fromMs)), get(pvUrl),
       ...BREAKDOWNS.map(b => get(mUrl(b.type)))
     ]);
-    // Zeitreihe einmischen
+    // Zeitreihe einmischen (global tsMap + pro Site sts, damit ein Site-Filter im UM moeglich ist)
+    const sts = new Map();
     if (pvSeries) {
       const pvArr = asRows(pvSeries.pageviews), seArr = asRows(pvSeries.sessions);
-      for (const r of pvArr) { const k = r.x; if (k == null) continue; const e = tsMap.get(k) || { pageviews: 0, sessions: 0 }; e.pageviews += +r.y || 0; tsMap.set(k, e); }
-      for (const r of seArr) { const k = r.x; if (k == null) continue; const e = tsMap.get(k) || { pageviews: 0, sessions: 0 }; e.sessions += +r.y || 0; tsMap.set(k, e); }
+      for (const r of pvArr) { const k = r.x; if (k == null) continue; const y = +r.y || 0;
+        const e = tsMap.get(k) || { pageviews: 0, sessions: 0 }; e.pageviews += y; tsMap.set(k, e);
+        const s = sts.get(k) || { pageviews: 0, sessions: 0 }; s.pageviews += y; sts.set(k, s); }
+      for (const r of seArr) { const k = r.x; if (k == null) continue; const y = +r.y || 0;
+        const e = tsMap.get(k) || { pageviews: 0, sessions: 0 }; e.sessions += y; tsMap.set(k, e);
+        const s = sts.get(k) || { pageviews: 0, sessions: 0 }; s.sessions += y; sts.set(k, s); }
     }
-    // Breakdowns einmischen
-    BREAKDOWNS.forEach((b, i) => mergeInto(brk[b.key], mets[i]));
+    // Breakdowns einmischen (global brk + pro Site siteBrk)
+    const siteBrk = {};
+    BREAKDOWNS.forEach((b, i) => { const m = new Map(); mergeInto(m, mets[i]); mergeInto(brk[b.key], mets[i]); siteBrk[b.key] = topN(m, 10); });
+    const siteSeries = [...sts.entries()]
+      .map(([date, v]) => ({ date, pageviews: v.pageviews, sessions: v.sessions }))
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
     const c = cur || {}, p = prev || {};
     const pv = numv(c.pageviews), vs = numv(c.visitors);
     const pvp = numv(p.pageviews) || numv(c.pageviews && c.pageviews.prev);
@@ -311,8 +320,10 @@ async function umamiSummary(cacheKey, fromMs, toMs, label) {
       pageviews: pv, visitors: vs, visits, bounces, totaltime,
       avg_seconds: visits ? Math.round(totaltime / visits) : 0,
       bounce_rate: visits ? Math.round(bounces / visits * 100) : 0,
+      views_per_visit: visits ? +(pv / visits).toFixed(1) : 0,
       prev: { pageviews: pvp, visitors: vsp },
-      change: { pageviews: pct(pv, pvp), visitors: pct(vs, vsp) }
+      change: { pageviews: pct(pv, pvp), visitors: pct(vs, vsp) },
+      series: siteSeries, breakdowns: siteBrk
     };
   }));
   const out = perSite.filter(Boolean).sort((a, b) => b.pageviews - a.pageviews);

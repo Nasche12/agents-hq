@@ -51,7 +51,7 @@ const META=id=>id==='master'?{icon:'🧠',role:'Mission orchestration',accent:MA
 let DATA=null,SEL=null,API=false,UPTIME=null,SCHEDULE=null,ANALYTICS=null,RUNCOUNT={},SERVER=null;
 let RUNS={},SRVHIST=null;                                  // Lauf-Datensätze (mit Tokens) + Server-Verlauf
 let VIEW='overview',booted=false,theatreOn=false,builtAuto=false,placeNavActive=()=>{},RANGE='7d';
-let ANTAB='website',TOKMODE='agent';                      // Analytics-Tab + Token-Chart-Modus
+let ANTAB='website',TOKMODE='agent',ANSITE='all';         // Analytics-Tab + Token-Chart-Modus + gewählte Website ('all' = alle)
 
 /* ===== Mini-Helfer ===== */
 const $=(s,r=document)=>r.querySelector(s);
@@ -1182,6 +1182,7 @@ function anTrend(series,unit){
 function renderAnalytics(){
  const ar=$('#anRange');if(ar)ar.innerHTML=rangeBtnHtml();
  const website=ANTAB==='website';
+ const asel=$('#anSiteSel');if(asel)asel.style.display=website?'':'none';
  const pw=$('#anTabWebsite'),ps=$('#anTabServer');
  if(pw)pw.classList.toggle('active',website);
  if(ps)ps.classList.toggle('active',!website);
@@ -1199,8 +1200,18 @@ function renderAnalyticsWebsite(){
   if(tbl)tbl.innerHTML='<div class="data-empty">No analytics data.</div>';return;
  }
  $('#analyticsRange').textContent=a.range||'7 days';$('#analyticsRange').className='status-chip good';
- const sites=a.sites||[],T=a.total||{},pal=CHART_PAL;
- const prevPv=sites.reduce((s,x)=>s+(x.prev&&x.prev.pageviews||0),0),prevVs=sites.reduce((s,x)=>s+(x.prev&&x.prev.visitors||0),0);
+ const sites=a.sites||[],pal=CHART_PAL;
+ // Website-Dropdown füllen; verschwundene Auswahl -> zurück auf "alle".
+ if(ANSITE!=='all'&&!sites.some(s=>s.name===ANSITE))ANSITE='all';
+ const ssel=$('#anSiteSel');
+ if(ssel){ssel.innerHTML='<option value="all">Alle Websites</option>'+sites.map(s=>`<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('');ssel.value=ANSITE;
+  ssel.onchange=()=>{ANSITE=ssel.value;renderAnalyticsWebsite();};}
+ // Gewählte Site (null = alle). Einzel-Site: KPIs/Trend/Breakdowns von der Site;
+ // die Vergleichs-Panels (Balken/Donut/Tabelle) zeigen bewusst weiter ALLE Sites.
+ const sel=ANSITE==='all'?null:sites.find(s=>s.name===ANSITE);
+ const T=sel||a.total||{};
+ const prevPv=sel?(sel.prev&&sel.prev.pageviews||0):sites.reduce((s,x)=>s+(x.prev&&x.prev.pageviews||0),0);
+ const prevVs=sel?(sel.prev&&sel.prev.visitors||0):sites.reduce((s,x)=>s+(x.prev&&x.prev.visitors||0),0);
  const chg=(now,prev)=>prev?Math.round((now-prev)/prev*100):null;
  // --- KPI-Leiste ---
  const kpis=[
@@ -1213,7 +1224,7 @@ function renderAnalyticsWebsite(){
  ];
  $('#analyticsKpis').innerHTML=kpis.map(k=>`<div class="analytics-kpi"><span>${esc(k.l)}</span><strong>${esc(k.v)}</strong><small class="chg ${k.cc}">${esc(k.c)}</small></div>`).join('');
  // --- Trend ---
- anTrend(a.series,a.unit);
+ anTrend(sel?sel.series:a.series,a.unit);
  // --- Per-Site-Balken (this vs last) ---
  const maxPv=Math.max(1,...sites.map(s=>Math.max(s.pageviews,s.prev&&s.prev.pageviews||0)));
  $('#barChart').innerHTML=sites.map(s=>{const cv=chg(s.pageviews,s.prev&&s.prev.pageviews);return `<div class="bar-group" data-tip="${esc(s.name)} · ${num(s.pageviews)} views · prev ${num(s.prev&&s.prev.pageviews||0)}${cv!=null?' · '+pct(cv):''}"><b class="bar-val">${kfmt(s.pageviews)}</b><div class="bars"><div class="bar cur" style="height:${Math.round((s.pageviews/maxPv)*100)}%"></div><div class="bar prev" style="height:${Math.round(((s.prev&&s.prev.pageviews||0)/maxPv)*100)}%"></div></div><label>${esc((s.name||'').split('.')[0])}</label></div>`;}).join('')||'<div class="chart-empty">No websites in Umami.</div>';
@@ -1234,7 +1245,7 @@ function renderAnalyticsWebsite(){
  }
  // --- Breakdown-Karten (aggregiert ueber alle Sites) ---
  if(grid){
-  const bd=a.breakdowns||{};
+  const bd=(sel?sel.breakdowns:a.breakdowns)||{};
   const cards=[
    {key:'pages',title:'Top pages',icon:'📄',fmt:x=>x||'/'},
    {key:'referrers',title:'Top sources',icon:'🔗',fmt:x=>x?String(x).replace(/^https?:\/\//,''):'Direct / none'},
