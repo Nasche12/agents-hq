@@ -1195,7 +1195,7 @@ function renderAnalyticsWebsite(){
  const clear=()=>{$('#analyticsKpis').innerHTML='';$('#trendChart').innerHTML='';$('#trendLegend').innerHTML='';$('#barChart').innerHTML='';$('#barLegend').innerHTML='';$('#donutLegend').innerHTML='';$('#donutTotal').textContent='–';$('#donut').style.background='';if(grid)grid.innerHTML='';};
  if(!a||!a.configured){
   $('#analyticsRange').textContent='not connected';$('#analyticsRange').className='status-chip warn';clear();
-  $('#trendChart').innerHTML=`<div class="chart-empty">${a&&a.reason?esc(a.reason):'Analytics not configured.'} – add the Umami credentials (UMAMI_*) on the server.</div>`;
+  $('#trendChart').innerHTML=`<div class="chart-empty">${a&&(a.reason||a.error)?esc(a.reason||a.error):'Analytics not configured.'} – add the Umami credentials (UMAMI_*) on the server.</div>`;
   if(tbl)tbl.innerHTML='<div class="data-empty">No analytics data.</div>';return;
  }
  $('#analyticsRange').textContent=a.range||'7 days';$('#analyticsRange').className='status-chip good';
