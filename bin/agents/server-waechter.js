@@ -80,28 +80,49 @@ function checkServices(units) {
     return { name: u, active: r.out.trim() === 'active' };
   });
 }
+// "Konnte nicht pruefen" (Werkzeug/Rechte/Wrapper kaputt) vs. "DB wirklich tot".
+// Solche Fehler duerfen NIEMALS als down zaehlen -> ehrlich n/a (active=null).
+function accessErr(txt) {
+  return /permission denied|cannot connect to the docker|docker api|is the docker daemon running|no such container|no such file|command not found|not found|executable file not found|operation not permitted|access denied|must be root|got permission denied/i.test(txt || '');
+}
+// active: true = lebt | false = geprueft und tot (Alarm) | null = nicht pruefbar (n/a, KEIN Alarm)
 function checkDatabases(dbs) {
   if (!Array.isArray(dbs) || !dbs.length) return null;
   return dbs.map(db => {
-    const rec = { name: db.name || db.type || 'db', type: db.type || '', active: false, latency_ms: null, note: '' };
+    const rec = { name: db.name || db.type || 'db', type: db.type || '', active: null, latency_ms: null, note: '' };
     const t0 = Date.now();
     let done = false;
-    if (db.check) {                                       // eigenes READ-ONLY-Kommando, Exit 0 = aktiv
-      const r = shline(db.check, 12000); rec.active = r.ok; if (!r.ok) rec.note = (r.err || '').trim().slice(0, 80); done = true;
+    if (db.check) {                                       // eigenes READ-ONLY-Kommando
+      const r = shline(db.check, 12000);
+      const errtxt = (r.err || r.out || '').trim();
+      if (r.ok) rec.active = true;
+      else if (accessErr(errtxt)) { rec.active = null; rec.note = 'nicht pruefbar: ' + errtxt.slice(0, 90); }
+      else { rec.active = false; rec.note = errtxt.slice(0, 90); }   // Kommando lief, DB antwortet nicht -> down
+      done = true;
     } else if (db.type === 'sqlite' && db.file) {
       rec.active = fs.existsSync(db.file); if (!rec.active) rec.note = 'Datei fehlt/nicht lesbar'; done = true;
     } else if (db.type === 'postgres' && L.haveTool('pg_isready')) {
-      rec.active = sh('pg_isready', ['-h', String(db.host || '127.0.0.1'), '-p', String(db.port || 5432)]).ok; done = true;
+      const r = sh('pg_isready', ['-h', String(db.host || '127.0.0.1'), '-p', String(db.port || 5432)]);
+      rec.active = r.ok ? true : (accessErr(r.err) ? null : false); done = true;
     } else if (db.type === 'redis' && L.haveTool('redis-cli')) {
-      rec.active = /PONG/i.test(sh('redis-cli', ['-h', String(db.host || '127.0.0.1'), '-p', String(db.port || 6379), 'ping']).out); done = true;
+      const r = sh('redis-cli', ['-h', String(db.host || '127.0.0.1'), '-p', String(db.port || 6379), 'ping']);
+      const o = r.out + r.err;
+      rec.active = /PONG|NOAUTH|WRONGPASS/i.test(o) ? true : (/refused|timed out|no route|cannot connect/i.test(o) ? false : null);
+      done = true;
     } else if ((db.type === 'mysql' || db.type === 'mariadb') && L.haveTool('mysqladmin')) {
-      rec.active = /alive/i.test(sh('mysqladmin', ['ping', '-h', String(db.host || '127.0.0.1'), '-P', String(db.port || 3306)]).out); done = true;
+      const r = sh('mysqladmin', ['ping', '-h', String(db.host || '127.0.0.1'), '-P', String(db.port || 3306)]);
+      const o = r.out + r.err;
+      // "mysqld is alive" ODER "Access denied" => Server erreichbar (lebt). Nur echtes
+      // "connect failed/refused" => down. Sonst nicht eindeutig -> n/a.
+      rec.active = /alive|access denied/i.test(o) ? true : (/refused|can'?t connect|cannot connect|timed out/i.test(o) ? false : null);
+      if (rec.active == null) rec.note = (o.trim().slice(0, 90) || 'unklar');
+      done = true;
     }
-    if (!done && db.port) {                                // Fallback: lauscht der Port? (ss)
-      if (L.haveTool('ss')) { rec.active = shline(`ss -ltn 2>/dev/null | grep -q ':${parseInt(db.port, 10)}\\b'`).ok; done = true; }
+    if (!done && db.port && L.haveTool('ss')) {           // Fallback: lauscht der Port?
+      rec.active = shline(`ss -ltn 2>/dev/null | grep -q ':${parseInt(db.port, 10)}\\b'`).ok ? true : false; done = true;
     }
-    if (!done) { rec.active = false; rec.note = rec.note || 'kein passendes Pruefwerkzeug'; }
-    else if (rec.active) rec.latency_ms = Date.now() - t0;
+    if (!done) { rec.active = null; rec.note = rec.note || 'kein passendes Pruefwerkzeug -> nicht pruefbar'; }
+    else if (rec.active === true) rec.latency_ms = Date.now() - t0;
     return rec;
   });
 }
@@ -184,7 +205,9 @@ function main() {
   if (disk && disk.used_percent >= warnDisk) { alerts.push(`Disk ${disk.mount}: ${disk.used_percent}% (>= ${warnDisk}%)`); bump('warn'); }
   if (load && load.per_core >= warnLoad) { alerts.push(`Last ${load.per_core}/Kern (>= ${warnLoad})`); bump('warn'); }
   if (Array.isArray(services)) for (const s of services) if (s.active === false) { alerts.push(`Dienst down: ${s.name}`); bump('down'); }
-  if (Array.isArray(databases)) for (const d of databases) if (!d.active) { alerts.push(`DB nicht erreichbar: ${d.name}${d.note ? ' (' + d.note + ')' : ''}`); bump('down'); }
+  if (Array.isArray(databases)) for (const d of databases) if (d.active === false) { alerts.push(`DB nicht erreichbar: ${d.name}${d.note ? ' (' + d.note + ')' : ''}`); bump('down'); }
+  // n/a-DBs (nicht pruefbar) NICHT alarmieren, aber sichtbar vermerken (kein Fehlalarm).
+  const dbNa = Array.isArray(databases) ? databases.filter(d => d.active == null) : [];
   if (ssl_min_days != null && ssl_min_days < SSL_WARN) { alerts.push(`SSL-Renew kritisch: ${ssl_min_days} Tage`); bump('warn'); }
   if (Array.isArray(backups)) for (const b of backups) if (!b.ok) { alerts.push(`Backup veraltet/fehlt: ${b.name}${b.note ? ' (' + b.note + ')' : ''}`); bump('warn'); }
   if (log_dir_mb != null && log_dir_mb >= logWarnMb) { alerts.push(`logs/ ${log_dir_mb} MB (>= ${logWarnMb})`); bump('warn'); }
@@ -230,7 +253,7 @@ function main() {
   if (memory) details.push(`RAM: ${memory.used_percent}%`);
   if (load) details.push(`Last: ${load.per_core}/Kern`);
   if (Array.isArray(services)) for (const s of services) details.push(`${s.name}: ${s.active === false ? 'DOWN' : s.active ? 'active' : 'n/a'}`);
-  if (Array.isArray(databases)) for (const d of databases) details.push(`${d.name}: ${d.active ? 'ok' : 'DOWN'}`);
+  if (Array.isArray(databases)) for (const d of databases) details.push(`${d.name}: ${d.active === true ? 'ok' : d.active === false ? 'DOWN' : 'n/a'}`);
   if (ssl_min_days != null) details.push(`SSL min: ${ssl_min_days} T`);
   if (log_dir_mb != null) details.push(`logs/: ${log_dir_mb} MB`);
 
@@ -241,9 +264,10 @@ function main() {
 
   // Routine-Zeile in den Themen-Kanal – höchstens 1×/Stunde (Cadence ist eh 60 min),
   // Zustandswechsel (ok<->warn<->down) kommt sofort durch (force).
+  const naSuffix = dbNa.length ? ` · ${dbNa.length} DB n/a` : '';
   A.routine(worst === 'ok'
-    ? `✅ **server** ok${disk ? ` · Disk ${disk.used_percent}%` : ''}${memory ? ` · RAM ${memory.used_percent}%` : ''}${load ? ` · Last ${load.per_core}/K` : ''}`
-    : `${worst === 'down' ? '❌' : '⚠️'} **server** ${worst}: ${alerts.slice(0, 2).join(' · ')}`,
+    ? `✅ **server** ok${disk ? ` · Disk ${disk.used_percent}%` : ''}${memory ? ` · RAM ${memory.used_percent}%` : ''}${load ? ` · Last ${load.per_core}/K` : ''}${naSuffix}`
+    : `${worst === 'down' ? '❌' : '⚠️'} **server** ${worst}: ${alerts.slice(0, 2).join(' · ')}${naSuffix}`,
     { minMinutes: 55, force: worst !== prevState });
   process.stdout.write(JSON.stringify({ result: summary, engine: 'script' }) + '\n');
   process.exit(0);
