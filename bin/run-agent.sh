@@ -18,10 +18,17 @@ NODE="$(command -v node 2>/dev/null)"
 HQ="$BASE/bin/hq.js"
 SCHED="$BASE/config/schedule.json"
 
-# Modellwahl = Tokenkosten (schwer-Flag in schedule.json steuert Haiku/Sonnet, Master=Opus).
-# Override via AGENT_MODEL. Sicherheitsnetz gegen leeres --model.
-MODEL="${AGENT_MODEL:-$("$NODE" "$HQ" model "$SCHED" "$AGENT" 2>/dev/null)}"
-[ -n "$MODEL" ] || MODEL=sonnet
+# Engine: 'script' = token-freies Node-Skript (bin/agents/<agent>.js), sonst 'llm' (claude -p).
+# Deterministische Agents (uptime/server/seo) brauchen KEIN Modell -> 0 Tokens.
+ENGINE="$("$NODE" "$HQ" cfg "$SCHED" "$AGENT" engine 2>/dev/null)"
+if [ "$ENGINE" = script ]; then
+  MODEL=script
+else
+  # Modellwahl = Tokenkosten (schwer-Flag in schedule.json steuert Haiku/Sonnet, Master=Opus).
+  # Override via AGENT_MODEL. Sicherheitsnetz gegen leeres --model.
+  MODEL="${AGENT_MODEL:-$("$NODE" "$HQ" model "$SCHED" "$AGENT" 2>/dev/null)}"
+  [ -n "$MODEL" ] || MODEL=sonnet
+fi
 
 # ---- Rechte-Profil pro Agent (least-privilege statt --dangerously-skip-permissions) ----
 # --dangerously-skip-permissions ist als root verboten ("cannot be used with root/sudo").
@@ -98,6 +105,17 @@ upd running "Gestartet" 5 "Ich lege los…"
 { echo "=== $T0 START $AGENT (Modell: $MODEL) ==="; } | tee -a "$RUNLOG" >> "$LOG"
 
 cd "$BASE"
+if [ "$ENGINE" = script ]; then
+  # ── TOKEN-FREI ─────────────────────────────────────────────────────────────
+  # Deterministisches Node-Skript statt `claude -p` – kein Modell, keine Tokens.
+  # Alles Drumherum (Status/Log/Record/Discord/Spiegelung/Rotation) bleibt gleich.
+  SCRIPT="$BASE/bin/agents/$AGENT.js"
+  if [ -f "$SCRIPT" ]; then
+    $TIMEOUT_PFX "$NODE" "$SCRIPT" < /dev/null > "$RUNJSON" 2> "$RUNERR"; RC=$?
+  else
+    printf 'run-agent: engine=script, aber %s fehlt\n' "$SCRIPT" > "$RUNERR"; RC=127
+  fi
+else
 $TIMEOUT_PFX claude -p "$PROMPT
 
 ZUSÄTZLICH – DISCORD ist Sebastians Kanal. Poste dein Kernergebnis als EINEN knappen Einzeiler (kein Roman, keine Aufzählung, ~1 Zeile) in den passenden Kanal:
@@ -111,6 +129,7 @@ und ganz am Ende mit Status ok (oder waiting, falls du auf Sebastians Go wartest
   $BASE/bin/status-update.sh $AGENT ok \"Fertig\" 100 \"<Kurzfazit>\" '<json-array details>' '<json-array outputs>'" \
   --model "$MODEL" --output-format json "${PERM_ARGS[@]}" < /dev/null > "$RUNJSON" 2> "$RUNERR"
 RC=$?
+fi
 # Hänge-Schutz ausgelöst? 124 = TERM-Limit (timeout), 137 = KILL nach -k
 if [ "$RC" = 124 ] || [ "$RC" = 137 ]; then
   echo "[timeout] Lauf nach ${HQ_RUN_TIMEOUT:-1800}s hart abgebrochen (Hänge-Schutz)." | tee -a "$RUNLOG" >> "$LOG"
@@ -185,6 +204,8 @@ $(prev_alarm)
 EOF
       dpost "$CHAN" "✅ **$AGENT** wieder OK${RCNT:+ (nach ${RCNT} Fehlversuchen)}."
       rm -f "$ALARM_STATE"
+    elif [ "$ENGINE" = script ]; then
+      :                                             # engine=script postet seine Routine-/Problemzeilen selbst
     elif [ "$RC" -eq 0 ]; then
       [ -n "$QUIET" ] || dpost "$CHAN" "✅ **$AGENT**: ${FMSG:-fertig}"
     else

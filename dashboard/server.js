@@ -884,4 +884,27 @@ if (SCHED_ON) {
   console.log('Scheduler aus (DISCORD_SCHEDULER=off).');
 }
 
+/* ---------- Boot-Kick: token-freie Intervall-Monitore beim Start einmal messen ----------
+   Nach jedem Restart/Deploy ist das Dashboard sonst so alt wie der letzte Lauf, und der
+   naechste Intervall-Slot kann fast eine ganze Periode entfernt sein. Da engine=script
+   0 Tokens kostet, feuern wir die Intervall-Monitore (uptime/server) beim Hochfahren
+   EINMALIG und leicht gestaffelt – so ist das HQ sofort frisch. LLM-Agents und
+   Wochentermine (z. B. seo) bleiben aussen vor. Abschaltbar via HQ_BOOT_KICK=off. */
+function kickScriptAgentsOnBoot() {
+  const sched = readSchedule().agents || {};
+  const ids = Object.keys(sched).filter(id =>
+    AGENTS[id] && sched[id] && sched[id].enabled !== false &&
+    sched[id].engine === 'script' && /alle\s+\d+/i.test(sched[id].cadence || ''));  // nur Intervall-Monitore
+  const st = readStatus().agents || {};
+  let delay = 2500, kicked = 0;
+  for (const id of ids) {
+    if (st[id] && st[id].status === 'running') continue;
+    setTimeout(() => { try { runAgent(id); } catch (e) {} }, delay);
+    delay += 8000;                                       // gestaffelt: kein gleichzeitiger curl-Sturm
+    kicked++;
+  }
+  if (kicked) console.log(`Boot-Kick: ${kicked} token-freie(r) Monitor(e) werden frisch gemessen.`);
+}
+if ((process.env.HQ_BOOT_KICK || 'on') !== 'off') setTimeout(kickScriptAgentsOnBoot, 1500);
+
 server.listen(PORT, HOST, () => console.log(`Agent HQ läuft auf http://${HOST}:${PORT}  (Basis: ${BASE})`));

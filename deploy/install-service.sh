@@ -21,6 +21,11 @@ cat > "$SVC" <<UNIT
 [Unit]
 Description=Agent HQ Dashboard + API (naschberger.info)
 After=network.target
+# 24/7-Absicherung: Crash-Loop darf den Dienst NICHT dauerhaft killen.
+# Bis zu 10 Neustarts je 60 s erlaubt (mit RestartSec=3 real ~1/3s) -> systemd gibt
+# nicht nach 5 schnellen Fehlern auf (Default), sondern haelt den Dienst am Leben.
+StartLimitIntervalSec=60
+StartLimitBurst=10
 
 [Service]
 Type=simple
@@ -35,6 +40,7 @@ EnvironmentFile=-$BASE/.env
 ExecStart=$NODE dashboard/server.js
 Restart=always
 RestartSec=3
+TimeoutStopSec=15
 NoNewPrivileges=true
 
 [Install]
