@@ -1,6 +1,6 @@
 {
   "_hinweis": "Zentraler Zeitplan aller Agents. Zeitbasis = 'zeitzone' (der Scheduler in server.js rechnet zeitzonen-fest via Intl, unabhaengig von der Server-TZ). cadence: 'Fr 08:00' (Wochentag+Uhrzeit) | '06:00' (taeglich) | 'alle 60 min' (Intervall, an der Uhr ausgerichtet) | 'auf Abruf'. engine: 'script' -> token-freies Node-Skript (bin/agents/<id>.js) statt claude -p (0 Tokens); ohne engine -> LLM (kostet Tokens). schwer=true -> Auto-Start nur nach Rueckfrage in #freigaben (/ja bzw. /nein). enabled=false -> kein Termin. channel = Themen-Kanal fuer knappe Einzeiler. quiet=true -> Routine-Erfolge nicht posten, nur Probleme. catchup_minuten = Nachhol-Fenster: verpasste Wochentag/Uhrzeit-Laeufe feuern nur, wenn der Server innerhalb dieser Zeit nach der Planzeit laeuft.",
-  "_status": "Token-FREIE Monitore laufen automatisch: uptime-waechter (alle 15 min), server-waechter (alle 60 min), seo-audit (Mi) via engine=script -> 0 Tokens. Alle KOSTENPFLICHTIGEN LLM-Agents bleiben enabled=false (on demand). Einzeln per Flag anschalten.",
+  "_status": "Token-FREIE Monitore laufen automatisch (engine=script -> 0 Tokens): uptime-waechter (alle 15 min), server-waechter (alle 60 min), seo-audit (Mi), website-guardian (So). backup-auditor ist token-frei, aber enabled=false bis config/backups.json Ziele hat. Alle KOSTENPFLICHTIGEN LLM-Agents bleiben enabled=false (on demand).",
   "zeitzone": "Europe/Vienna",
   "catchup_minuten": 120,
   "agents": {
@@ -32,8 +32,9 @@
     },
     "website-guardian": {
       "cadence": "So 06:00",
-      "enabled": false,
-      "schwer": true,
+      "engine": "script",
+      "enabled": true,
+      "schwer": false,
       "channel": "reports",
       "quiet": false
     },
@@ -60,8 +61,9 @@
       "quiet": false
     },
     "backup-auditor": {
-      "_hinweis": "Braucht Backup-Pfade in config/backups.json (aktuell leer -> Agent meldet 'nicht konfiguriert' und stoppt). Erst Pfade eintragen, dann enabled=true.",
+      "_hinweis": "Token-frei (engine=script). Braucht Backup-Ziele in config/backups.json (aktuell leer -> Agent meldet 'nicht konfiguriert' und stoppt). Erst Ziele eintragen, dann enabled=true.",
       "cadence": "täglich 07:00",
+      "engine": "script",
       "enabled": false,
       "schwer": false,
       "channel": "agent-logs",
