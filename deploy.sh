@@ -42,7 +42,7 @@ echo "== Trading-Bot Setup"
   PYBIN="$(command -v python3.12 || command -v python3.11 || command -v python3)"
   PYVER="$("$PYBIN" -c 'import sys;print("%d.%d"%sys.version_info[:2])' 2>/dev/null)"
   echo "-- Python: $PYBIN ($PYVER)"
-  case "$PYVER" in 3.1[0-9]|3.[2-9]*) : ;; *) echo "!! Python >=3.10 noetig (numpy/hmmlearn). Ueberspringe Bot."; exit 0;; esac
+  case "$PYVER" in 3.9|3.1[0-9]|3.[2-9]*) : ;; *) echo "!! Python >=3.9 noetig (numpy/hmmlearn). Ueberspringe Bot."; exit 0;; esac
 
   [ -d .venv ] || "$PYBIN" -m venv .venv
   ./.venv/bin/python -m pip install -q --upgrade pip

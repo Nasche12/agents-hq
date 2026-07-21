@@ -1,6 +1,9 @@
+# Lower bounds only: pip picks the newest wheel compatible with the server's Python.
+# On Python 3.9 (Debian 11) it resolves to numpy 1.26 / pandas 2.2 / hmmlearn 0.3.x
+# (all have cp39 wheels); on 3.11+ it takes the current majors. Both work with this code.
 numpy>=1.26
-pandas>=2.1
-hmmlearn>=0.3.2
+pandas>=2.2
+hmmlearn>=0.3.0
 pyarrow>=15.0
 requests>=2.31
 pytest>=8.0
