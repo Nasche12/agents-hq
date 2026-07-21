@@ -25,6 +25,9 @@ fi
 # Nur seed anlegen, falls noch nichts da ist, damit der Browser nicht 404 pollt.
 [ -f httpdocs/status.json ] || cp -f dashboard/status.json httpdocs/status.json 2>/dev/null || true
 [ -f httpdocs/server.json ] || cp -f server/server-status.json httpdocs/server.json 2>/dev/null || true
+# Trading-Tab: der Bot spiegelt httpdocs/trading.json selbst (trading-bot/dashboard_export.py).
+# Nur seed, falls noch nichts da ist -> Tab zeigt "not connected" statt 404.
+[ -f httpdocs/trading.json ] || printf '{"status":"idle","mode":"paper","account":{"connected":false}}\n' > httpdocs/trading.json
 
 # Sicherheitsnetz: kein Verzeichnis-Listing im Docroot
 printf 'Options -Indexes\n' > httpdocs/.htaccess

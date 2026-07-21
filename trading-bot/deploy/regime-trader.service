@@ -1,0 +1,19 @@
+[Unit]
+Description=Regime Trading Bot (Paper) - agents-hq
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# --- adjust USER and the two paths to your server layout ---
+User=CHANGE_ME
+WorkingDirectory=/CHANGE_ME/agents-hq/trading-bot
+ExecStart=/CHANGE_ME/agents-hq/trading-bot/.venv/bin/python main.py
+Restart=always
+RestartSec=15
+# keep runtime state out of the way; logs go to the journal + files
+StandardOutput=append:/CHANGE_ME/agents-hq/trading-bot/logs/bot.log
+StandardError=append:/CHANGE_ME/agents-hq/trading-bot/logs/bot.err.log
+
+[Install]
+WantedBy=multi-user.target

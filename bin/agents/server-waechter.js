@@ -262,13 +262,13 @@ function main() {
   // + Alert + eigener Discord-Meldung – analog uptime-waechter. 'error' bleibt echten Tool-Fehlern.
   A.status('ok', 'Fertig', 100, summary, details, outputs);
 
-  // Routine-Zeile in den Themen-Kanal – höchstens 1×/Stunde (Cadence ist eh 60 min),
+  // Routine-Zeile in den Themen-Kanal – höchstens 1×/6h (gemessen wird alle 60 min),
   // Zustandswechsel (ok<->warn<->down) kommt sofort durch (force).
   const naSuffix = dbNa.length ? ` · ${dbNa.length} DB n/a` : '';
   A.routine(worst === 'ok'
     ? `✅ **server** ok${disk ? ` · Disk ${disk.used_percent}%` : ''}${memory ? ` · RAM ${memory.used_percent}%` : ''}${load ? ` · Last ${load.per_core}/K` : ''}${naSuffix}`
     : `${worst === 'down' ? '❌' : '⚠️'} **server** ${worst}: ${alerts.slice(0, 2).join(' · ')}${naSuffix}`,
-    { minMinutes: 55, force: worst !== prevState });
+    { minMinutes: 360, force: worst !== prevState });
   process.stdout.write(JSON.stringify({ result: summary, engine: 'script' }) + '\n');
   process.exit(0);
 }

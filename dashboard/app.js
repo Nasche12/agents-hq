@@ -51,6 +51,7 @@ const META=id=>id==='master'?{icon:'🧠',role:'Mission orchestration',accent:MA
 let DATA=null,SEL=null,API=false,UPTIME=null,SCHEDULE=null,ANALYTICS=null,RUNCOUNT={},SERVER=null;
 let RUNS={},SRVHIST=null;                                  // Lauf-Datensätze (mit Tokens) + Server-Verlauf
 let VIEW='overview',booted=false,theatreOn=false,builtAuto=false,placeNavActive=()=>{},RANGE='7d';
+let TRADING=null,TRADE_TF='All';
 let ANTAB='website',TOKMODE='agent',ANSITE='all';         // Analytics-Tab + Token-Chart-Modus + gewählte Website ('all' = alle)
 
 /* ===== Mini-Helfer ===== */
@@ -843,6 +844,7 @@ async function load(){
  try{const ur=await fetch('uptime.json?ts='+Date.now(),{cache:'no-store'});UPTIME=ur.ok?await ur.json():null;}catch(e){UPTIME=null;}
  if((!UPTIME||!(UPTIME.sites||[]).length)&&DATA.demo)UPTIME=DEMO_UPTIME;
  try{const sr=await fetch('server.json?ts='+Date.now(),{cache:'no-store'});const sj=sr.ok?await sr.json():null;SERVER=(sj&&sj.stand)?sj:null;}catch(e){SERVER=null;}
+ try{const tr=await fetch('trading.json?ts='+Date.now(),{cache:'no-store'});TRADING=tr.ok?await tr.json():null;}catch(e){TRADING=null;}
  loadServerHistory();
  applyData();
  const anyRunning=Object.values(DATA.agents||{}).some(a=>a.status==='running');
@@ -975,6 +977,7 @@ function renderView(v){
  if(v==='automations')return renderAutomations();
  if(v==='analytics')return renderAnalytics();
  if(v==='systems')return renderSystems();
+ if(v==='trading')return renderTrading();
 }
 
 /* ===== ÜBERSICHT ===== */
@@ -1511,6 +1514,138 @@ function renderSystems(){
  $('#systemsGrid').querySelectorAll('.system-tile').forEach(el=>el.addEventListener('click',()=>window.open(el.dataset.url,'_blank','noopener')));
  $('#systemsGrid').querySelectorAll('button.sys-det').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();openSite(b.dataset.site);}));
 }
+/* ===== TRADING (regime bot – paper) ===== */
+const TF_DAYS={'1M':31,'3M':92,'6M':183,'1Y':366,'All':1e9};
+function tColor(reg){return (TRADING&&TRADING.regime_colors&&TRADING.regime_colors[reg])||'#7f8c8d';}
+function pctS(v,dp){return v==null?'–':((v>0?'+':'')+(v*100).toFixed(dp==null?1:dp)+'%');}
+function money(v){return v==null?'–':'$'+new Intl.NumberFormat('en-US',{maximumFractionDigits:0}).format(v);}
+function signed(v){return v==null?'–':((v>=0?'+$':'-$')+new Intl.NumberFormat('en-US',{maximumFractionDigits:0}).format(Math.abs(v)));}
+function renderTrading(){
+ const box=$('#tradingBody');if(!box)return;
+ const t=TRADING;
+ const pill=$('#tradingPill');
+ const acc=(t&&t.account)||{};
+ // Real account only. Not connected to Alpaca -> honest empty state, never simulated numbers.
+ if(!t||!acc.connected){
+  if(pill)pill.textContent=acc.connected?'PAPER':'OFFLINE';
+  box.innerHTML=`<section class="panel"><div class="panel-header compact"><div><span class="eyebrow">REGIME TRADING BOT</span><h3>Not connected</h3></div></div>
+   <div class="chart-empty">No live Alpaca account. Put paper keys in <code>.env</code>, then from <code>trading-bot/</code> run <code>.venv/Scripts/python main.py --once</code> → <code>python dashboard_export.py</code>. Everything stays <b>paper</b>.</div></section>`;
+  return;}
+ if(pill)pill.textContent=(t.mode||'paper').toUpperCase();
+ const live=t.live||{},risk=t.risk||{};
+
+ // ---- header ----
+ const regBadge=live&&live.regime?`<span class="trd-regime" style="--rc:${tColor(live.regime)}">${esc(live.regime)} · conf ${live.confidence!=null?Math.round(live.confidence*100)+'%':'–'}</span>`:'<span class="trd-regime muted">no live cycle</span>';
+ const statusCls=t.status==='running'?'good':'warn';
+ const header=`<div class="an-toolbar">
+   <div><span class="eyebrow">REGIME TRADING BOT · ${esc((t.watchlist||[t.symbol]).join(', '))}</span><h3 class="an-title">Live paper account</h3></div>
+   <div class="ph-right"><span class="status-chip ${statusCls}">${esc(t.status||'idle')} · ${esc(t.mode||'paper')}</span>${regBadge}<span class="status-chip">as of ${live.last_cycle?fmtClock(live.last_cycle):(t.generated?fmtDay(t.generated):'–')}</span></div></div>`;
+
+ // ---- real account KPIs ----
+ const nPos=(acc.open_positions||[]).length,nOrders=acc.orders_placed||0;
+ const accCells=[
+  {l:'Paper balance',v:money(acc.equity),s:'live · Alpaca'},
+  {l:'Cash',v:money(acc.cash)},
+  {l:'Deployed',v:money(acc.deployed),s:acc.budget?'of '+money(acc.budget)+' budget':''},
+  {l:'Open positions',v:nPos,s:nPos?'held':'flat'},
+  {l:'Long',v:acc.longs!=null?acc.longs:'–',s:'positions'},
+  {l:'Short',v:acc.shorts!=null?acc.shorts:'–',s:live.market_open?'market open':'market closed'},
+ ];
+ const kpiRow=`<div class="analytics-kpis trd-kpis">${accCells.map(k=>`<div class="analytics-kpi"><span>${esc(k.l)}</span><strong>${esc(''+k.v)}</strong><small>${esc(k.s||'')}</small></div>`).join('')}</div>`;
+ const observeNote=acc.trading_enabled===false?`<div class="trd-note">⏸ <b>Observe only</b> — the bot computes HMM signals and logs why, but sends <b>no orders</b>. Set <code>trading_enabled: true</code> in <code>config.json</code> to buy/hold/sell for real (paper).</div>`:`<div class="trd-note">✅ <b>Live paper trading</b> — the bot longs/shorts on the intraday HMM regime. Hard limits: <b>${acc.per_trade_cap?money(acc.per_trade_cap):'–'} max per trade</b>, margin capped at <b>${acc.max_margin?money(acc.max_margin):'$0'}</b>.</div>`;
+
+ // ---- real balance over time (account snapshots), timeframe-windowed ----
+ const eq=t.equity_history||[];
+ let balanceSection='<div class="chart-empty">Balance history builds up as the bot runs — needs 2+ cycles.</div>';
+ if(eq.length>=2){
+  const lastT=new Date(eq[eq.length-1][0]).getTime(),win=TF_DAYS[TRADE_TF]*864e5;
+  const keep=eq.filter(p=>lastT-new Date(p[0]).getTime()<=win);
+  const times=keep.map(p=>p[0]),ev=keep.map(p=>p[1]);
+  const first=ev[0],chg=first?ev[ev.length-1]/first-1:null;
+  const tfBtns=Object.keys(TF_DAYS).map(k=>`<button data-tf="${k}" class="${TRADE_TF===k?'active':''}">${k}</button>`).join('');
+  const line=svgLine([{pts:ev,color:'#5bd9a0'}],{w:760,h:220,times,unit:'$',zero:false,vfmt:v=>money(v),xfmt:fmtDay,aria:'Account balance over time'});
+  balanceSection=`<div class="panel-header compact"><div><span class="eyebrow">BALANCE OVER TIME · LIVE</span><h3>${money(ev[ev.length-1])} ${chg!=null?'· '+pctS(chg)+' ('+TRADE_TF+')':''}</h3></div><div class="seg-toggle trd-tf">${tfBtns}</div></div>${line}`;
+ }
+
+ // ---- open positions table ----
+ const pos=acc.open_positions||[];
+ const posRows=pos.map(p=>{const q=+p.qty,dir=q>=0?'long':'short',dc=q>=0?'var(--green)':'var(--red)';
+  return `<tr><td>${esc(p.symbol)}</td><td style="color:${dc};text-transform:uppercase;font-weight:600">${dir}</td><td style="text-align:right">${num(Math.abs(q))}</td><td style="text-align:right">${money(Math.abs(p.market_value))}</td><td style="text-align:right;color:${p.unrealized_pl>=0?'var(--green)':'var(--red)'}">${signed(p.unrealized_pl)}</td></tr>`;}).join('');
+ const posTable=pos.length?`<table class="trd-table"><thead><tr><th>Symbol</th><th>Side</th><th style="text-align:right">Qty</th><th style="text-align:right">Value</th><th style="text-align:right">Unreal. P&amp;L</th></tr></thead><tbody>${posRows}</tbody></table>`:'<div class="chart-empty">No open positions — account is flat.</div>';
+
+ // ---- per-symbol HMM signals (buy/hold/sell + long/short) ----
+ const signals=t.signals||[];
+ const sigRows=signals.map(s=>{const dc=s.direction==='long'?'var(--green)':(s.direction==='short'?'var(--red)':'var(--muted)');
+  const dd=s.decision==='TRADE'?'var(--green)':(s.decision==='FLAT'?'var(--red)':'var(--muted)');
+  return `<tr><td><b>${esc(s.symbol)}</b></td><td><span class="trd-dot" style="background:${tColor(s.regime)}"></span>${esc(s.regime)}</td><td>${s.confidence!=null?Math.round(s.confidence*100)+'%':'–'}</td><td style="color:${dc};text-transform:uppercase;font-weight:600">${esc(s.direction)}</td><td style="text-align:right">${(s.exposure||0)>0?'+':''}${Math.round((s.exposure||0)*100)}%</td><td style="color:${dd};font-weight:600">${esc(s.decision)}</td></tr>`;}).join('');
+ const signalsTable=signals.length?`<table class="trd-table"><thead><tr><th>Symbol</th><th>Regime (HMM)</th><th>Conf</th><th>Direction</th><th style="text-align:right">Target</th><th>Decision</th></tr></thead><tbody>${sigRows}</tbody></table><small class="trd-hint">The HMM regime per symbol drives direction and size: strong regime → long, weak → short, neutral → flat. Size scales into the per-symbol budget.</small>`:'<div class="chart-empty">No signals yet — run a cycle.</div>';
+
+ // ---- risk panel (real, from account equity) ----
+ const th=risk.thresholds||{};
+ const risks=[
+  {l:'Equity',v:money(risk.equity),s:'peak '+money(risk.peak_equity)},
+  {l:'Day P&L',v:pctS(risk.day_dd),s:'flat at -'+Math.round((th.day_flat_pct||0)*100)+'%',up:(risk.day_dd||0)>=0},
+  {l:'Week P&L',v:pctS(risk.week_dd),s:'resize at -'+Math.round((th.week_resize_pct||0)*100)+'%',up:(risk.week_dd||0)>=0},
+  {l:'From peak',v:pctS(risk.peak_dd),s:'kill at -'+Math.round((th.kill_from_peak_pct||0)*100)+'%',up:(risk.peak_dd||0)>=-0.0001},
+  {l:'Size mult.',v:(risk.size_multiplier!=null?risk.size_multiplier+'×':'–'),s:risk.size_multiplier<1?'throttled':'full',up:risk.size_multiplier>=1},
+  {l:'Kill switch',v:risk.killed?'ARMED':'safe',s:risk.lock_file?'lock file present':'no lock',up:!risk.killed},
+ ];
+ const riskRow=`<div class="analytics-kpis trd-kpis">${risks.map(k=>`<div class="analytics-kpi"><span>${esc(k.l)}</span><strong style="color:${k.up===false?'var(--red)':(k.up===true?'var(--green)':'inherit')}">${esc(k.v)}</strong><small>${esc(k.s)}</small></div>`).join('')}</div>`;
+
+ // ---- real orders (clickable -> detail card) ----
+ const orders=(t.orders||[]).filter(o=>o&&o.symbol);
+ TRADING._orders=orders;   // stash for the click handler
+ const oRows=orders.map((o,i)=>{const sc=o.side==='buy'?'var(--green)':'var(--red)';
+  return `<tr class="trd-orow" data-oid="${i}" tabindex="0" role="button"><td>${o.filled_at?fmtDay(o.filled_at):(o.submitted_at?fmtDay(o.submitted_at):'–')}</td><td>${esc(o.symbol)}</td><td style="color:${sc};text-transform:uppercase;font-weight:600">${esc(o.side||'')}</td><td style="text-align:right">${num(o.qty)}</td><td style="text-align:right">${o.fill_price!=null?money(o.fill_price):'–'}</td><td style="text-align:right">${o.notional!=null?money(o.notional):'–'}</td><td>${esc(o.status||'')}</td></tr>`;}).join('');
+ const ordersTable=orders.length?`<table class="trd-table trd-clickable"><thead><tr><th>Date</th><th>Symbol</th><th>Side</th><th style="text-align:right">Qty</th><th style="text-align:right">Fill price</th><th style="text-align:right">Total</th><th>Status</th></tr></thead><tbody>${oRows}</tbody></table><small class="trd-hint">Click a row for full order details.</small>`:'<div class="chart-empty">No orders yet.</div>';
+
+ // ---- activity feed: real bot decisions (incl. skips) ----
+ const jt=t.journal_tail||[];
+ const jrows=jt.map(e=>{const dc=e.decision==='TRADE'?'var(--green)':'var(--muted)';
+  return `<tr><td>${e.ts?fmtDay(e.ts):'–'}</td><td><span class="trd-dot" style="background:${tColor(e.regime)}"></span>${esc(e.regime||'–')}</td><td>${e.confidence!=null?Math.round(e.confidence*100)+'%':'–'}</td><td style="color:${dc};font-weight:600">${esc(e.decision||'–')}</td><td style="color:var(--muted)">${esc(e.reason||'')}</td></tr>`;}).join('');
+ const table=jt.length?`<table class="trd-table"><thead><tr><th>Time</th><th>Regime</th><th>Conf</th><th>Decision</th><th>Reason</th></tr></thead><tbody>${jrows}</tbody></table><small class="trd-hint">Real cycles from the bot. “SKIP” = it deliberately did not trade. No orders are sent in observe mode.</small>`:'<div class="chart-empty">No cycles yet — run <code>python main.py --once</code>.</div>';
+
+ box.innerHTML=`${header}
+  <section class="panel trd-section"><div class="panel-header"><div><span class="eyebrow">YOUR PAPER ACCOUNT · LIVE</span><h3>Alpaca — ${esc((t.watchlist||[]).join(', '))}</h3></div><span class="status-chip good">connected</span></div>${kpiRow}${observeNote}</section>
+  <section class="panel trd-section"><div class="panel-header"><div><span class="eyebrow">HMM SIGNALS · LIVE</span><h3>Per-symbol regime → long / short</h3></div><span class="status-chip">${signals.length} symbols</span></div>${signalsTable}</section>
+  <section class="panel trd-section">${balanceSection}</section>
+  <section class="panel trd-section"><div class="panel-header"><div><span class="eyebrow">SAFETY</span><h3>Risk status</h3></div><span class="status-chip ${risk.killed?'warn':'good'}">${risk.killed?'halted':'all clear'}</span></div>${riskRow}</section>
+  <section class="panel trd-section"><div class="panel-header"><div><span class="eyebrow">POSITIONS</span><h3>Open positions</h3></div><span class="status-chip">${nPos} held</span></div>${posTable}</section>
+  <section class="panel trd-section"><div class="panel-header"><div><span class="eyebrow">TRADES · LIVE</span><h3>Orders</h3></div><span class="status-chip">${orders.length}</span></div>${ordersTable}</section>
+  <section class="panel trd-section"><div class="panel-header"><div><span class="eyebrow">BOT ACTIVITY · LIVE</span><h3>Decisions (incl. skips)</h3></div></div>${table}</section>`;
+
+ box.querySelectorAll('.trd-tf button').forEach(b=>b.addEventListener('click',()=>{TRADE_TF=b.dataset.tf;renderTrading();}));
+ hydrateCharts(box);
+}
+// One delegated listener survives every re-render — clicking any order row opens its card.
+if(!window.__trdRowDelegated){window.__trdRowDelegated=true;
+ const openRow=el=>{const r=el&&el.closest&&el.closest('.trd-orow');if(r&&r.dataset.oid!=null)openTradeCard((TRADING&&TRADING._orders||[])[+r.dataset.oid]);};
+ document.addEventListener('click',e=>openRow(e.target));
+ document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target&&e.target.classList&&e.target.classList.contains('trd-orow')){e.preventDefault();openRow(e.target);}});
+}
+function openTradeCard(o){
+ if(!o)return;
+ let bd=$('#trdModal');
+ if(!bd){bd=document.createElement('div');bd.id='trdModal';bd.className='modal-backdrop';bd.setAttribute('aria-hidden','true');document.body.appendChild(bd);
+  bd.addEventListener('click',e=>{if(e.target===bd||e.target.closest('[data-close]')){bd.classList.remove('open');bd.setAttribute('aria-hidden','true');}});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'){bd.classList.remove('open');bd.setAttribute('aria-hidden','true');}});}
+ const rows=[
+  ['Symbol',esc(o.symbol)],
+  ['Side',`<span style="color:${o.side==='buy'?'var(--green)':'var(--red)'};text-transform:uppercase;font-weight:600">${esc(o.side||'')}</span>`],
+  ['Quantity',num(o.qty)+' shares'],
+  ['Fill price',o.fill_price!=null?money(o.fill_price):'–'],
+  ['Total value',o.notional!=null?`<b>${money(o.notional)}</b>`:'–'],
+  ['Order type',esc(o.type||'market')],
+  ['Status',esc(o.status||'')],
+  ['Submitted',o.submitted_at?new Date(o.submitted_at).toLocaleString():'–'],
+  ['Filled',o.filled_at?new Date(o.filled_at).toLocaleString():'–'],
+  ['Order ID',`<code style="font-size:11px">${esc(o.id||'–')}</code>`],
+ ];
+ bd.innerHTML=`<div class="modal trd-modal"><div class="modal-header"><div><span class="eyebrow">${esc((o.side||'').toUpperCase())} ${esc(o.symbol||'')}</span><h3>${num(o.qty)} @ ${o.fill_price!=null?money(o.fill_price):'–'} = ${o.notional!=null?money(o.notional):'–'}</h3></div><button class="icon-button" data-close="1">×</button></div>
+  <div class="trd-detail">${rows.map(r=>`<div class="trd-drow"><span>${r[0]}</span><strong>${r[1]}</strong></div>`).join('')}</div></div>`;
+ bd.classList.add('open');bd.setAttribute('aria-hidden','false');
+}
+
 function miniGraph(points,color){
  if(!points||points.length<2)return '<svg viewBox="0 0 220 50"></svg>';
  const w=220,h=50,min=Math.min(...points)-2,max=Math.max(...points)+2,rng=max-min||1;
@@ -1733,7 +1868,7 @@ function closeModal(id){const el=$('#'+id);el.classList.remove('open');el.setAtt
 function populateMissionAgents(){$('#missionAgent').innerHTML=FLEET_IDS.map(id=>`<option value="${id}">${esc(CFG_NAME[id])} — ${esc(CFG[id].role)}</option>`).join('');}
 function openMissionFor(id){populateMissionAgents();$('#missionAgent').value=id;openModal('missionModal');}
 window.openMissionFor=openMissionFor;
-const VIEWS=['overview','agents','missions','automations','analytics','systems'];
+const VIEWS=['overview','agents','missions','automations','analytics','systems','trading'];
 /* Hash-basiertes Routing: /#analytics , /#analytics/server , /#systems …
    Der Hash geht NIE an den Server -> Reload/Direktaufruf lädt immer die (funktionierende)
    Startseite "/" und der Client wählt die View. Damit kein 404 hinter Plesk/nginx. */
@@ -1752,7 +1887,7 @@ function switchView(name,push){
  VIEW=name;
  $$('.view').forEach(v=>v.classList.remove('active'));const el=$('#'+name+'View');if(el)el.classList.add('active');
  $$('.line-sidebar__item').forEach(n=>{const on=n.dataset.view===name;n.classList.toggle('active',on);if(on)n.setAttribute('aria-current','true');else n.removeAttribute('aria-current');});
- const titles={overview:'Agent Headquarters',agents:'Agent Directory',missions:'Mission Control',automations:'Automations & Schedule',analytics:'Website Analytics',systems:'Systems Overview'};
+ const titles={overview:'Agent Headquarters',agents:'Agent Directory',missions:'Mission Control',automations:'Automations & Schedule',analytics:'Website Analytics',systems:'Systems Overview',trading:'Regime Trading Bot'};
  $('#viewTitle').textContent=titles[name]||name;$('#breadcrumb').textContent=(name==='overview'?'OVERVIEW':name.toUpperCase());
  if(DATA)renderView(name);
  placeNavActive();

@@ -175,7 +175,7 @@ function main() {
   const avgMs = okMs.length ? Math.round(okMs.reduce((a, b) => a + b, 0) / okMs.length) : null;
   const sslVals = results.map(r => r.ssl_days).filter(x => x != null);
   const sslMin = sslVals.length ? Math.min(...sslVals) : null;
-  // Nur 1×/Stunde posten (gemessen wird trotzdem alle 15 min) – aber ein echter
+  // Nur 1×/6h posten (gemessen wird trotzdem alle 15 min) – aber ein echter
   // Zustandswechsel (Site kippt/erholt sich) kommt sofort durch (force).
   const prevDown = new Set((prev.sites || []).filter(s => !(s.state === 'ok' || s.state === 'slow')).map(s => s.name));
   const curDown = new Set(down.map(r => r.name));
@@ -183,7 +183,7 @@ function main() {
   A.routine(down.length
     ? `⚠️ **uptime** ${up}/${results.length} oben — DOWN: ${down.map(r => r.name).join(', ')}`
     : `✅ **uptime** ${results.length}/${results.length} oben${avgMs != null ? ` · ⌀${avgMs} ms` : ''}${sslMin != null ? ` · SSL min ${sslMin} T` : ''}${slow.length ? ` · ${slow.length} langsam` : ''}`,
-    { minMinutes: 60, force: changed });
+    { minMinutes: 360, force: changed });
   process.stdout.write(JSON.stringify({ result: summary, engine: 'script' }) + '\n');
   process.exit(0);
 }

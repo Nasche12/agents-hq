@@ -486,6 +486,12 @@ const server = http.createServer((req, res) => {
     const f = path.join(BASE, 'server', 'server-history.json');
     try { return send(res, 200, fs.readFileSync(f), MIME['.json']); } catch (e) { return send(res, 200, []); }
   }
+  if (rel === '/trading.json') {
+    // Regime-Bot-Export (Python schreibt trading-bot/state/dashboard.json). Fehlt er -> idle.
+    const f = path.join(BASE, 'trading-bot', 'state', 'dashboard.json');
+    try { return send(res, 200, fs.readFileSync(f), MIME['.json']); }
+    catch (e) { return send(res, 200, { status: 'idle', mode: 'paper', backtest: null, note: 'bot not run yet' }); }
+  }
   const abs = path.resolve(WEB, '.' + rel);
   if (abs.startsWith(WEB) && fs.existsSync(abs) && fs.statSync(abs).isFile())
     return send(res, 200, fs.readFileSync(abs), MIME[path.extname(abs).toLowerCase()] || 'application/octet-stream');
