@@ -407,7 +407,8 @@ def main():
     cfg = settings.load_config()
     crypto_n = sum(1 for s in models if market_data.is_crypto(s))
     print(f"started: {list(models)} | broker {'connected' if broker.connected else 'offline stub'} "
-          f"| mode paper | {crypto_n} crypto symbols trade 24/7 | cycle {_cycle_seconds(cfg)}s")
+          f"| mode paper | {crypto_n} crypto symbols trade 24/7 | cycle {_cycle_seconds(cfg)}s",
+          flush=True)
     trained_day = datetime.now(timezone.utc).date()
     try:
         while True:
@@ -421,8 +422,12 @@ def main():
             shorts = sum(1 for s in sigs if s["direction"] == "short")
             traded = sum(1 for s in sigs if s["decision"] == "TRADE")
             closed = sum(1 for s in sigs if s["decision"] == "CLOSED")
+            # flush=True: unter systemd ist stdout kein Terminal und wuerde blockweise
+            # gepuffert -- das Log haengt dann Stunden hinterher. Die Unit setzt zusaetzlich
+            # PYTHONUNBUFFERED, aber verlassen wollen wir uns darauf nicht.
             print(f"{datetime.now().strftime('%H:%M:%S')} {len(sigs)} signals | "
-                  f"{longs} long {shorts} short | {traded} traded | {closed} market closed")
+                  f"{longs} long {shorts} short | {traded} traded | {closed} market closed",
+                  flush=True)
             if once:
                 break
             time.sleep(_cycle_seconds(cfg))

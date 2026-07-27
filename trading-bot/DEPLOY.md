@@ -61,6 +61,22 @@ Alpaca's market clock stays authoritative for the regular session (DST + holiday
 brings the service back after a crash; the -10% lock file still blocks a restart after a hard loss
 (by design).
 
+### Wenn das Log stillzustehen scheint
+
+`logs/bot.log` ist nur so aktuell wie Pythons stdout-Puffer. Die Unit setzt deshalb
+`PYTHONUNBUFFERED=1` und `main.py` druckt mit `flush=True` -- ohne beides haengt das Log
+stunden- bis tagelang hinterher und verliert beim Neustart alles, was noch im Puffer
+stand. Faellt dir ein stehendes Log auf, pruefe NICHT das Log, sondern den Herzschlag:
+
+```bash
+cd BASE/trading-bot
+python -c "import json,datetime as d;h=json.load(open('state/heartbeat.json'));print('letzter Zyklus vor', round((d.datetime.now(d.timezone.utc)-d.datetime.fromisoformat(h['ts'])).total_seconds()), 's')"
+cat state/bot_state.json          # cycles, orders_sent, errors
+```
+
+Das Journal (`state/journal.jsonl`) wird pro Zeile geoeffnet und geschlossen, ist also
+immer aktuell -- im Zweifel ist es die verlaessliche Quelle, nicht bot.log.
+
 ### Making it trade more or less
 
 Everything lives in `config.json`, no redeploy needed (the loop re-reads it every cycle):

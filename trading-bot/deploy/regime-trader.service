@@ -5,6 +5,10 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+# UNGEPUFFERT: ohne das puffert Python stdout blockweise, sobald es kein Terminal ist.
+# bot.log haengt dann stunden- bis tagelang hinterher und verliert beim Neustart alles,
+# was noch im Puffer stand -- die Ueberwachung per `tail -f` ist damit wertlos.
+Environment=PYTHONUNBUFFERED=1
 # --- adjust USER and the two paths to your server layout ---
 User=CHANGE_ME
 WorkingDirectory=/CHANGE_ME/agents-hq/trading-bot
