@@ -1563,6 +1563,11 @@ function renderTrading(){
  /* ---------- 1. Kommandozeile: laeuft der Bot, und welcher Markt ist offen? ---------- */
  const fresh=live.stale_seconds!=null&&live.stale_seconds<Math.max(180,(bot.cycle_seconds||60)*3);
  const running=t.status==='running'&&fresh;
+ /* Radar: darf ausschliesslich Risiko wegnehmen (Multiplikator <= 1.0) */
+ const rd=t.radar||{};
+ const rdTone={calm:'var(--green)',elevated:'var(--yellow)',stress:'var(--orange,#e0a25c)',crisis:'var(--red)'}[rd.level]||'var(--muted)';
+ const anomN=Object.keys(rd.anomalies||{}).length;
+ const rdPill=rd.enabled?`<span class="mk-pill ${rd.level==='calm'?'open':'shut'}" title="${esc((rd.reasons||[]).join(' · ')||'keine Auffaelligkeiten')}"><i style="background:${rdTone}"></i>Radar · <b style="color:${rdTone}">${esc(String(rd.level||'–').toUpperCase())}</b><small>Risiko ×${rd.multiplier!=null?rd.multiplier:1}${anomN?' · '+anomN+' Anomalie'+(anomN>1?'n':''):''}${rd.correlation!=null?' · Korr '+rd.correlation:''}</small></span>`:'';
  const cryptoPill=uni.crypto_count?`<span class="mk-pill open"><i></i>Crypto 24/7 · <b>OPEN</b><small>${uni.crypto_count} pairs</small></span>`:'';
  const eqOpen=mk.equity_tradable;
  const eqPill=`<span class="mk-pill ${eqOpen?'open':'shut'}"><i></i>US equities · <b>${esc((mk.equity_label||'–').toUpperCase())}</b><small>${uni.equity_count||0} tickers${mk.next_open&&!eqOpen?' · opens '+fmtStamp(mk.next_open):(mk.next_close&&eqOpen?' · closes '+fmtClock(mk.next_close):'')}</small></span>`;
@@ -1575,7 +1580,7 @@ function renderTrading(){
     <span class="status-chip">${bot.runs_247?'24/7':'session only'} · cycle ${bot.cycle_seconds||60}s</span>
     <span class="status-chip" title="${esc(live.last_cycle||'')}">last cycle ${ago(live.stale_seconds)} ago</span>
    </div></div>
-  <div class="trd-markets">${cryptoPill}${eqPill}<span class="mk-pill neutral"><i></i>Now · <b>${esc(mk.now_et||'–')}</b><small>${live.tradable_now||0} of ${signals.length} symbols actionable</small></span></div>
+  <div class="trd-markets">${rdPill}${cryptoPill}${eqPill}<span class="mk-pill neutral"><i></i>Now · <b>${esc(mk.now_et||'–')}</b><small>${live.tradable_now||0} of ${signals.length} symbols actionable</small></span></div>
   <div class="trd-note ${acc.trading_enabled===false?'':'ok'}">${acc.trading_enabled===false
    ?'⏸ <b>Observe only</b> — the bot computes HMM signals and logs why, but sends <b>no orders</b>. Set <code>trading_enabled: true</code> in <code>config.json</code>.'
    :`✅ <b>Live paper trading, round the clock.</b> Crypto trades 24/7; equities only when their session is open${acc.extended_hours?' (incl. pre/after-hours via limit orders)':''}. Hard limits: <b>${money(acc.per_trade_cap)} max per trade</b>, margin capped at <b>${money(acc.max_margin||0)}</b>, rebalance from <b>${Math.round((acc.rebalance_min_pct||0.02)*100)}%</b> drift.`}</div>
@@ -1719,6 +1724,31 @@ function renderTrading(){
    <td style="color:${dc};font-weight:600">${esc(e.decision||'–')}</td><td class="mut">${esc(e.reason||'')}</td></tr>`;}).join('');
  const journalTable=jt.length?`<div class="trd-scroll"><table class="trd-table"><thead><tr><th>Time</th><th>Symbol</th><th>Regime</th><th>Conf</th><th class="num">Target</th><th>Decision</th><th>Reason</th></tr></thead><tbody>${jrows}</tbody></table></div><small class="trd-hint">Real cycles from the bot. <b>SKIP</b> = it deliberately did not trade, <b>CLOSED</b> = that market is shut right now, <b>FLAT</b> = a risk breaker forced it out.</small>`:'<div class="chart-empty">No cycles yet — run <code>python main.py --once</code>.</div>';
 
+
+ /* ---------- 12. Selbstverbesserung: was der Forscher-Agent geaendert hat ---------- */
+ const L=t.learning||{},lr=L.last_run||{},lm=L.memory||{};
+ const ovRows=Object.entries(L.overrides||{}).map(([k,v])=>
+  `<tr><td><code>${esc(k)}</code></td><td class="num mut">${esc(''+v.baseline)}</td><td class="num"><b style="color:var(--green)">${esc(''+v.now)}</b></td></tr>`).join('');
+ const ovTable=ovRows?`<div class="trd-scroll"><table class="trd-table"><thead><tr><th>Parameter</th><th class="num">Basis (config.json)</th><th class="num">gelernt</th></tr></thead><tbody>${ovRows}</tbody></table></div><small class="trd-hint">Gelernte Werte liegen in <code>config.local.json</code> (nicht in git). Zuruecksetzen: <code>python promote.py revert</code>.</small>`
+  :'<div class="chart-empty">Noch nichts gelernt — der Bot laeuft exakt auf deiner <code>config.json</code>.</div>';
+ const candRows=(lr.candidates||[]).map(c=>
+  `<tr><td>${esc(c.hypothesis||'–')}</td><td class="num">${c.objective!=null?c.objective:'–'}</td><td class="num">${c.trades!=null?n0(c.trades):'–'}</td><td style="color:${c.passes_selection?'var(--green)':'var(--muted)'};font-weight:600">${c.passes_selection?'BESTANDEN':'VERWORFEN'}</td><td class="mut">${esc(c.reason||'')}</td></tr>`).join('');
+ const candTable=candRows?`<div class="trd-scroll"><table class="trd-table"><thead><tr><th>Hypothese</th><th class="num">Sharpe</th><th class="num">Trades</th><th>Auswahl</th><th>Urteil</th></tr></thead><tbody>${candRows}</tbody></table></div>${lr.holdout?`<small class="trd-hint">Holdout (nie zur Auswahl benutzt): <b style="color:${lr.holdout.passes?'var(--green)':'var(--red)'}">${lr.holdout.passes?'bestanden':'durchgefallen'}</b> — ${esc(lr.holdout.reason||'')}</small>`:''}`
+  :'<div class="chart-empty">Noch kein Forschungslauf. Token-frei anstossen: <code>python research_cycle.py evaluate</code>.</div>';
+ const learnCells=[
+  {l:'Gelernte Parameter',v:L.override_count||0,s:(L.tunable||[]).length+' aenderbar',hi:1},
+  {l:'Hypothesen',v:n0(lm.total||0),s:'insgesamt getestet'},
+  {l:'Uebernommen',v:n0(lm.accepted||0),s:'Holdout bestanden',c:lm.accepted?'var(--green)':''},
+  {l:'Verworfen',v:n0(lm.rejected||0),s:'bleibt im Gedaechtnis'},
+  {l:'Letzter Lauf',v:lr.generated?fmtDay(lr.generated):'–',s:lr.tested!=null?lr.tested+' getestet':'nie gelaufen'},
+  {l:'Status',v:L.enabled?'aktiv':'aus',s:L.enabled?'learning.enabled':'in config.json',c:L.enabled?'var(--green)':'var(--muted)'},
+ ];
+ const learnSection=`
+  <section class="panel trd-section">${sectionHead('SELBSTVERBESSERUNG','Was der Bot gelernt hat',(L.override_count||0)+' aktiv')}${kpiGrid(learnCells)}
+   <div class="trd-note">🔒 Der Forscher-Agent darf <b>nur</b> die freigegebenen Parameter aendern. Risikoschwellen, Ordergroessen, <code>trading_enabled</code> und die Watchlist sind gesperrt — und er schreibt nie in <code>config.json</code>.</div>
+   ${ovTable}</section>
+  <section class="panel trd-section">${sectionHead('LETZTER FORSCHUNGSLAUF','Hypothesen und Urteile',lr.generated?fmtStamp(lr.generated):'–')}${candTable}</section>`;
+
  box.innerHTML=`${hero}
   <section class="panel trd-section">${sectionHead('YOUR PAPER ACCOUNT · LIVE','Alpaca — '+(uni.equity_count||0)+' tickers + '+(uni.crypto_count||0)+' crypto pairs','connected','good')}${kpiGrid(accCells)}</section>
   <section class="panel trd-section">${sectionHead('PERFORMANCE · REALIZED','Closed round-trips',(ts.trades||0)+' trades')}${kpiGrid(perfCells)}</section>
@@ -1729,7 +1759,8 @@ function renderTrading(){
   <section class="panel trd-section">${sectionHead('CLOSED TRADES','Round-trip P&L',(ts.trades||0)+' closed')}${tradesTable}</section>
   <section class="panel trd-section">${sectionHead('SAFETY','Risk status',risk.killed?'halted':'all clear',risk.killed?'warn':'good')}${kpiGrid(riskCells)}</section>
   <section class="panel trd-section">${sectionHead('TRADES · LIVE','Order book',orders.length+' orders')}${ordersTable}</section>
-  <section class="panel trd-section">${sectionHead('BOT ACTIVITY · LIVE','Decisions (incl. skips)',jt.length+' entries')}${journalTable}</section>`;
+  <section class="panel trd-section">${sectionHead('BOT ACTIVITY · LIVE','Decisions (incl. skips)',jt.length+' entries')}${journalTable}</section>
+  ${learnSection}`;
 
  box.querySelectorAll('.trd-tf button').forEach(b=>b.addEventListener('click',()=>{TRADE_TF=b.dataset.tf;renderTrading();}));
  hydrateCharts(box);

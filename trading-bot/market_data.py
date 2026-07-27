@@ -52,7 +52,25 @@ def _have_keys():
     return bool(settings.env("ALPACA_API_KEY") and settings.env("ALPACA_SECRET_KEY"))
 
 
-def get_bars(symbol, days=504, timeframe="1Day", end=None, force_synthetic=False):
+_MEMO = {}          # (symbol, timeframe, days) -> (monotonic_stamp, df)
+_TF_SECONDS = {"1Min": 60, "5Min": 300, "15Min": 900, "30Min": 1800,
+               "1Hour": 3600, "1Day": 86400}
+
+
+def _memo_ttl(timeframe):
+    """A 5-minute bar only changes every 5 minutes, so re-downloading the full history
+    every 60s cycle is wasted work -- with a 20-symbol watchlist it was the single
+    heaviest thing in the loop. Half a bar period keeps the data effectively fresh:
+    the last CLOSED bar is always current, only the still-forming bar can lag."""
+    return max(30, _TF_SECONDS.get(timeframe, 300) // 2)
+
+
+def clear_memo():
+    _MEMO.clear()
+
+
+def get_bars(symbol, days=504, timeframe="1Day", end=None, force_synthetic=False,
+             use_memo=False):
     """DataFrame [open,high,low,close,volume], DatetimeIndex (UTC), oldest first.
     timeframe: 1Day | 1Hour | 30Min | 15Min | 5Min | 1Min (intraday -> more signals).
 
@@ -62,6 +80,11 @@ def get_bars(symbol, days=504, timeframe="1Day", end=None, force_synthetic=False
       3. only truly offline dev (no keys, no store) uses synthetic, flagged real=False.
     df.attrs['source'] = 'alpaca' | 'stored' | 'synthetic'; df.attrs['real'] = bool.
     force_synthetic=True is for the offline test suite only."""
+    if use_memo and not force_synthetic:
+        hit = _MEMO.get((symbol, timeframe, days))
+        if hit and (time.monotonic() - hit[0]) < _memo_ttl(timeframe):
+            return hit[1]
+
     end = end or datetime.now(timezone.utc).date()
     crypto = is_crypto(symbol)
     # equities lose weekends/holidays, so ask for a wider calendar window; crypto doesn't
@@ -69,6 +92,12 @@ def get_bars(symbol, days=504, timeframe="1Day", end=None, force_synthetic=False
     start = end - timedelta(days=span)
     n_bars = days * bars_per_day(timeframe, symbol)
     stable = _stable_cache(symbol, timeframe)
+
+    def _done(df, source, real):
+        out = _tag(df, source, real, n_bars)
+        if use_memo:
+            _MEMO[(symbol, timeframe, days)] = (time.monotonic(), out)
+        return out
 
     if force_synthetic:
         return _tag(_synthetic(symbol, start, end, timeframe), "synthetic", False, n_bars)
@@ -80,13 +109,13 @@ def get_bars(symbol, days=504, timeframe="1Day", end=None, force_synthetic=False
                 df.to_parquet(stable)                   # keep the latest real bars
             except Exception:
                 pass
-            return _tag(df, "alpaca", True, n_bars)
+            return _done(df, "alpaca", True)
         # Alpaca returned nothing (down / rate-limited) -> use last stored real bars
 
     if stable.exists():
-        return _tag(pd.read_parquet(stable), "stored", True, n_bars)
+        return _done(pd.read_parquet(stable), "stored", True)
 
-    return _tag(_synthetic(symbol, start, end, timeframe), "synthetic", False, n_bars)
+    return _done(_synthetic(symbol, start, end, timeframe), "synthetic", False)
 
 
 def get_daily_bars(symbol, days=504, end=None, force_synthetic=False):

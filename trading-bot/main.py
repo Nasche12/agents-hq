@@ -24,6 +24,7 @@ import market_data
 import hmm_engine
 import alerts
 import sessions
+import risk_radar
 import dashboard_export
 import order_executor
 from feature_engineering import build_features
@@ -76,12 +77,24 @@ def _save_bot_state(s):
     settings.BOT_STATE.write_text(json.dumps(s, indent=2), encoding="utf-8")
 
 
-def _signal_for(symbol, model, ref_vol):
+def _fetch_bars(symbols, hcfg):
+    """One bar fetch per symbol per cycle, memoised for half a bar period. With a
+    20-symbol watchlist this is the heaviest thing in the loop, and a 5-minute bar
+    simply does not change every 60 seconds."""
+    bars = {}
+    for sym in symbols:
+        try:
+            bars[sym] = market_data.get_bars(sym, days=hcfg["live_days"],
+                                             timeframe=hcfg["live_timeframe"], use_memo=True)
+        except Exception as e:
+            alerts.log_event("data_error", f"{sym}: {str(e)[:180]}")
+    return bars
+
+
+def _signal_for(symbol, model, ref_vol, df):
     """HMM regime -> signed target exposure for one symbol, on INTRADAY bars (5-min by
     default) so regimes shift and trades happen within the hour, not once per week.
     Returns (info, exposure, reason, price)."""
-    hcfg = settings.load_config()["hmm"]
-    df = market_data.get_bars(symbol, days=hcfg["live_days"], timeframe=hcfg["live_timeframe"])
     info = model.latest(df)
     vol = float(build_features(df)["realized_vol"].iloc[-1])
     expo, reason = directional_exposure(info["regime_rank"], info["n_regimes"],
@@ -120,32 +133,78 @@ def cycle(models, risk, broker):
     mult = rstate["multiplier"]                          # risk throttle (0 = flat everything)
 
     # ONE positions snapshot for the whole cycle -- each symbol only ever reads its own
-    # row, and re-fetching per symbol would cost 9 extra API calls every single minute.
+    # row, and re-fetching per symbol would cost 20 extra API calls every single minute.
     held_now = broker.positions() if broker.connected else []
 
-    signals, orders_this_cycle = [], 0
+    # ONE bar fetch per symbol, shared by the HMM signal AND the portfolio radar.
+    bars = _fetch_bars(symbols, cfg["hmm"])
+
+    # PASS 1: what does each symbol want on its own?
+    raw, meta = {}, {}
     for sym in symbols:
         crypto = market_data.is_crypto(sym)
         session, tradable, extended = sessions.symbol_session(sym, clock, allow_extended)
         m = models[sym]
+        if sym not in bars:
+            meta[sym] = {"error": "keine Kursdaten", "session": session,
+                         "tradable": tradable, "extended": extended, "crypto": crypto}
+            continue
         try:
-            info, expo, reason, price = _signal_for(sym, m["model"], m["ref_vol"])
-        except Exception as e:                            # one bad symbol must not kill the cycle
+            info, expo, reason, price = _signal_for(sym, m["model"], m["ref_vol"], bars[sym])
+        except Exception as e:
             bot["errors"] += 1
             bot["last_error"] = f"{sym}: {str(e)[:120]}"
             alerts.log_event("data_error", f"{sym}: {str(e)[:180]}")
+            meta[sym] = {"error": str(e)[:80], "session": session,
+                         "tradable": tradable, "extended": extended, "crypto": crypto}
+            continue
+        target = 0.0 if rstate["killed"] else expo * mult
+        notes = [reason]
+        if crypto and target < 0:
+            target = 0.0                                  # Alpaca cannot short crypto
+            notes.append("crypto: no shorts -> flat")
+        raw[sym] = target
+        meta[sym] = {"info": info, "price": price, "notes": notes, "session": session,
+                     "tradable": tradable, "extended": extended, "crypto": crypto}
+
+    # PASS 2: portfolio view. The radar may ONLY take risk off (multiplier <= 1.0), and
+    # the correlation limit finally does what config.risk.max_correlation always claimed.
+    weak = [1 for s, mm in meta.items() if mm.get("info")
+            and mm["info"]["n_regimes"] > 1
+            and mm["info"]["regime_rank"] <= (mm["info"]["n_regimes"] - 1) / 3]
+    weak_share = len(weak) / max(1, len([m for m in meta.values() if m.get("info")]))
+    radar = risk_radar.assess(bars, weak_share=weak_share)
+    if radar.get("multiplier", 1.0) < 1.0:
+        raw = {s: round(t * radar["multiplier"], 4) for s, t in raw.items()}
+    for sym in list(raw):
+        capped, note = risk_radar.cap_for_anomaly(raw[sym], sym, radar)
+        if note:
+            raw[sym] = capped
+            meta[sym]["notes"].append(note)
+    raw, corr_notes = risk_radar.diversify(raw, radar.get("corr_matrix") or {},
+                                           cfg["risk"].get("max_correlation"))
+    for sym, note in corr_notes.items():
+        meta[sym]["notes"].append(note)
+    if radar.get("reasons"):
+        alerts.log_event("radar", f"{radar['level']}: {'; '.join(radar['reasons'])}")
+
+    signals, orders_this_cycle = [], 0
+    for sym in symbols:
+        mm = meta.get(sym) or {}
+        crypto, session = mm.get("crypto", False), mm.get("session", "closed")
+        tradable, extended = mm.get("tradable", False), mm.get("extended", False)
+        if mm.get("error") or sym not in raw:
             signals.append({"symbol": sym, "asset_class": "crypto" if crypto else "us_equity",
                             "session": session, "regime": None, "confidence": None,
                             "exposure": 0.0, "price": None, "direction": "flat",
                             "decision": "ERROR", "stable": False,
-                            "reason": f"data error: {str(e)[:80]}"})
+                            "reason": f"data error: {mm.get('error', 'unbekannt')}"})
             continue
 
-        target = 0.0 if rstate["killed"] else expo * mult
-        parts = [reason]
-        if crypto and target < 0:
-            target = 0.0                                  # Alpaca cannot short crypto
-            parts.append("crypto: no shorts -> flat")
+        info, price = mm["info"], mm["price"]
+        target, parts = raw[sym], list(mm["notes"])
+        if radar.get("multiplier", 1.0) < 1.0:
+            parts.append(f"Radar {radar['level']} x{radar['multiplier']}")
 
         want = info["stable"] and abs(target) >= deadband
         will_trade = want and trading_enabled and tradable and broker.connected
@@ -218,7 +277,7 @@ def cycle(models, risk, broker):
 
     _heartbeat(alive=True, market_open=overview["equity_tradable"] or overview["crypto_tradable"],
                equity_session=overview["equity_session"], crypto_open=True,
-               session_overview=overview,
+               session_overview=overview, radar=radar,
                killed=rstate["killed"], cash=acct.get("cash"), account_equity=acct.get("equity"),
                buying_power=acct.get("buying_power"),
                broker=("connected" if broker.connected else "offline"),

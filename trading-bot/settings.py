@@ -1,7 +1,17 @@
 """Central configuration. Values come from config.json (user-editable, 0 tokens),
-secrets ONLY from .env (never in the repo, never in chat). Read-only at runtime."""
+secrets ONLY from .env (never in the repo, never in chat).
+
+Two layers of config, deliberately separated:
+  config.json        the human baseline. Tracked in git -- `git pull` owns this file.
+  config.local.json  parameters the research agent learned and promoted. GIT-IGNORED,
+                     so the agent can never collide with a deploy pull. Deleting the
+                     file is a complete rollback to the human baseline.
+A third, in-process layer (config_override) exists purely so the optimizer can evaluate
+a candidate parameter set without writing anything to disk."""
 import json
 import os
+from contextlib import contextmanager
+from copy import deepcopy
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
@@ -15,6 +25,9 @@ LOG_DIR = BASE / "logs"
 for d in (STATE_DIR, CACHE_DIR, LOG_DIR):
     d.mkdir(exist_ok=True)
 
+CONFIG_FILE = BASE / "config.json"           # human baseline, in git
+CONFIG_LOCAL = BASE / "config.local.json"    # agent-promoted overrides, git-ignored
+
 JOURNAL = STATE_DIR / "journal.jsonl"        # one line per trade/skip (analytics)
 RISK_STATE = STATE_DIR / "risk_state.json"   # daily/weekly P&L + peak (survives restart)
 POSITIONS = STATE_DIR / "positions.json"     # open positions + pending orders
@@ -25,6 +38,13 @@ EQUITY_HISTORY = STATE_DIR / "equity_history.jsonl"  # real account balance snap
 BOT_STATE = STATE_DIR / "bot_state.json"     # cycles run, trades sent, uptime (24/7 counters)
 LOCK_FILE = STATE_DIR / "EMERGENCY.lock"     # -10% kill switch: delete by hand to resume
 DASHBOARD_EXPORT = STATE_DIR / "dashboard.json"  # what the Node trading tab reads
+
+# --- research / self-improvement loop ---
+MEMORY = STATE_DIR / "memory.jsonl"          # every hypothesis ever tested + its verdict
+CANDIDATES = STATE_DIR / "candidates.json"   # what the LLM proposed this round (never applied directly)
+EVIDENCE = STATE_DIR / "evidence.json"       # the pack the LLM reads (own results, past verdicts)
+LEARNING_REPORT = STATE_DIR / "learning_report.json"  # last research run, for the dashboard
+CONFIG_HISTORY = STATE_DIR / "config_history.jsonl"   # every promotion, with the previous values
 
 _REGIME_NAMES = {
     3: ["bear", "neutral", "bull"],
@@ -47,9 +67,102 @@ def regime_labels(n):
     return _REGIME_NAMES.get(n, [f"r{i}" for i in range(n)])
 
 
+# ---------------------------------------------------------------- config loading
+_FILE_CACHE = {}              # path -> (mtime, parsed)
+_RUNTIME_OVERRIDES = {}       # in-process only, set by config_override()
+
+
+def _read_json_cached(path):
+    """Parse a config file, re-reading only when its mtime changes. The backtester calls
+    load_config() thousands of times per candidate; re-parsing every time made the
+    optimizer disk-bound for no reason."""
+    try:
+        m = path.stat().st_mtime_ns
+    except OSError:
+        return {}
+    hit = _FILE_CACHE.get(path)
+    if hit and hit[0] == m:
+        return hit[1]
+    try:
+        with open(path, encoding="utf-8") as f:
+            parsed = json.load(f)
+    except Exception:
+        parsed = {}
+    _FILE_CACHE[path] = (m, parsed)
+    return parsed
+
+
+def _deep_merge(base, over):
+    """Recursive merge returning a NEW structure -- callers may mutate the result freely."""
+    out = deepcopy(base)
+    for k, v in (over or {}).items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = _deep_merge(out[k], v)
+        else:
+            out[k] = deepcopy(v)
+    return out
+
+
 def load_config():
-    with open(BASE / "config.json", encoding="utf-8") as f:
-        return json.load(f)
+    """Effective config: baseline <- agent overrides <- in-process candidate override."""
+    cfg = _deep_merge(_read_json_cached(CONFIG_FILE), _read_json_cached(CONFIG_LOCAL))
+    return _deep_merge(cfg, _RUNTIME_OVERRIDES)
+
+
+def load_baseline():
+    """config.json alone -- what a `git pull` controls, without the agent's overrides."""
+    return deepcopy(_read_json_cached(CONFIG_FILE))
+
+
+def load_local_overrides():
+    """Only what the research agent has promoted so far ({} when it never has)."""
+    return deepcopy(_read_json_cached(CONFIG_LOCAL))
+
+
+def expand_flat(flat):
+    """{'allocation.min_change_threshold': 0.02} -> {'allocation': {'min_change_threshold': 0.02}}"""
+    out = {}
+    for key, value in (flat or {}).items():
+        node = out
+        parts = str(key).split(".")
+        for p in parts[:-1]:
+            node = node.setdefault(p, {})
+        node[parts[-1]] = value
+    return out
+
+
+def flatten(nested, prefix=""):
+    """Inverse of expand_flat -- used to diff and log promotions."""
+    out = {}
+    for k, v in (nested or {}).items():
+        key = f"{prefix}{k}"
+        if isinstance(v, dict):
+            out.update(flatten(v, key + "."))
+        else:
+            out[key] = v
+    return out
+
+
+def flat_get(cfg, dotted, default=None):
+    node = cfg
+    for p in str(dotted).split("."):
+        if not isinstance(node, dict) or p not in node:
+            return default
+        node = node[p]
+    return node
+
+
+@contextmanager
+def config_override(flat):
+    """Evaluate a candidate parameter set in-process. Nothing is written to disk, and
+    every module that calls load_config() sees the candidate for the duration."""
+    global _RUNTIME_OVERRIDES
+    previous = _RUNTIME_OVERRIDES
+    _RUNTIME_OVERRIDES = _deep_merge(previous, expand_flat(flat))
+    try:
+        yield load_config()
+    finally:
+        _RUNTIME_OVERRIDES = previous
 
 
 def env(key, default=None):
@@ -77,3 +190,17 @@ def _load_dotenv():
             k, v = line.split("=", 1)
             v = v.strip().strip('"').strip("'").strip()  # tolerate quoted/padded values
             os.environ.setdefault(k.strip(), v)
+
+
+if __name__ == "__main__":
+    cfg = load_config()
+    assert cfg["watchlist"], "watchlist missing"
+    thr = cfg["allocation"]["min_change_threshold"]
+    with config_override({"allocation.min_change_threshold": 0.077}) as c:
+        assert c["allocation"]["min_change_threshold"] == 0.077
+        assert load_config()["allocation"]["min_change_threshold"] == 0.077, "override not visible"
+    assert load_config()["allocation"]["min_change_threshold"] == thr, "override leaked"
+    assert flat_get(cfg, "execution.cycle_seconds") == cfg["execution"]["cycle_seconds"]
+    assert expand_flat({"a.b": 1}) == {"a": {"b": 1}}
+    assert flatten({"a": {"b": 1}}) == {"a.b": 1}
+    print(f"settings self-check ok · local overrides active: {bool(load_local_overrides())}")

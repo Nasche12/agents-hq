@@ -4,6 +4,14 @@
   "zeitzone": "Europe/Vienna",
   "catchup_minuten": 120,
   "agents": {
+    "trading-forscher": {
+      "cadence": "So 04:00",
+      "enabled": false,
+      "schwer": true,
+      "channel": "reports",
+      "quiet": false,
+      "_hinweis": "Woechentliche Selbstverbesserung des Trading-Bots. Kostet Tokens (LLM schlaegt Parameter vor); die Bewertung selbst ist token-frei. enabled=true setzen, wenn der Bot genug echte Round-Trips gesammelt hat - vorher hat der Agent keine Datengrundlage. Token-freie Alternative ohne Agent: research_cycle.py evaluate (Gitter-Fallback)."
+    },
     "wochenreport": {
       "cadence": "Fr 08:00",
       "enabled": false,

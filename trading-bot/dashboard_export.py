@@ -70,6 +70,7 @@ def build(symbol=None):
         "data_source": "alpaca" if heartbeat.get("broker") == "connected" else "n/a",
         "regime_colors": settings.REGIME_COLORS,
         "market": market,                      # which session each asset class is in, right now
+        "radar": heartbeat.get("radar") or {},  # crisis / anomaly read, acts instantly (risk-off only)
         "live": live,
         "bot": {
             "cycles": bot.get("cycles", 0),
@@ -124,6 +125,7 @@ def build(symbol=None):
         "trades": closed[:200],                 # FIFO-matched closed round-trips
         "trade_stats": dict(stats, **_activity_counts(orders, closed)),
         "per_symbol": per_sym_pnl,
+        "learning": _learning(cfg),             # what the research agent changed, and why
         "journal_tail": _journal_tail(80),      # real bot decisions incl. skips
         "equity_history": fine,                 # [[iso, equity, cash], ...] fine resolution
         "equity_history_coarse": coarse,        # downsampled, for long time ranges
@@ -137,6 +139,62 @@ def build(symbol=None):
     except Exception:
         pass
     return export
+
+
+def _learning(cfg):
+    """Self-improvement status: which parameters the agent changed versus the human
+    baseline, the last research verdict, and the memory counters. Reading only --
+    the dashboard never triggers a run."""
+    lcfg = cfg.get("learning", {})
+    report = _read(settings.LEARNING_REPORT, None)
+    baseline = settings.load_baseline()
+    overrides = {k: {"now": v, "baseline": _flat_get(baseline, k)}
+                 for k, v in settings.flatten(settings.load_local_overrides()).items()}
+    mem = _memory_summary()
+    return {
+        "enabled": bool(lcfg.get("enabled")),
+        "tunable": sorted(lcfg.get("bounds", {})),
+        "locked": lcfg.get("locked_prefixes", []),
+        "overrides": overrides,
+        "override_count": len(overrides),
+        "memory": mem,
+        "last_run": {
+            "generated": (report or {}).get("generated"),
+            "tested": (report or {}).get("tested"),
+            "champion_objective": (report or {}).get("champion_objective"),
+            "promoted": (report or {}).get("promoted"),
+            "holdout": (report or {}).get("holdout"),
+            "candidates": [{k: c.get(k) for k in
+                            ("hypothesis", "objective", "reason", "passes_selection", "trades")}
+                           for c in ((report or {}).get("candidates") or [])],
+        } if report else None,
+    }
+
+
+def _memory_summary():
+    """Counters straight from the ledger. Kept dependency-light so the export never
+    fails just because the research stack is missing."""
+    if not settings.MEMORY.exists():
+        return {"total": 0, "accepted": 0, "rejected": 0}
+    total = accepted = rejected = 0
+    for line in settings.MEMORY.read_text(encoding="utf-8").splitlines():
+        try:
+            e = json.loads(line)
+        except Exception:
+            continue
+        total += 1
+        accepted += e.get("verdict") == "accepted"
+        rejected += e.get("verdict") == "rejected"
+    return {"total": total, "accepted": accepted, "rejected": rejected}
+
+
+def _flat_get(cfg, dotted):
+    node = cfg
+    for p in dotted.split("."):
+        if not isinstance(node, dict) or p not in node:
+            return None
+        node = node[p]
+    return node
 
 
 def _merge_signals(signals, open_pos, per_sym):

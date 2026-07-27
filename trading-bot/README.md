@@ -68,6 +68,44 @@ Open the HQ dashboard → **Trading** tab. With no Alpaca keys it runs on **synt
 Parameters live in `config.json` — edit them directly (0 tokens). Keep `leverage` at `1.0`
 to start. **This is an engineering/educational tool, not financial advice.**
 
+## Krisen, Pumps und Streuung
+
+`risk_radar.py` schaut jeden Zyklus auf das **Portfolio**, nicht nur auf Einzelsymbole — und darf **ausschließlich Risiko wegnehmen** (Multiplikator ≤ 1.0, konstruktiv garantiert, in `tests/test_radar.py` festgenagelt). Das ist die Auflösung des Konflikts zwischen „sofort reagieren" und „nichts Ungeprüftes live schalten": Risiko senken darf sofort passieren, Risiko aufbauen bleibt hinter dem Walk-Forward-Gate.
+
+| Signal | Was es erkennt |
+|--------|----------------|
+| Volatilitätsschock | aktuelle Vol gegen den **eigenen** Median je Symbol — Krypto liest sich so nicht als Dauerkrise |
+| Korrelationsanstieg | Streuung hört auf zu wirken, wenn alles gegen 1 korreliert. Die klassische Krisensignatur |
+| Marktbreite | Anteil der Symbole im schwachen Regime |
+| Anomalie je Symbol | abnormales Volumen **plus** Kurssprung → **deckelt** die Position auf 30 % |
+
+Warum aus dem Tape statt aus News: Wenn eine Krise in den Schlagzeilen steht, ist der Kurs schon gefallen — für Makro-Ereignisse sind Nachrichten ein *nachlaufender* Indikator. Und wer von außen sieht, dass etwas gepusht wird, ist die Ausstiegsliquidität; Pump-Schemata brauchen genau den Käufer, der auf das Signal reagiert. Deshalb wird die Anomalie erkannt und **gekappt statt verfolgt**.
+
+**Streuung wird jetzt auch durchgesetzt.** `config.risk.max_correlation` existierte, wurde aber nie aufgerufen — toter Code. `risk_radar.diversify()` halbiert eine Position, die stark mit einer bereits größeren Position **in dieselbe Richtung** korreliert. Gegenläufige Positionen bleiben unangetastet, die sind ein Hedge und keine Klumpenbildung.
+
+Die Watchlist ist entsprechend umgebaut: vorher waren SPY/QQQ/AAPL/MSFT/NVDA fünf Varianten derselben Tech-Wette. Jetzt US-Breite, Tech, Small Caps, Anleihen, Gold, Energie, Finanzwerte plus ein 12er-Krypto-Korb für den 24/7-Betrieb.
+
+## Selbstverbesserung
+
+Der Bot lernt aus **seinen eigenen gemessenen Ergebnissen** — nie aus Texten. Die Regel: *Das LLM schlägt vor, die Daten entscheiden.*
+
+```
+research_cycle.py evidence  →  Agent liest, schreibt candidates.json  →  research_cycle.py evaluate
+   (0 Token)                        (Token, 1× pro Woche)                    (0 Token)
+                                                                                  ↓
+                              Walk-Forward → Holdout → Allowlist → config.local.json
+```
+
+- `memory.py` — jede Hypothese mit den Zahlen, die sie entschieden haben. Ablehnungen bleiben für immer; angenommene Erkenntnisse **verfallen** und müssen neu bewiesen werden.
+- `optimizer.py` / `optimizer_gate.py` — Median-Sharpe über mehrere Symbole (Median, damit kein Glückssymbol eine schlechte Idee trägt), Holdout wird nur einmal vom Sieger berührt.
+- `promote.py` — **Allowlist**. Risikoschwellen, Radar-Grenzen, Ordergrößen, `trading_enabled` und die Watchlist sind gesperrt. Schreibt nach `config.local.json` (git-ignoriert), nie nach `config.json`.
+
+```bash
+python promote.py status        # was ist gelernt aktiv
+python promote.py revert        # alles zurueck auf config.json
+python research_cycle.py evaluate   # token-frei, mit Gitter-Fallback
+```
+
 ## 24/7 operation — what is and isn't possible
 
 The loop runs continuously (`execution.cycle_seconds`, default 60s), but a market being open
