@@ -94,8 +94,8 @@ def walk_forward(df, start_equity=None, crash_shock=False):
         block_end = min(i + outs, len(df) - 1)
         # forward-filter across the block (past only), then read one bar at a time
         block_df = df.iloc[:block_end]
-        feats = build_features(block_df)
-        X = feats[FEATURE_COLS].values
+        feats = model.build(block_df)          # exactly the columns this model was trained on
+        X = feats[model.features].values
         rank, conf = model.filter_states(X)
         feat_dates = feats.index
         prev_alloc = 0.0

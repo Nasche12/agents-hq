@@ -21,15 +21,19 @@ from hmmlearn.hmm import GaussianHMM
 logging.getLogger("hmmlearn").setLevel(logging.ERROR)
 
 import settings
-from feature_engineering import build_features, FEATURE_COLS
+from feature_engineering import build_features, feature_cols, FEATURE_COLS
 
 
 class RegimeModel:
-    def __init__(self, model, order, labels, n_regimes):
+    def __init__(self, model, order, labels, n_regimes, features=None):
         self.model = model              # fitted GaussianHMM (diag)
         self.order = order              # raw HMM state -> rank by return (0=weakest)
         self.labels = labels            # rank -> name ("crash".."euphoria")
         self.n_regimes = n_regimes
+        # The columns this model was TRAINED on. Scoring it with a different feature set
+        # would silently feed the Gaussians the wrong dimensions -- so the model carries
+        # its own contract rather than trusting a global that config can change.
+        self.features = list(features or FEATURE_COLS)
 
     # ---- per-bar emission log-prob, independent (no temporal coupling) ----
     def _emission_logprob(self, X):
@@ -69,8 +73,8 @@ class RegimeModel:
 
     def latest(self, df):
         """Current regime + confidence + stability info for the live loop."""
-        feats = build_features(df)
-        X = feats[FEATURE_COLS].values
+        feats = self.build(df)
+        X = feats[self.features].values
         rank, conf = self.filter_states(X)
         cfg = settings.load_config()["hmm"]
         stab = _stability(rank, cfg["stability_min_bars"], cfg["flicker_max_in_20"])
@@ -84,6 +88,13 @@ class RegimeModel:
             "flickering": stab["flickering"],
             "index": feats.index[-1],
         }
+
+
+    def build(self, df):
+        """Features in exactly the shape this model was trained on."""
+        return build_features(df, feature_set=self._set)
+
+    _set = None
 
 
 def _softmax(logv):
@@ -121,9 +132,11 @@ def train(df, min_regimes=None, max_regimes=None, random_state=None):
     min_r = min_regimes or cfg["min_regimes"]
     max_r = max_regimes or cfg["max_regimes"]
     seed = cfg["random_state"] if random_state is None else random_state
+    fset = cfg.get("feature_set") or "core"
+    cols = feature_cols(fset)
 
-    feats = build_features(df)
-    X = feats[FEATURE_COLS].values
+    feats = build_features(df, feature_set=fset)
+    X = feats[cols].values
     if len(X) < 60:
         raise ValueError(f"Too few bars for HMM training: {len(X)}")
 
@@ -152,7 +165,9 @@ def train(df, min_regimes=None, max_regimes=None, random_state=None):
     for rank_i, state in enumerate(ranked_states):
         order[state] = rank_i
     labels = settings.regime_labels(best.n_components)
-    return RegimeModel(best, order, labels, best.n_components)
+    m = RegimeModel(best, order, labels, best.n_components, features=cols)
+    m._set = fset
+    return m
 
 
 if __name__ == "__main__":
@@ -168,8 +183,8 @@ if __name__ == "__main__":
     assert rm2.n_regimes == rm.n_regimes and rm2.labels == rm.labels, "not reproducible"
 
     # look-ahead: filtered state at t must not change when later bars are missing
-    feats = build_features(df)
-    X = feats[FEATURE_COLS].values
+    feats = rm.build(df)
+    X = feats[rm.features].values
     full_rank, _ = rm.filter_states(X)
     part_rank, _ = rm.filter_states(X[:len(X) - 30])
     assert np.array_equal(full_rank[:len(part_rank)], part_rank), \

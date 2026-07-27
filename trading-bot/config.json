@@ -2,19 +2,40 @@
   "_note": "All user-editable parameters. Editing here costs 0 tokens. API keys NEVER here, only in .env.",
   "_watchlist_note": "Symbols with a slash (BTC/USD) are CRYPTO -> tradable 24/7/365. Plain tickers are US equities -> Mon-Fri only, regular 09:30-16:00 ET plus pre/after-hours when execution.extended_hours is true. There is no way to trade SPY at 3am; crypto is what keeps the bot working around the clock.",
   "_diversification_note": "Breit heisst UNKORRELIERT, nicht laenger. SPY/QQQ/AAPL/MSFT/NVDA waren funf Varianten derselben Tech-Wette. Jetzt: US-Breite (SPY), Tech (QQQ), Small Caps (IWM), Anleihen (TLT), Gold (GLD), Energie (XLE), Finanzwerte (XLF) - Sektoren, die sich historisch unterschiedlich verhalten - plus ein breiter Krypto-Korb fuer den 24/7-Betrieb. Der Korrelationsschutz in risk_radar.diversify() haelt zusaetzlich dagegen, wenn sie doch gleichlaufen.",
-  "watchlist": ["SPY", "QQQ", "IWM", "TLT", "GLD", "XLE", "XLF", "NVDA",
-                "BTC/USD", "ETH/USD", "SOL/USD", "LTC/USD", "AVAX/USD", "LINK/USD",
-                "DOT/USD", "UNI/USD", "AAVE/USD", "XRP/USD", "DOGE/USD", "BCH/USD"],
+  "watchlist": [
+    "SPY",
+    "QQQ",
+    "IWM",
+    "TLT",
+    "GLD",
+    "XLE",
+    "XLF",
+    "NVDA",
+    "BTC/USD",
+    "ETH/USD",
+    "SOL/USD",
+    "LTC/USD",
+    "AVAX/USD",
+    "LINK/USD",
+    "DOT/USD",
+    "UNI/USD",
+    "AAVE/USD",
+    "XRP/USD",
+    "DOGE/USD",
+    "BCH/USD"
+  ],
   "hmm": {
     "min_regimes": 3,
     "max_regimes": 7,
     "train_days": 504,
     "live_timeframe": "5Min",
+    "feature_set": "core",
     "live_days": 20,
     "train_bars_max": 4000,
     "random_state": 42,
     "stability_min_bars": 1,
-    "flicker_max_in_20": 12
+    "flicker_max_in_20": 12,
+    "_feature_set_note": "core = log_return/realized_vol/volume_z (Standard). Weitere Sets in chart_features.py: trend, meanrev, volatility, shape, broad. Chartanalyse als ZAHLEN - ein 'Hammer' ist die Position des Close in der Bar-Range, ein 'Widerstand' die Position im Donchian-Kanal. Mehr Features = mehr Parameter fuer den HMM zu schaetzen; die Sets sind bewusst klein gehalten."
   },
   "allocation": {
     "_note": "min_change_threshold is the neutral deadband: LOWER = more trades, more churn.",
@@ -22,7 +43,7 @@
     "low_vol_alloc": 0.95,
     "low_vol_leverage": 1.25,
     "medium_vol_leverage": 1.0,
-    "high_vol_alloc": 0.20,
+    "high_vol_alloc": 0.2,
     "high_vol_leverage": 0.5,
     "min_change_threshold": 0.02,
     "low_vol_pct": 0.8,
@@ -32,7 +53,7 @@
     "day_halve_pct": 0.02,
     "day_flat_pct": 0.03,
     "week_resize_pct": 0.05,
-    "kill_from_peak_pct": 0.10,
+    "kill_from_peak_pct": 0.1,
     "per_trade_pct": 0.01,
     "max_correlation": 0.7,
     "max_leverage": 1.25
@@ -61,7 +82,12 @@
     "correlation_elevated": 0.75,
     "correlation_stress": 0.85,
     "breadth_weak_stress": 0.6,
-    "multipliers": {"calm": 1.0, "elevated": 0.75, "stress": 0.5, "crisis": 0.25},
+    "multipliers": {
+      "calm": 1.0,
+      "elevated": 0.75,
+      "stress": 0.5,
+      "crisis": 0.25
+    },
     "anomaly_volume_z": 3.0,
     "anomaly_return_z": 3.0,
     "anomaly_exposure_cap": 0.3
@@ -70,7 +96,12 @@
     "_note": "Selbstverbesserung. Der Forscher-Agent schlaegt Parameter vor, der Optimizer entscheidet mit Daten. Promotet wird NUR nach config.local.json (git-ignoriert) - config.json bleibt deine Basis und wird nie vom Agenten angefasst.",
     "_bounds_note": "bounds = Allowlist. Was hier nicht steht, darf der Agent NICHT aendern. Risikoschwellen, Ordergroessen, trading_enabled und die Watchlist fehlen bewusst: ein System, das seine eigenen Sicherungen lockern darf, hat keine.",
     "enabled": true,
-    "eval_symbols": ["SPY", "NVDA", "BTC/USD", "ETH/USD"],
+    "eval_symbols": [
+      "SPY",
+      "NVDA",
+      "BTC/USD",
+      "ETH/USD"
+    ],
     "eval_days": 90,
     "in_sample_bars": 2000,
     "out_sample_bars": 500,
@@ -78,27 +109,89 @@
     "max_candidates": 5,
     "min_trades": 40,
     "min_symbols": 3,
-    "min_improvement": 0.10,
+    "min_improvement": 0.1,
     "drawdown_tolerance": 0.03,
     "recheck_days": 90,
-    "locked_prefixes": ["risk.", "radar.", "watchlist", "starting_equity", "learning.",
-                        "execution.trading_enabled", "execution.max_notional_per_trade",
-                        "execution.max_margin", "execution.extended_hours",
-                        "allocation.leverage", "backtest."],
+    "locked_prefixes": [
+      "risk.",
+      "radar.",
+      "watchlist",
+      "starting_equity",
+      "learning.",
+      "execution.trading_enabled",
+      "execution.max_notional_per_trade",
+      "execution.max_margin",
+      "execution.extended_hours",
+      "allocation.leverage",
+      "backtest."
+    ],
     "bounds": {
-      "allocation.min_change_threshold": {"min": 0.01, "max": 0.08},
-      "allocation.low_vol_alloc": {"min": 0.30, "max": 0.95},
-      "allocation.high_vol_alloc": {"min": 0.05, "max": 0.50},
-      "allocation.low_vol_pct": {"min": 0.50, "max": 0.95},
-      "allocation.high_vol_pct": {"min": 1.05, "max": 2.00},
-      "execution.rebalance_min_pct": {"min": 0.01, "max": 0.10},
-      "execution.cycle_seconds": {"min": 60, "max": 600},
-      "hmm.live_timeframe": {"choices": ["5Min", "15Min", "30Min", "1Hour"]},
-      "hmm.live_days": {"min": 10, "max": 60},
-      "hmm.stability_min_bars": {"min": 1, "max": 5},
-      "hmm.flicker_max_in_20": {"min": 4, "max": 16},
-      "hmm.min_regimes": {"min": 2, "max": 4},
-      "hmm.max_regimes": {"min": 5, "max": 8}
+      "allocation.min_change_threshold": {
+        "min": 0.01,
+        "max": 0.08
+      },
+      "allocation.low_vol_alloc": {
+        "min": 0.3,
+        "max": 0.95
+      },
+      "allocation.high_vol_alloc": {
+        "min": 0.05,
+        "max": 0.5
+      },
+      "allocation.low_vol_pct": {
+        "min": 0.5,
+        "max": 0.95
+      },
+      "allocation.high_vol_pct": {
+        "min": 1.05,
+        "max": 2.0
+      },
+      "execution.rebalance_min_pct": {
+        "min": 0.01,
+        "max": 0.1
+      },
+      "execution.cycle_seconds": {
+        "min": 60,
+        "max": 600
+      },
+      "hmm.live_timeframe": {
+        "choices": [
+          "5Min",
+          "15Min",
+          "30Min",
+          "1Hour"
+        ]
+      },
+      "hmm.live_days": {
+        "min": 10,
+        "max": 60
+      },
+      "hmm.stability_min_bars": {
+        "min": 1,
+        "max": 5
+      },
+      "hmm.flicker_max_in_20": {
+        "min": 4,
+        "max": 16
+      },
+      "hmm.min_regimes": {
+        "min": 2,
+        "max": 4
+      },
+      "hmm.max_regimes": {
+        "min": 5,
+        "max": 8
+      },
+      "hmm.feature_set": {
+        "choices": [
+          "core",
+          "trend",
+          "meanrev",
+          "volatility",
+          "shape",
+          "broad"
+        ]
+      }
     }
   },
   "backtest": {

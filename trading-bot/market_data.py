@@ -223,9 +223,14 @@ def _synthetic(symbol, start, end, timeframe="1Day"):
         states[i] = state
         rets[i] = rng.normal(drift[state], vol[state])
     close = (30000 if crypto else 100) * np.exp(np.cumsum(rets))
-    high = close * (1 + np.abs(rng.normal(0, 0.004, n)))
-    low = close * (1 - np.abs(rng.normal(0, 0.004, n)))
     open_ = np.concatenate([[close[0]], close[:-1]])
+    # VALID OHLC: high/low must bracket BOTH open and close. Deriving them from close
+    # alone produced bars where the open sat outside the range -- impossible in real
+    # data, and it made every bar-shape feature untestable on the synthetic set.
+    body_hi = np.maximum(open_, close)
+    body_lo = np.minimum(open_, close)
+    high = body_hi * (1 + np.abs(rng.normal(0, 0.004, n)))
+    low = body_lo * (1 - np.abs(rng.normal(0, 0.004, n)))
     volume = rng.integers(5_000_000, 50_000_000, n).astype(float)
     df = pd.DataFrame({"open": open_, "high": high, "low": low, "close": close, "volume": volume}, index=idx)
     return df

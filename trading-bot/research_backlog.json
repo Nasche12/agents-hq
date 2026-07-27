@@ -1,0 +1,95 @@
+{
+  "_note": "Kuratierte Startwarteschlange fuer den Forscher-Agenten. Das ist ausdruecklich KEIN Wissen, sondern eine Liste UNGEPRUEFTER Hypothesen. Jede muss durch Walk-Forward und Holdout, bevor sie live geht - genau wie ein Vorschlag, den der Agent selbst erfindet. Der Zweck ist nur, dass der erste Lauf nicht blind raten muss.",
+  "_evidenz_note": "evidence = wie gut die zugrunde liegende Marktbeobachtung belegt ist, NICHT ob sie fuer diesen Bot funktioniert. Auch 'strong' heisst hier nur: es lohnt sich zu testen. Ein starker Effekt in der Literatur kann in diesem konkreten System trotzdem nichts bringen - deshalb entscheidet der Optimizer, nicht die Fussnote.",
+  "_quellen": {
+    "vol_clustering": "Engle 1982 (ARCH), Bollerslev 1986 (GARCH) - Volatilitaet ist autokorreliert. Der am besten replizierte Befund der Liste; genau das nutzt der HMM bereits.",
+    "momentum": "Jegadeesh & Titman 1993 (Querschnitt), Moskowitz/Ooi/Pedersen 2012 (Zeitreihe, 'Time Series Momentum'). Ueber Jahrzehnte und Anlageklassen repliziert - inzwischen aber stark ueberlaufen.",
+    "mean_reversion": "Lo & MacKinlay 1988 - kurzfristige Rueckkehr zum Mittel.",
+    "volume": "Karpoff 1987 - Zusammenhang von Volumen und Preisbewegung.",
+    "range_estimator": "Parkinson 1980 - High-Low-Schaetzer ist bei gleichem Fenster deutlich effizienter als Close-zu-Close.",
+    "chart_patterns": "Lo, Mamaysky & Wang 2000, Journal of Finance - die ernsthafte Untersuchung klassischer Chartmuster. Fand etwas statistischen Gehalt, schwach und seither weitgehend wegarbitriert. Deshalb hier als 'weak' gefuehrt und nicht als Wissen verkauft.",
+    "nicht_enthalten": "Elliott-Wellen und Fibonacci-Retracements. Keine belastbare Out-of-Sample-Evidenz - sie stehen bewusst weder im Backlog noch in chart_features.py."
+  },
+  "backlog": [
+    {
+      "hypothesis": "Trend-Features statt nur Kernfeatures",
+      "rationale": "Der HMM sieht aktuell nur Rendite, Volatilitaet und Volumen - er kennt die Lage im Trend gar nicht. Zeitreihen-Momentum ist einer der am besten replizierten Effekte; wenn er hier traegt, sollte das Trend-Set die Regime-Trennung verbessern.",
+      "evidence": "strong",
+      "source": "momentum",
+      "changes": {"hmm.feature_set": "trend"},
+      "priority": 1
+    },
+    {
+      "hypothesis": "Volatilitaets-Struktur als Feature-Set",
+      "rationale": "Volatilitaets-Clustering ist der belastbarste Befund ueberhaupt, und Regimewechsel zeigen sich zuerst in der Vol-Struktur (vol_of_vol, Squeeze). Naheliegendster Kandidat nach 'trend'.",
+      "evidence": "strong",
+      "source": "vol_clustering",
+      "changes": {"hmm.feature_set": "volatility"},
+      "priority": 2
+    },
+    {
+      "hypothesis": "Laengerer Timeframe reduziert Rauschen",
+      "rationale": "5-Minuten-Bars wurden gewaehlt, um die Handelsfrequenz zu erhoehen - nicht, weil sie nachweislich besser prognostizieren. Bei 15Min ist das Signal-Rausch-Verhaeltnis pro Bar hoeher, die Frequenz aber niedriger. Der Zielkonflikt gehoert gemessen statt geraten.",
+      "evidence": "moderate",
+      "source": "vol_clustering",
+      "changes": {"hmm.live_timeframe": "15Min"},
+      "priority": 3
+    },
+    {
+      "hypothesis": "Weniger Regime sind robuster",
+      "rationale": "Bis zu 7 Regime auf Intraday-Bars heisst viele Parameter auf wenig Daten. Eine engere Obergrenze koennte out-of-sample stabiler sein, auch wenn BIC in-sample mehr Zustaende bevorzugt.",
+      "evidence": "moderate",
+      "source": "vol_clustering",
+      "changes": {"hmm.max_regimes": 5},
+      "priority": 4
+    },
+    {
+      "hypothesis": "Strengerer Stabilitaetsfilter",
+      "rationale": "stability_min_bars steht auf 1, d.h. der Bot handelt auf einen einzigen Bar Regimewechsel. Das erzeugt Aktivitaet, aber vermutlich auch Fehlsignale. 2-3 Bars Bestaetigung kostet Reaktionszeit und koennte den Profit Factor heben.",
+      "evidence": "moderate",
+      "source": "mean_reversion",
+      "changes": {"hmm.stability_min_bars": 3},
+      "priority": 5
+    },
+    {
+      "hypothesis": "Mean-Reversion-Features",
+      "rationale": "Auf kurzen Horizonten dominiert oft Rueckkehr zum Mittel statt Trend. Da der Bot auf 5-Minuten-Bars laeuft, ist das der Horizont, auf dem der Effekt am ehesten existiert. Testet zugleich, ob RSI und Donchian-Position ueberhaupt etwas beitragen.",
+      "evidence": "moderate",
+      "source": "mean_reversion",
+      "changes": {"hmm.feature_set": "meanrev"},
+      "priority": 6
+    },
+    {
+      "hypothesis": "Breiteres Feature-Set",
+      "rationale": "Kombiniert Trend, Range, Volatilitaet und Volumen. Hoechstes Ueberanpassungsrisiko der Liste - deshalb bewusst NACH den einzelnen Sets, damit man weiss, welcher Baustein gewirkt hat, bevor man sie mischt.",
+      "evidence": "moderate",
+      "source": "momentum",
+      "changes": {"hmm.feature_set": "broad"},
+      "priority": 7
+    },
+    {
+      "hypothesis": "Kerzenform-Features (klassische Candlestick-Logik, quantifiziert)",
+      "rationale": "Bewusst als SKEPTISCHER Test aufgenommen: close_pos_in_bar, body_ratio und gap sind die messbaren Fassungen von Hammer, Doji und Gap. Die Evidenz fuer Chartmuster ist schwach - wenn das Set durchfaellt, ist das ein wertvolles Ergebnis, weil es die Frage fuer dieses System endgueltig beantwortet.",
+      "evidence": "weak",
+      "source": "chart_patterns",
+      "changes": {"hmm.feature_set": "shape"},
+      "priority": 8
+    },
+    {
+      "hypothesis": "Groesseres Trainingsfenster",
+      "rationale": "20 Tage Intraday-Historie koennen zu wenig sein, um seltene Regime (crash) ueberhaupt zu sehen. Mehr Historie heisst stabilere Schaetzung, aber auch veraltete Marktstruktur im Modell.",
+      "evidence": "moderate",
+      "source": "vol_clustering",
+      "changes": {"hmm.live_days": 45},
+      "priority": 9
+    },
+    {
+      "hypothesis": "Weiteres Rebalance-Band",
+      "rationale": "rebalance_min_pct steht auf 2%, was viel Aktivitaet erzeugt. Jeder Rebalance zahlt Spread und Slippage. Falls der Profit Factor unter 1 liegt, ist Ueberhandeln die erste zu pruefende Ursache.",
+      "evidence": "strong",
+      "source": "volume",
+      "changes": {"execution.rebalance_min_pct": 0.05},
+      "priority": 10
+    }
+  ]
+}

@@ -35,6 +35,22 @@ def _lcfg():
     return settings.load_config().get("learning", {})
 
 
+def load_backlog():
+    """Curated START queue of UNTESTED hypotheses. Not knowledge -- a work list, so the
+    first runs work through vetted ideas instead of guessing blind. Every entry still
+    has to survive walk-forward and holdout like any other candidate."""
+    try:
+        data = json.loads((settings.BASE / "research_backlog.json").read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    out = []
+    for e in sorted(data.get("backlog", []), key=lambda x: x.get("priority", 99)):
+        if memory.already_tested(e.get("changes") or {}):
+            continue                       # done once, never queued again
+        out.append(e)
+    return out
+
+
 # ---------------------------------------------------------------- evidence (0 tokens)
 def build_evidence():
     """Everything the agent is allowed to reason over: its own measured results, what it
@@ -64,6 +80,7 @@ def build_evidence():
             "bot": dash.get("bot"),
         },
         "memory": memory.lessons(40),
+        "backlog": load_backlog(),   # kuratierte, UNGEPRUEFTE Startideen mit Evidenzstufe
         "already_rejected": [e["changes"] for e in memory.load()
                              if e.get("verdict") == memory.REJECTED],
         "due_for_recheck": [{"hypothesis": e.get("hypothesis"), "changes": e.get("changes")}
@@ -114,8 +131,12 @@ def evaluate(candidates=None, auto_promote=True):
 
     candidates = candidates if candidates is not None else _read(settings.CANDIDATES, [])
     if not candidates:
-        print("keine Kandidaten -> Gitter-Fallback")
-        candidates = grid_candidates()
+        # No LLM run: work through the curated backlog first, only then the blind grid.
+        candidates = load_backlog()[: lcfg.get("max_candidates", 5)]
+        print(f"keine Kandidaten -> {len(candidates)} aus dem Backlog"
+              if candidates else "keine Kandidaten -> Gitter-Fallback")
+        if not candidates:
+            candidates = grid_candidates()
 
     usable, skipped = [], []
     for c in candidates:
