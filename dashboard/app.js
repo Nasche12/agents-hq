@@ -1657,7 +1657,7 @@ function renderTrading(){
   const dc=s.direction==='long'?'var(--green)':(s.direction==='short'?'var(--red)':'var(--muted)');
   const dd=s.decision==='TRADE'?'var(--green)':(s.decision==='FLAT'?'var(--red)':(s.decision==='ERROR'?'var(--yellow)':'var(--muted)'));
   const cls=s.asset_class==='crypto'?'crypto':'equity';
-  return `<tr><td><b>${esc(s.symbol)}</b> <span class="tag ${cls}">${cls==='crypto'?'24/7':'stock'}</span></td>
+  return `<tr class="sym-row" data-sym="${esc(s.symbol)}" tabindex="0" role="button" data-tip="Chart, Trades und jede Entscheidung zu ${esc(s.symbol)}"><td><b>${esc(s.symbol)}</b> <span class="tag ${cls}">${cls==='crypto'?'24/7':'stock'}</span></td>
    <td><span class="trd-dot" style="background:${tColor(s.regime)}"></span>${esc(s.regime||'–')}${s.n_regimes?` <small class="mut">${(s.regime_rank||0)+1}/${s.n_regimes}</small>`:''}</td>
    <td>${s.confidence!=null?Math.round(s.confidence*100)+'%':'–'}</td>
    <td style="color:${dc};text-transform:uppercase;font-weight:600">${esc(s.direction||'–')}</td>
@@ -1669,7 +1669,7 @@ function renderTrading(){
    <td class="num" style="color:${tone(s.realized_pl)}">${s.realized_pl!=null?moneyS(s.realized_pl):'–'}</td>
    <td><span class="tag sess ${esc(s.session||'')}">${esc(s.session_label||s.session||'–')}</span></td>
    <td style="color:${dd};font-weight:600">${esc(s.decision||'–')}</td></tr>`;}).join('');
- const signalsTable=signals.length?`<div class="trd-scroll"><table class="trd-table"><thead><tr><th>Symbol</th><th>Regime (HMM)</th><th>Conf</th><th>Dir</th><th class="num">Target</th><th class="num">Size</th><th class="num">Price</th><th class="num">Held</th><th class="num">Unreal.</th><th class="num">Realized</th><th>Session</th><th>Decision</th></tr></thead><tbody>${sigRows}</tbody></table></div><small class="trd-hint">The HMM regime per symbol drives direction and size: strong regime → long, weak → short, neutral → flat. <b>CLOSED</b> means that market is shut right now — crypto never shows CLOSED.</small>`:'<div class="chart-empty">No signals yet — run a cycle.</div>';
+ const signalsTable=signals.length?`<div class="trd-scroll"><table class="trd-table trd-clickable"><thead><tr><th>Symbol</th><th>Regime (HMM)</th><th>Conf</th><th>Dir</th><th class="num">Target</th><th class="num">Size</th><th class="num">Price</th><th class="num">Held</th><th class="num">Unreal.</th><th class="num">Realized</th><th>Session</th><th>Decision</th></tr></thead><tbody>${sigRows}</tbody></table></div><small class="trd-hint"><b>Zeile anklicken</b> öffnet Chart, Trades und jede Entscheidung zu diesem Asset. The HMM regime per symbol drives direction and size: strong regime → long, weak → short, neutral → flat. <b>CLOSED</b> means that market is shut right now — crypto never shows CLOSED.</small>`:'<div class="chart-empty">No signals yet — run a cycle.</div>';
 
  /* ---------- 7. Offene Positionen ---------- */
  const posRows=pos.map(p=>{const q=+p.qty,dir=q>=0?'long':'short',dc=q>=0?'var(--green)':'var(--red)';
@@ -1712,8 +1712,9 @@ function renderTrading(){
    <td style="color:${sc};text-transform:uppercase;font-weight:600">${esc(o.side||'')}</td>
    <td class="num">${qty(+o.qty)}</td><td class="num">${o.fill_price!=null?money2(o.fill_price):'–'}</td>
    <td class="num">${o.notional!=null?money2(o.notional):'–'}</td><td>${esc(o.type||'market')}</td>
-   <td><span class="tag ${st==='filled'?'ok':'mutedtag'}">${esc(o.status||'')}</span></td></tr>`;}).join('');
- const ordersTable=orders.length?`<div class="trd-scroll"><table class="trd-table trd-clickable"><thead><tr><th>Time</th><th>Symbol</th><th>Side</th><th class="num">Qty</th><th class="num">Fill price</th><th class="num">Total</th><th>Type</th><th>Status</th></tr></thead><tbody>${oRows}</tbody></table></div><small class="trd-hint">Click a row for full order details. Showing the newest ${Math.min(orders.length,120)} of ${orders.length}.</small>`:'<div class="chart-empty">No orders yet.</div>';
+   <td><span class="tag ${st==='filled'?'ok':'mutedtag'}">${esc(o.status||'')}</span></td>
+   <td class="mut whycell">${esc((o.why&&o.why.reason)||'–')}</td></tr>`;}).join('');
+ const ordersTable=orders.length?`<div class="trd-scroll"><table class="trd-table trd-clickable"><thead><tr><th>Time</th><th>Symbol</th><th>Side</th><th class="num">Qty</th><th class="num">Fill price</th><th class="num">Total</th><th>Type</th><th>Status</th><th>Warum</th></tr></thead><tbody>${oRows}</tbody></table></div><small class="trd-hint">Click a row for full order details. Showing the newest ${Math.min(orders.length,120)} of ${orders.length}.</small>`:'<div class="chart-empty">No orders yet.</div>';
 
  /* ---------- 11. Entscheidungs-Journal ---------- */
  const jt=t.journal_tail||[];
@@ -1721,8 +1722,8 @@ function renderTrading(){
   return `<tr><td>${e.ts?fmtStamp(e.ts):'–'}</td><td><b>${esc(e.symbol||'–')}</b></td><td><span class="trd-dot" style="background:${tColor(e.regime)}"></span>${esc(e.regime||'–')}</td>
    <td>${e.confidence!=null?Math.round(e.confidence*100)+'%':'–'}</td>
    <td class="num">${e.exposure!=null?((e.exposure>0?'+':'')+Math.round(e.exposure*100)+'%'):'–'}</td>
-   <td style="color:${dc};font-weight:600">${esc(e.decision||'–')}</td><td class="mut">${esc(e.reason||'')}</td></tr>`;}).join('');
- const journalTable=jt.length?`<div class="trd-scroll"><table class="trd-table"><thead><tr><th>Time</th><th>Symbol</th><th>Regime</th><th>Conf</th><th class="num">Target</th><th>Decision</th><th>Reason</th></tr></thead><tbody>${jrows}</tbody></table></div><small class="trd-hint">Real cycles from the bot. <b>SKIP</b> = it deliberately did not trade, <b>CLOSED</b> = that market is shut right now, <b>FLAT</b> = a risk breaker forced it out.</small>`:'<div class="chart-empty">No cycles yet — run <code>python main.py --once</code>.</div>';
+   <td style="color:${dc};font-weight:600">${esc(e.decision||'–')}</td><td>${factorChips(e.factors)}</td></tr>`;}).join('');
+ const journalTable=jt.length?`<div class="trd-scroll"><table class="trd-table"><thead><tr><th>Time</th><th>Symbol</th><th>Regime</th><th>Conf</th><th class="num">Target</th><th>Decision</th><th>Faktoren</th></tr></thead><tbody>${jrows}</tbody></table></div><small class="trd-hint">Real cycles from the bot. <b>SKIP</b> = it deliberately did not trade, <b>CLOSED</b> = that market is shut right now, <b>FLAT</b> = a risk breaker forced it out.</small>`:'<div class="chart-empty">No cycles yet — run <code>python main.py --once</code>.</div>';
 
 
  /* ---------- 12. Selbstverbesserung: was der Forscher-Agent geaendert hat ---------- */
@@ -1765,11 +1766,22 @@ function renderTrading(){
  box.querySelectorAll('.trd-tf button').forEach(b=>b.addEventListener('click',()=>{TRADE_TF=b.dataset.tf;renderTrading();}));
  hydrateCharts(box);
 }
-// One delegated listener survives every re-render — clicking any order row opens its card.
+// One delegated listener survives every re-render — order rows open their card,
+// signal rows open the asset view with chart + full decision history.
 if(!window.__trdRowDelegated){window.__trdRowDelegated=true;
- const openRow=el=>{const r=el&&el.closest&&el.closest('.trd-orow');if(r&&r.dataset.oid!=null)openTradeCard((TRADING&&TRADING._orders||[])[+r.dataset.oid]);};
+ const openRow=el=>{
+  if(!el||!el.closest)return;
+  const jump=el.closest('[data-symjump]');
+  if(jump){const bd=$('#trdModal');if(bd){bd.classList.remove('open');bd.setAttribute('aria-hidden','true');}openSymbol(jump.dataset.symjump);return;}
+  const sym=el.closest('.sym-row');
+  if(sym&&sym.dataset.sym){openSymbol(sym.dataset.sym);return;}
+  const r=el.closest('.trd-orow');
+  if(r&&r.dataset.oid!=null)openTradeCard((TRADING&&TRADING._orders||[])[+r.dataset.oid]);
+ };
  document.addEventListener('click',e=>openRow(e.target));
- document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target&&e.target.classList&&e.target.classList.contains('trd-orow')){e.preventDefault();openRow(e.target);}});
+ document.addEventListener('keydown',e=>{
+  const c=e.target&&e.target.classList;
+  if((e.key==='Enter'||e.key===' ')&&c&&(c.contains('trd-orow')||c.contains('sym-row'))){e.preventDefault();openRow(e.target);}});
 }
 function openTradeCard(o){
  if(!o)return;
@@ -1790,9 +1802,140 @@ function openTradeCard(o){
   ['Order ID',`<code style="font-size:11px">${esc(o.id||'–')}</code>`],
  ];
  bd.innerHTML=`<div class="modal trd-modal"><div class="modal-header"><div><span class="eyebrow">${esc((o.side||'').toUpperCase())} ${esc(o.symbol||'')}</span><h3>${qty(o.qty)} @ ${o.fill_price!=null?money(o.fill_price):'–'} = ${o.notional!=null?money(o.notional):'–'}</h3></div><button class="icon-button" data-close="1">×</button></div>
-  <div class="trd-detail">${rows.map(r=>`<div class="trd-drow"><span>${r[0]}</span><strong>${r[1]}</strong></div>`).join('')}</div></div>`;
+  <div class="trd-detail">${rows.map(r=>`<div class="trd-drow"><span>${r[0]}</span><strong>${r[1]}</strong></div>`).join('')}</div>
+  ${whyBlock(o.why)}
+  <button class="sym-jump" data-symjump="${esc(o.symbol||'')}">Chart und alle Entscheidungen zu ${esc(o.symbol||'')} →</button></div>`;
  bd.classList.add('open');bd.setAttribute('aria-hidden','false');
 }
+
+/* ===== NACHVOLLZIEHBARKEIT: warum wurde gehandelt, und wo im Chart =====
+   Kursbars liegen bewusst in einer EIGENEN Datei (/trading-prices.json) und werden erst
+   geholt, wenn eine Symbol-Ansicht geoeffnet wird - sonst wuerde jede Dashboard-Abfrage
+   die Historie von 20 Symbolen mitschleppen, die niemand sieht. */
+let PRICES=null,PRICES_AT=0;
+async function loadPrices(force){
+ if(PRICES&&!force&&Date.now()-PRICES_AT<60000)return PRICES;
+ try{const r=await fetch('trading-prices.json?ts='+Date.now(),{cache:'no-store'});
+  PRICES=r.ok?await r.json():{bars:{}};}catch(e){PRICES={bars:{}};}
+ PRICES_AT=Date.now();return PRICES;
+}
+
+/* Kurslinie mit Kauf-/Verkaufs-Markern. Eigene Funktion statt svgLine zu ueberladen:
+   die Marker brauchen eine eigene Y-Zuordnung (Fuellkurs, nicht Bar-Close). */
+function svgPriceChart(bars,markers,o){
+ o=o||{};const W=o.w||820,H=o.h||300,pl=52,pr=14,pt=14,pb=26;
+ if(!bars||bars.length<2)return '<div class="chart-empty">Noch keine Kursdaten für dieses Symbol — der Bot schreibt sie ab dem nächsten Zyklus.</div>';
+ const tms=bars.map(b=>new Date(b[0]).getTime());
+ const closes=bars.map(b=>b[4]),his=bars.map(b=>b[2]),los=bars.map(b=>b[3]);
+ const mp=(markers||[]).map(m=>m.price).filter(v=>v!=null&&!isNaN(v));
+ let lo=Math.min(...los,...mp),hi=Math.max(...his,...mp);
+ if(!(hi>lo)){hi=lo+1;}
+ const pad=(hi-lo)*0.06;lo-=pad;hi+=pad;
+ const raw=(hi-lo)/3,mag=Math.pow(10,Math.floor(Math.log10(raw||1))),nrm=raw/mag,step=(nrm>=5?5:nrm>=2?2:1)*mag;
+ const t0=tms[0],t1=tms[tms.length-1]||t0+1,plotW=W-pl-pr;
+ const X=t=>pl+(t1>t0?(t-t0)/(t1-t0):0)*plotW;
+ const Y=v=>pt+(1-(v-lo)/(hi-lo))*(H-pt-pb);
+ const yv=[];for(let v=Math.ceil(lo/step)*step;v<=hi;v+=step)yv.push(v);
+ const grid=yv.map(v=>`<line class="gl" x1="${pl}" y1="${Y(v).toFixed(1)}" x2="${W-pr}" y2="${Y(v).toFixed(1)}"/><text class="gt" x="${pl-6}" y="${(Y(v)+4).toFixed(1)}" text-anchor="end">${esc(''+kAxis(v,step))}</text>`).join('');
+ const span=t1-t0,xf=span<=2*864e5?fmtClock:fmtDay;
+ const xax=[0,1,2,3].map(k=>{const x=clamp(pl+k/3*plotW,pl+18,W-pr-20);
+  return `<text class="gt" x="${x.toFixed(1)}" y="${H-8}" text-anchor="middle">${esc(xf(new Date(t0+k/3*span).toISOString()))}</text>`;}).join('');
+ let d='';bars.forEach((b,i)=>{d+=(i?'L':'M')+X(tms[i]).toFixed(1)+' '+Y(b[4]).toFixed(1)+' ';});
+ const gid='pg'+(++chartSeq);
+ const area=`<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#7e9cc2" stop-opacity=".26"/><stop offset="100%" stop-color="#7e9cc2" stop-opacity="0"/></linearGradient></defs>
+  <path d="${d}L${X(tms[tms.length-1]).toFixed(1)} ${H-pb} L${X(t0).toFixed(1)} ${H-pb} Z" fill="url(#${gid})" stroke="none"/>`;
+ const line=`<path d="${d}" fill="none" stroke="#7e9cc2" stroke-width="1.6" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
+ /* Marker: Dreieck nach oben = Kauf, nach unten = Verkauf. Ausserhalb des Zeitfensters
+    liegende Fills werden weggelassen statt an den Rand geklebt. */
+ const marks=(markers||[]).filter(m=>{const t=new Date(m.ts).getTime();return t>=t0&&t<=t1&&m.price!=null;})
+  .map((m,i)=>{const x=X(new Date(m.ts).getTime()),y=Y(m.price),buy=m.side==='buy';
+   const c=buy?'#5bd9a0':'#f4707f',s=5;
+   const tri=buy?`${x},${y-s-3} ${x-s},${y+s-3} ${x+s},${y+s-3}`:`${x},${y+s+3} ${x-s},${y-s+3} ${x+s},${y-s+3}`;
+   return `<polygon class="pmark" data-mi="${i}" points="${tri}" fill="${c}" stroke="rgba(0,0,0,.45)" stroke-width=".5"/>`;}).join('');
+ return `<div class="chartwrap pricewrap"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.aria||'Kursverlauf mit Trades')}">${area}${grid}${xax}${line}${marks}</svg></div>`;
+}
+
+/* Faktoren als einzelne Chips statt eines zusammengeklebten Satzes — genau das macht
+   die Entscheidung nachlesbar. */
+function factorChips(factors){
+ if(!factors||!factors.length)return '<span class="mut">–</span>';
+ return `<span class="fchips">${factors.map(f=>`<span class="fchip">${esc(f)}</span>`).join('')}</span>`;
+}
+
+function whyBlock(w){
+ if(!w)return '<div class="chart-empty">Zu dieser Order liegt kein Journaleintrag vor (älter als der aufbewahrte Verlauf).</div>';
+ const rows=[
+  ['Entscheidung',`<b style="color:${w.decision==='TRADE'?'var(--green)':'var(--muted)'}">${esc(w.decision||'–')}</b>`],
+  ['Regime',`<span class="trd-dot" style="background:${tColor(w.regime)}"></span>${esc(w.regime||'–')} · Konfidenz ${w.confidence!=null?Math.round(w.confidence*100)+'%':'–'}`],
+  ['Signal des Symbols',w.raw_exposure!=null?((w.raw_exposure>0?'+':'')+Math.round(w.raw_exposure*100)+'%'):'–'],
+  ['Nach Portfolio-Regeln',`<b>${w.exposure!=null?((w.exposure>0?'+':'')+Math.round(w.exposure*100)+'%'):'–'}</b>`],
+  ['Zielgröße',w.target_notional!=null?money(w.target_notional)+(w.budget?' von '+money(w.budget)+' Budget':''):'–'],
+  ['Positionsänderung',(w.from_qty!=null&&w.to_qty!=null)?`${qty(w.from_qty)} → ${qty(w.to_qty)}`:'–'],
+  ['Risiko-Multiplikator',w.risk_multiplier!=null?w.risk_multiplier+'×':'–'],
+  ['Radar',w.radar_level?`${esc(w.radar_level)} · ×${w.radar_multiplier}`:'–'],
+  ['Session',esc(w.session||'–')],
+  ['Zeitpunkt',w.ts?fmtStamp(w.ts):'–'],
+ ];
+ return `<div class="why-factors"><div class="why-head">Warum diese Order</div>
+  <div class="trd-detail">${rows.map(r=>`<div class="trd-drow"><span>${r[0]}</span><strong>${r[1]}</strong></div>`).join('')}</div>
+  <div class="why-head" style="margin-top:12px">Ausschlaggebende Faktoren</div>${factorChips(w.factors)}</div>`;
+}
+
+/* ---- Symbol-Ansicht: Chart mit Trades + vollstaendige Entscheidungshistorie ---- */
+async function openSymbol(sym){
+ const t=TRADING;if(!t)return;
+ let bd=$('#symModal');
+ if(!bd){bd=document.createElement('div');bd.id='symModal';bd.className='modal-backdrop';bd.setAttribute('aria-hidden','true');document.body.appendChild(bd);
+  bd.addEventListener('click',e=>{if(e.target===bd||e.target.closest('[data-close]'))closeSymbol();});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSymbol();});}
+ bd.innerHTML=`<div class="modal sym-modal"><div class="modal-header"><div><span class="eyebrow">ASSET-DETAIL</span><h3>${esc(sym)}</h3></div><button class="icon-button" data-close="1">×</button></div><div class="sym-body"><div class="chart-empty">Kursdaten werden geladen …</div></div></div>`;
+ bd.classList.add('open');bd.setAttribute('aria-hidden','false');
+ const px=await loadPrices();
+ const bars=(px.bars||{})[sym]||(px.bars||{})[String(sym).replace('/','')]||[];
+ const key=String(sym).replace('/','').toUpperCase();
+ const sig=(t.signals||[]).find(s=>String(s.symbol).replace('/','').toUpperCase()===key)||{};
+ const orders=(t.orders||[]).filter(o=>String(o.symbol).replace('/','').toUpperCase()===key);
+ const fills=orders.filter(o=>(o.status||'').toLowerCase()==='filled'&&o.fill_price!=null)
+   .map(o=>({ts:o.filled_at||o.submitted_at,side:o.side,price:o.fill_price,qty:o.qty,why:o.why}));
+ const decisions=(t.decisions_by_symbol||{})[sym]||(t.decisions_by_symbol||{})[key]||[];
+ const trades=(t.trades||[]).filter(x=>String(x.symbol).replace('/','').toUpperCase()===key);
+ const pos=((t.account||{}).open_positions||[]).find(p=>String(p.symbol).replace('/','').toUpperCase()===key);
+
+ const head=[
+  {l:'Aktuelles Regime',v:(sig.regime||'–'),s:sig.confidence!=null?'Konfidenz '+Math.round(sig.confidence*100)+'%':''},
+  {l:'Zielposition',v:(sig.exposure!=null?((sig.exposure>0?'+':'')+Math.round(sig.exposure*100)+'%'):'–'),s:sig.decision||'',c:sig.exposure>0?'var(--green)':(sig.exposure<0?'var(--red)':'')},
+  {l:'Gehalten',v:pos?qty(Math.abs(pos.qty)):'–',s:pos?money2(Math.abs(pos.market_value)):'flat'},
+  {l:'Unrealisiert',v:pos?moneyS(pos.unrealized_pl):'–',s:pos&&pos.unrealized_plpc!=null?pctS(pos.unrealized_plpc,2):'',c:pos?tone(pos.unrealized_pl):''},
+  {l:'Round-Trips',v:n0(trades.length),s:trades.length?moneyS(trades.reduce((a,b)=>a+b.pnl,0))+' realisiert':'noch keine'},
+  {l:'Orders',v:n0(orders.length),s:fills.length+' gefüllt'},
+ ];
+ const buys=fills.filter(f=>f.side==='buy').length,sells=fills.length-buys;
+ const decRows=decisions.map(d=>`<tr><td>${d.ts?fmtStamp(d.ts):'–'}</td>
+  <td><span class="trd-dot" style="background:${tColor(d.regime)}"></span>${esc(d.regime||'–')}</td>
+  <td>${d.confidence!=null?Math.round(d.confidence*100)+'%':'–'}</td>
+  <td class="num">${d.raw_exposure!=null?((d.raw_exposure>0?'+':'')+Math.round(d.raw_exposure*100)+'%'):'–'}</td>
+  <td class="num"><b>${d.exposure!=null?((d.exposure>0?'+':'')+Math.round(d.exposure*100)+'%'):'–'}</b></td>
+  <td class="num">${d.price!=null?money2(d.price):'–'}</td>
+  <td style="font-weight:600;color:${d.decision==='TRADE'?'var(--green)':(d.decision==='FLAT'?'var(--red)':'var(--muted)')}">${esc(d.decision||'–')}</td>
+  <td>${factorChips(d.factors)}</td></tr>`).join('');
+ const decTable=decisions.length?`<div class="trd-scroll"><table class="trd-table"><thead><tr><th>Zeit</th><th>Regime</th><th>Konf</th><th class="num">Signal</th><th class="num">Final</th><th class="num">Kurs</th><th>Entscheidung</th><th>Faktoren</th></tr></thead><tbody>${decRows}</tbody></table></div><small class="trd-hint"><b>Signal</b> = was das Symbol allein wollte. <b>Final</b> = was nach Radar, Risiko-Multiplikator und Korrelationsschutz übrig blieb. Weichen sie ab, steht der Grund in den Faktoren.</small>`:'<div class="chart-empty">Noch keine Entscheidungen für dieses Symbol im aufbewahrten Verlauf.</div>';
+
+ const ordRows=orders.slice(0,40).map(o=>`<tr><td>${o.filled_at?fmtStamp(o.filled_at):(o.submitted_at?fmtStamp(o.submitted_at):'–')}</td>
+  <td style="color:${o.side==='buy'?'var(--green)':'var(--red)'};text-transform:uppercase;font-weight:600">${esc(o.side||'')}</td>
+  <td class="num">${qty(o.qty)}</td><td class="num">${o.fill_price!=null?money2(o.fill_price):'–'}</td>
+  <td class="num">${o.notional!=null?money2(o.notional):'–'}</td>
+  <td><span class="tag ${(o.status||'').toLowerCase()==='filled'?'ok':'mutedtag'}">${esc(o.status||'')}</span></td>
+  <td class="mut">${esc((o.why&&o.why.reason)||'–')}</td></tr>`).join('');
+ const ordTable=orders.length?`<div class="trd-scroll"><table class="trd-table"><thead><tr><th>Zeit</th><th>Seite</th><th class="num">Menge</th><th class="num">Kurs</th><th class="num">Gesamt</th><th>Status</th><th>Grund</th></tr></thead><tbody>${ordRows}</tbody></table></div>`:'<div class="chart-empty">Keine Orders für dieses Symbol.</div>';
+
+ $('#symModal .sym-body').innerHTML=`
+  ${kpiGrid(head)}
+  <div class="sym-sec"><div class="sym-sec-head">Kursverlauf mit Trades <small>${bars.length} Bars · ${buys} Käufe ▲ · ${sells} Verkäufe ▼</small></div>
+   ${svgPriceChart(bars,fills,{aria:'Kursverlauf von '+sym+' mit Kauf- und Verkaufsmarkern'})}</div>
+  <div class="sym-sec"><div class="sym-sec-head">Jede Entscheidung, mit Begründung</div>${decTable}</div>
+  <div class="sym-sec"><div class="sym-sec-head">Orders</div>${ordTable}</div>`;
+}
+function closeSymbol(){const bd=$('#symModal');if(bd){bd.classList.remove('open');bd.setAttribute('aria-hidden','true');}}
 
 function miniGraph(points,color){
  if(!points||points.length<2)return '<svg viewBox="0 0 220 50"></svg>';

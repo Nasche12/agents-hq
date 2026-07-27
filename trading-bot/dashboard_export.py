@@ -36,6 +36,8 @@ def build(symbol=None):
     bot = _read(settings.BOT_STATE, {})
     open_pos = positions.get("open", [])
 
+    journal = _read_journal()
+    orders = _attach_reasons(orders, journal)     # every order carries its own reasoning
     closed = trade_stats.realized_trades(orders)
     stats = trade_stats.summarize(closed)
     per_sym_pnl = trade_stats.by_symbol(closed, open_pos)
@@ -126,7 +128,8 @@ def build(symbol=None):
         "trade_stats": dict(stats, **_activity_counts(orders, closed)),
         "per_symbol": per_sym_pnl,
         "learning": _learning(cfg),             # what the research agent changed, and why
-        "journal_tail": _journal_tail(80),      # real bot decisions incl. skips
+        "journal_tail": _journal_tail(120, journal),   # real bot decisions incl. skips
+        "decisions_by_symbol": _decisions_by_symbol(journal),  # per-asset audit trail
         "equity_history": fine,                 # [[iso, equity, cash], ...] fine resolution
         "equity_history_coarse": coarse,        # downsampled, for long time ranges
     }
@@ -278,22 +281,92 @@ def _equity_at(rows, hours):
     return rows[0][1]
 
 
-def _journal_tail(n):
-    """Last n 'cycle' decisions from the journal -- the bot's real observe/act log."""
+JOURNAL_SCAN = 20000      # lines read from the tail of the journal
+PER_SYMBOL_DECISIONS = 60  # decisions kept per symbol for the drill-down
+
+
+def _read_journal():
+    """Cycle entries from the tail of the journal, oldest first."""
     if not settings.JOURNAL.exists():
         return []
     out = []
-    for line in settings.JOURNAL.read_text(encoding="utf-8").splitlines()[-4000:]:
+    for line in settings.JOURNAL.read_text(encoding="utf-8").splitlines()[-JOURNAL_SCAN:]:
         try:
             e = json.loads(line)
         except Exception:
             continue
         if e.get("type") == "cycle":
-            out.append({"ts": e.get("ts"), "symbol": e.get("symbol"), "decision": e.get("decision"),
-                        "regime": e.get("regime"), "confidence": e.get("confidence"),
-                        "session": e.get("session"), "exposure": e.get("exposure"),
-                        "reason": e.get("reason")})
-    return out[-n:][::-1]
+            out.append(e)
+    return out
+
+
+def _decision_row(e):
+    """One auditable decision. `factors` is the reasoning kept SEPARATE, so the UI can
+    list what moved the outcome instead of showing one glued-together sentence."""
+    return {
+        "ts": e.get("ts"), "symbol": e.get("symbol"), "decision": e.get("decision"),
+        "regime": e.get("regime"), "regime_rank": e.get("regime_rank"),
+        "n_regimes": e.get("n_regimes"), "confidence": e.get("confidence"),
+        "session": e.get("session"), "exposure": e.get("exposure"),
+        "raw_exposure": e.get("raw_exposure"), "price": e.get("price"),
+        "target_notional": e.get("target_notional"), "budget": e.get("budget"),
+        "stable": e.get("stable"), "tradable": e.get("tradable"),
+        "risk_multiplier": e.get("risk_multiplier"), "breakers": e.get("breakers") or [],
+        "radar_level": e.get("radar_level"), "radar_multiplier": e.get("radar_multiplier"),
+        "deadband": e.get("deadband"),
+        "factors": e.get("factors") or ([e["reason"]] if e.get("reason") else []),
+        "reason": e.get("reason"),
+        "order": e.get("order"),
+        "order_id": (e.get("order") or {}).get("order_id"),
+    }
+
+
+def _journal_tail(n, entries=None):
+    """Last n decisions across all symbols -- the bot's real observe/act log."""
+    src = entries if entries is not None else _read_journal()
+    return [_decision_row(e) for e in src[-n:]][::-1]
+
+
+def _decisions_by_symbol(entries):
+    """Every symbol's own history, newest first. This is what makes "why did it do that
+    with NVDA" answerable without grepping a JSONL file on the server."""
+    out = {}
+    for e in entries:
+        out.setdefault(e.get("symbol") or "?", []).append(e)
+    return {sym: [_decision_row(e) for e in rows[-PER_SYMBOL_DECISIONS:]][::-1]
+            for sym, rows in out.items()}
+
+
+def _attach_reasons(orders, entries):
+    """Join each real order to the decision that produced it, via the Alpaca order id.
+    An order in the UI must never be a bare number -- the reasoning that caused it has
+    to travel with it."""
+    by_id = {}
+    for e in entries:
+        oid = (e.get("order") or {}).get("order_id")
+        if oid:
+            by_id[str(oid)] = e
+    out = []
+    for o in orders or []:
+        e = by_id.get(str(o.get("id")))
+        why = None
+        if e:
+            why = {
+                "ts": e.get("ts"), "decision": e.get("decision"), "regime": e.get("regime"),
+                "confidence": e.get("confidence"), "exposure": e.get("exposure"),
+                "raw_exposure": e.get("raw_exposure"), "session": e.get("session"),
+                "risk_multiplier": e.get("risk_multiplier"),
+                "radar_level": e.get("radar_level"),
+                "radar_multiplier": e.get("radar_multiplier"),
+                "target_notional": e.get("target_notional"), "budget": e.get("budget"),
+                "factors": e.get("factors") or [],
+                "reason": e.get("reason"),
+                "action": (e.get("order") or {}).get("action"),
+                "from_qty": (e.get("order") or {}).get("from"),
+                "to_qty": (e.get("order") or {}).get("target"),
+            }
+        out.append(dict(o, why=why))
+    return out
 
 
 def _dd(equity, base):

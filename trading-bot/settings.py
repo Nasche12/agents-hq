@@ -20,6 +20,10 @@ REPO_ROOT = BASE.parent
 # Plesk serves httpdocs/ statically, so the browser fetches trading.json as a FILE there
 # (like the other agents mirror status.json). The bot writes this mirror every cycle.
 PUBLIC_TRADING = REPO_ROOT / "httpdocs" / "trading.json"
+# Per-symbol bars for the trade charts. Kept OUT of trading.json on purpose: the browser
+# only needs them when a symbol drawer is opened, and inlining 20 symbols of history
+# would roughly triple the payload every dashboard poll.
+PUBLIC_PRICES = REPO_ROOT / "httpdocs" / "trading-prices.json"
 STATE_DIR = BASE / "state"
 CACHE_DIR = BASE / "data_cache"
 LOG_DIR = BASE / "logs"
@@ -39,6 +43,7 @@ EQUITY_HISTORY = STATE_DIR / "equity_history.jsonl"  # real account balance snap
 BOT_STATE = STATE_DIR / "bot_state.json"     # cycles run, trades sent, uptime (24/7 counters)
 LOCK_FILE = STATE_DIR / "EMERGENCY.lock"     # -10% kill switch: delete by hand to resume
 DASHBOARD_EXPORT = STATE_DIR / "dashboard.json"  # what the Node trading tab reads
+PRICES = STATE_DIR / "prices.json"           # per-symbol bars for the trade charts
 
 # --- research / self-improvement loop ---
 MEMORY = STATE_DIR / "memory.jsonl"          # every hypothesis ever tested + its verdict

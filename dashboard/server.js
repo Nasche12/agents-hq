@@ -486,6 +486,13 @@ const server = http.createServer((req, res) => {
     const f = path.join(BASE, 'server', 'server-history.json');
     try { return send(res, 200, fs.readFileSync(f), MIME['.json']); } catch (e) { return send(res, 200, []); }
   }
+  if (rel === '/trading-prices.json') {
+    // Per-Symbol-Bars fuer die Trade-Charts. Bewusst getrennt von trading.json: der
+    // Browser holt sie nur, wenn eine Symbol-Ansicht geoeffnet wird.
+    const f = path.join(BASE, 'trading-bot', 'state', 'prices.json');
+    try { return send(res, 200, fs.readFileSync(f), MIME['.json']); }
+    catch (e) { return send(res, 200, { bars: {} }); }
+  }
   if (rel === '/trading.json') {
     // Regime-Bot-Export (Python schreibt trading-bot/state/dashboard.json). Fehlt er -> idle.
     const f = path.join(BASE, 'trading-bot', 'state', 'dashboard.json');

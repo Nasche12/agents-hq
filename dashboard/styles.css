@@ -879,6 +879,31 @@ a.doc-row:hover{border-color:rgba(84,226,255,.45);background:rgba(84,226,255,.06
 .expo .mid{position:absolute;left:50%;top:-2px;width:1px;height:10px;background:rgba(255,255,255,.28)}
 .expo .fill{position:absolute;top:0;height:6px;border-radius:3px}
 
+/* ---- Nachvollziehbarkeit: Faktoren, Warum-Block, Asset-Ansicht ---- */
+.fchips{display:flex;flex-wrap:wrap;gap:4px}
+.fchip{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11.5px;line-height:1.5;
+ background:rgba(126,156,194,.13);border:1px solid rgba(126,156,194,.2);color:var(--text)}
+.trd-table td .fchips{max-width:520px}
+.whycell{max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.why-factors{margin-top:14px}
+.why-head{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+.sym-jump{margin-top:14px;width:100%;padding:10px 14px;border-radius:10px;cursor:pointer;font-size:13px;
+ border:1px solid rgba(126,156,194,.28);background:rgba(126,156,194,.1);color:var(--text);
+ transition:background .12s ease-out}
+.sym-jump:hover{background:rgba(126,156,194,.2)}
+.sym-modal{max-width:1000px;width:calc(100vw - 48px)}
+.sym-body{max-height:calc(100vh - 190px);overflow-y:auto;margin-top:4px}
+.sym-body .trd-kpis{padding:6px 0 14px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+.sym-body .trd-scroll{margin:0}
+.sym-body .trd-hint{margin:8px 0 0}
+.sym-sec{margin-top:18px}
+.sym-sec-head{display:flex;align-items:baseline;gap:10px;font-size:14px;font-weight:600;margin-bottom:9px}
+.sym-sec-head small{font-weight:400;font-size:12px;color:var(--muted)}
+.pricewrap svg{width:100%;height:auto;display:block}
+.pricewrap .pmark{cursor:default}
+tbody tr.sym-row{cursor:pointer}
+@media(max-width:720px){.sym-modal{width:calc(100vw - 20px)}.sym-body{max-height:calc(100vh - 150px)}}
+
 .trd-kpis .analytics-kpi.is-hero{background:rgba(91,217,160,.07);border-color:rgba(91,217,160,.22)}
 .trd-kpis .analytics-kpi strong{font-variant-numeric:tabular-nums}
 @media(max-width:900px){.trd-kpis{grid-template-columns:repeat(2,1fr)}.trd-hero-eq{font-size:32px}.trd-hero-state{justify-content:flex-start}}

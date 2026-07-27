@@ -167,6 +167,10 @@ def cycle(models, risk, broker):
         meta[sym] = {"info": info, "price": price, "notes": notes, "session": session,
                      "tradable": tradable, "extended": extended, "crypto": crypto}
 
+    # keep the per-symbol target BEFORE the portfolio adjustments, so the journal can show
+    # "the symbol wanted +0.95, the radar and the correlation cap left +0.24"
+    raw_expo = dict(raw)
+
     # PASS 2: portfolio view. The radar may ONLY take risk off (multiplier <= 1.0), and
     # the correlation limit finally does what config.risk.max_correlation always claimed.
     weak = [1 for s, mm in meta.items() if mm.get("info")
@@ -248,9 +252,22 @@ def cycle(models, risk, broker):
                 alerts.log_event("order_error", f"{sym}: {str(e)[:180]}")
 
         reason_full = " · ".join(parts)
+        # The journal is the audit trail: `factors` keeps the reasons SEPARATE instead of
+        # glued into one string, and every input that moved the decision is stored next to
+        # it. Six months from now "why did it buy NVDA at 14:32" has to be answerable
+        # without re-deriving anything.
         _journal({"type": "cycle", "symbol": sym, "decision": decision, "regime": info["regime"],
                   "confidence": info["confidence"], "exposure": round(target, 4),
-                  "session": session, "order": order_info, "reason": reason_full})
+                  "session": session, "order": order_info, "reason": reason_full,
+                  "factors": parts,
+                  "raw_exposure": round(raw_expo.get(sym, target), 4),
+                  "price": round(price, 2), "budget": round(per_budget, 2),
+                  "target_notional": round(abs(target) * per_budget, 2),
+                  "stable": info["stable"], "regime_rank": info["regime_rank"],
+                  "n_regimes": info["n_regimes"], "tradable": tradable, "extended": extended,
+                  "risk_multiplier": mult, "breakers": rstate["breakers"],
+                  "radar_level": radar.get("level"), "radar_multiplier": radar.get("multiplier"),
+                  "deadband": deadband})
         signals.append({"symbol": sym, "asset_class": "crypto" if crypto else "us_equity",
                         "session": session, "session_label": sessions.SESSION_LABEL.get(session, session),
                         "tradable": tradable, "regime": info["regime"],
@@ -271,6 +288,7 @@ def cycle(models, risk, broker):
     if broker.connected and acct.get("equity") is not None:
         _append_equity(acct, exec_cfg)
 
+    _write_prices(bars)
     bot["cycles"] += 1
     bot["started"] = bot.get("started") or datetime.now(timezone.utc).isoformat()
     _save_bot_state(bot)
@@ -291,6 +309,32 @@ def cycle(models, risk, broker):
         alerts.send("breaker", f"breakers {rstate['breakers']}")
     dashboard_export.build()
     return signals
+
+
+PRICE_BARS = 240          # bars kept per symbol for the dashboard trade chart
+
+
+def _write_prices(bars):
+    """Recent bars per symbol so the dashboard can draw where each trade happened.
+    Separate file, lazily fetched by the browser -- inlining this into trading.json
+    would triple every dashboard poll for data that is only needed on demand."""
+    out = {}
+    for sym, df in bars.items():
+        tail = df.tail(PRICE_BARS)
+        if not len(tail):
+            continue
+        out[sym] = [[t.isoformat(), round(float(o), 4), round(float(h), 4),
+                     round(float(lo), 4), round(float(c), 4)]
+                    for t, o, h, lo, c in zip(tail.index, tail["open"], tail["high"],
+                                              tail["low"], tail["close"])]
+    payload = json.dumps({"generated": datetime.now(timezone.utc).isoformat(),
+                          "bars": out}, separators=(",", ":"))
+    settings.PRICES.write_text(payload, encoding="utf-8")
+    try:
+        if settings.PUBLIC_PRICES.parent.exists():
+            settings.PUBLIC_PRICES.write_text(payload, encoding="utf-8")
+    except Exception:
+        pass
 
 
 def _append_equity(acct, exec_cfg):
