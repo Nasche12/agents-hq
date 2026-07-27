@@ -1,0 +1,24 @@
+{
+  "_note": "Geplante Termine mit hoher Marktwirkung. Das sind TERMINE, keine Meinungen - nicht manipulierbar, nicht interpretationsbeduerftig, kostet null Token. Der Bot reduziert die Positionsgroesse im Fenster davor und danach. Er handelt NICHT auf das Ereignis, er macht sich nur kleiner.",
+  "_wichtig": "Die Liste ist ABSICHTLICH LEER. Ich trage keine Termine ein, die ich nicht verifizieren kann - erfundene Daten in einem Live-System sind schlimmer als gar keine. Trag die echten selbst ein (Quellen unten), dann wirkt der Schutz. Solange sie leer ist, aendert sich am Verhalten nichts.",
+  "_quellen": {
+    "fomc": "federalreserve.gov/monetarypolicy/fomccalendars.htm - Zinsentscheide, 8x im Jahr",
+    "cpi_nfp": "bls.gov/schedule/news_release - Inflation (CPI) und Arbeitsmarkt (NFP)",
+    "earnings": "Investor-Relations-Seite des jeweiligen Unternehmens; fuer NVDA relevant",
+    "hinweis": "ts IMMER in UTC mit Z. FOMC-Entscheid ist typischerweise 18:00 UTC, CPI/NFP 12:30 UTC (waehrend Sommerzeit)."
+  },
+  "_format": {
+    "ts": "2026-09-16T18:00:00Z",
+    "name": "FOMC Zinsentscheid",
+    "impact": "high | medium",
+    "scope": "all | equity | crypto"
+  },
+  "enabled": true,
+  "pre_minutes": 60,
+  "post_minutes": 30,
+  "multipliers": {
+    "high": 0.5,
+    "medium": 0.75
+  },
+  "events": []
+}

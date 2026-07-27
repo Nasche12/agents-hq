@@ -90,7 +90,17 @@
     },
     "anomaly_volume_z": 3.0,
     "anomaly_return_z": 3.0,
-    "anomaly_exposure_cap": 0.3
+    "anomaly_exposure_cap": 0.3,
+    "_news_note": "Nachrichten-Stufe des markt-waechter-Agents (0-3). Fliesst als weiterer Eingang ein und kann die Positionsgroesse NUR senken. Fehlt oder veraltet die Datei -> Faktor 1.0, also kein Effekt. Der Agent waehlt nie Symbole und loest nie Orders aus - er schreibt eine Zahl.",
+    "news": {
+      "enabled": true,
+      "max_age_minutes": 90,
+      "multipliers": {
+        "1": 0.8,
+        "2": 0.55,
+        "3": 0.3
+      }
+    }
   },
   "learning": {
     "_note": "Selbstverbesserung. Der Forscher-Agent schlaegt Parameter vor, der Optimizer entscheidet mit Daten. Promotet wird NUR nach config.local.json (git-ignoriert) - config.json bleibt deine Basis und wird nie vom Agenten angefasst.",

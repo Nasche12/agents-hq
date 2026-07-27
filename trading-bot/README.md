@@ -106,6 +106,39 @@ Feature-Sets: `patterns` (3 Detektoren), `patterns_wide` (alle 6 — höchstes �
 
 **Quellen** — Regeln aus den gängigen veröffentlichten Definitionen: [IG](https://www.ig.com/en/trading-strategies/comprehensive-guide-on-the-head-and-shoulders-chart-pattern-for--240919) und [OANDA](https://www.oanda.com/us-en/trade-tap-blog/analysis/technical/chart-patterns-how-to-trade-head-and-shoulders-pattern/) (Kopf-Schulter, Nackenlinie, Measured Move), [FXOpen](https://fxopen.com/blog/en/trading-the-double-top-pattern-structure-signals-and-strategy/) und [TradingSim](https://www.tradingsim.com/blog/double-top) (Doppeltop-Toleranz 2–6 %, Bulkowski 6 %, Volumenregel), [TradingView](https://www.tradingview.com/scripts/zigzagindicator/) (Repainting-Verhalten von ZigZag). Wissenschaftliche Einordnung der Musterevidenz: Lo/Mamaysky/Wang 2000, *Journal of Finance*.
 
+## Was im Kursverlauf nicht steht: Termine und Nachrichten
+
+Das HMM sieht nur Preis und Volumen. Eine Zollankündigung um 14:00 ist um 13:59 **nicht** im Kurs — solche Schocks kann kein Blick auf Bars vorwegnehmen. `external_risk.py` schließt diese Lücke, in zwei streng getrennten Teilen:
+
+**1. Ereigniskalender** (`market_events.json`, 0 Token) — FOMC, CPI, NFP, Zolltermine, Earnings. Das sind **Termine, keine Meinungen**: nicht manipulierbar, nicht interpretationsbedürftig. Der Bot verkleinert sich im Fenster davor und danach. Die Datei wird **absichtlich leer ausgeliefert** — erfundene Daten in einem Livesystem wären schlimmer als gar keine. Quellen zum Eintragen stehen in der Datei.
+
+**2. Nachrichten-Stufe** (Agent `markt-waechter`) — liest alle 15 Minuten Reuters, AP, Bloomberg, FT, WSJ, CNBC und die Notenbankseiten und schreibt **eine ganze Zahl 0–3** nach `state/news_risk.json`. Keine Symbole, keine Richtung, keine Order.
+
+| Stufe | | Faktor |
+|---|---|---|
+| 0 | ruhig — der Normalfall | ×1.0 |
+| 1 | erhöht | ×0.8 |
+| 2 | Stress | ×0.55 |
+| 3 | Krise | ×0.3 |
+
+### Warum ein LLM hier unbedenklich ist
+
+- **Er kann nur senken.** Multiplikator in `[0, 1]`, konstruktiv geklammert und in `tests/test_external_risk.py` gegen jede Eingabe geprüft. Eine Prompt-Injection in einem Artikel kann den Bot schlimmstenfalls flach stellen — das kostet Gelegenheit, nie Kapital, und kann ihn niemals zum **Kaufen** bewegen.
+- **Nur `level` wird gelesen.** Schreibt der Agent zusätzlich `symbols`, `side` oder `multiplier` in die Datei, wird das ignoriert.
+- **Ausfall heilt sich selbst.** Nach 90 Minuten gilt die Datei als veraltet und der Bot handelt wieder normal, statt dauerhaft defensiv zu bleiben.
+- **Die Handelsschleife bleibt deterministisch.** Der Agent schreibt eine Datei, die Schleife liest einen Parameter. Kein Sprachmodell im Minutentakt, keins in der Nähe einer Order.
+
+### Warum nur risk-off
+
+Beim Wissen liegt kein Vorteil — die Nachricht kennen nach Millisekunden alle. Der Vorteil läge in der Geschwindigkeit, und dieses Rennen verliert ein LLM gegen HFT kategorisch. Fünf Minuten zu spät **verkleinern** ist bloß spät. Fünf Minuten zu spät auf eine Nachricht **kaufen** heißt, die Ausstiegsliquidität der Schnelleren zu sein.
+
+Beide Signale werden per **Minimum** mit dem Tape-Radar verrechnet — das schlechteste Signal regiert, nichts hebt sich auf.
+
+```bash
+# Agent einschalten: config/schedule.json -> markt-waechter enabled: true
+python -c "import external_risk,json;print(json.dumps(external_risk.assess(),indent=2,ensure_ascii=False))"
+```
+
 ## Selbstverbesserung
 
 Der Bot lernt aus **seinen eigenen gemessenen Ergebnissen** — nie aus Texten. Die Regel: *Das LLM schlägt vor, die Daten entscheiden.*

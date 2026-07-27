@@ -4,6 +4,14 @@
   "zeitzone": "Europe/Vienna",
   "catchup_minuten": 120,
   "agents": {
+    "markt-waechter": {
+      "cadence": "alle 15 min",
+      "enabled": false,
+      "schwer": false,
+      "channel": "agent-logs",
+      "quiet": true,
+      "_hinweis": "Liest Wirtschaftsnachrichten und schreibt EINE Zahl 0-3 nach trading-bot/state/news_risk.json. Kostet Tokens (haiku, kurzer Lauf alle 15 min = 96/Tag). Die Zahl kann die Positionsgroessen des Bots NUR senken, nie erhoehen; faellt der Agent aus, ignoriert der Bot die Datei nach 90 Minuten und handelt normal weiter. enabled=true setzen, wenn du den Nachrichten-Schutz willst."
+    },
     "trading-forscher": {
       "cadence": "So 04:00",
       "enabled": false,

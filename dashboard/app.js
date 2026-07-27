@@ -1568,6 +1568,12 @@ function renderTrading(){
  const rdTone={calm:'var(--green)',elevated:'var(--yellow)',stress:'var(--orange,#e0a25c)',crisis:'var(--red)'}[rd.level]||'var(--muted)';
  const anomN=Object.keys(rd.anomalies||{}).length;
  const rdPill=rd.enabled?`<span class="mk-pill ${rd.level==='calm'?'open':'shut'}" title="${esc((rd.reasons||[]).join(' · ')||'keine Auffaelligkeiten')}"><i style="background:${rdTone}"></i>Radar · <b style="color:${rdTone}">${esc(String(rd.level||'–').toUpperCase())}</b><small>Risiko ×${rd.multiplier!=null?rd.multiplier:1}${anomN?' · '+anomN+' Anomalie'+(anomN>1?'n':''):''}${rd.correlation!=null?' · Korr '+rd.correlation:''}</small></span>`:'';
+ /* Externe Signale: Termine + Nachrichten-Stufe. Beide koennen nur SENKEN, deshalb wird
+    hier nie etwas Gruenes suggeriert, wenn nichts anliegt - dann steht schlicht nichts. */
+ const ext=t.external_risk||{},extNews=ext.news||{},extEv=ext.events||[];
+ const extActive=(ext.multiplier!=null&&ext.multiplier<1);
+ const newsLbl=extNews.usable?`Stufe ${extNews.level} · ${esc(extNews.label||'')}`:'keine Einstufung';
+ const extPill=`<span class="mk-pill ${extActive?'shut':'neutral'}" title="${esc((ext.reasons||[]).join(' · ')||(extNews.why||'ruhig'))}"><i style="background:${extActive?'var(--orange,#e0a25c)':'var(--muted)'}"></i>Welt · <b>${extActive?'RISIKO ×'+ext.multiplier:'RUHIG'}</b><small>${esc(newsLbl)}${extEv.length?' · '+extEv.length+' Termin'+(extEv.length>1?'e':''):''}</small></span>`;
  const cryptoPill=uni.crypto_count?`<span class="mk-pill open"><i></i>Crypto 24/7 · <b>OPEN</b><small>${uni.crypto_count} pairs</small></span>`:'';
  const eqOpen=mk.equity_tradable;
  const eqPill=`<span class="mk-pill ${eqOpen?'open':'shut'}"><i></i>US equities · <b>${esc((mk.equity_label||'–').toUpperCase())}</b><small>${uni.equity_count||0} tickers${mk.next_open&&!eqOpen?' · opens '+fmtStamp(mk.next_open):(mk.next_close&&eqOpen?' · closes '+fmtClock(mk.next_close):'')}</small></span>`;
@@ -1580,7 +1586,7 @@ function renderTrading(){
     <span class="status-chip">${bot.runs_247?'24/7':'session only'} · cycle ${bot.cycle_seconds||60}s</span>
     <span class="status-chip" title="${esc(live.last_cycle||'')}">last cycle ${ago(live.stale_seconds)} ago</span>
    </div></div>
-  <div class="trd-markets">${rdPill}${cryptoPill}${eqPill}<span class="mk-pill neutral"><i></i>Now · <b>${esc(mk.now_et||'–')}</b><small>${live.tradable_now||0} of ${signals.length} symbols actionable</small></span></div>
+  <div class="trd-markets">${rdPill}${extPill}${cryptoPill}${eqPill}<span class="mk-pill neutral"><i></i>Now · <b>${esc(mk.now_et||'–')}</b><small>${live.tradable_now||0} of ${signals.length} symbols actionable</small></span></div>
   <div class="trd-note ${acc.trading_enabled===false?'':'ok'}">${acc.trading_enabled===false
    ?'⏸ <b>Observe only</b> — the bot computes HMM signals and logs why, but sends <b>no orders</b>. Set <code>trading_enabled: true</code> in <code>config.json</code>.'
    :`✅ <b>Live paper trading, round the clock.</b> Crypto trades 24/7; equities only when their session is open${acc.extended_hours?' (incl. pre/after-hours via limit orders)':''}. Hard limits: <b>${money(acc.per_trade_cap)} max per trade</b>, margin capped at <b>${money(acc.max_margin||0)}</b>, rebalance from <b>${Math.round((acc.rebalance_min_pct||0.02)*100)}%</b> drift.`}</div>

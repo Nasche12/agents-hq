@@ -10,11 +10,17 @@ The asymmetry is the whole design:
 
 So assess() returns a multiplier in [0, 1]. It cannot be above 1 by construction.
 
-Why the tape and not the news: by the time a crisis is in the headlines the price has
-already moved -- for macro events, news is a LAGGING indicator. What actually turns
-first is measurable: a volatility shock, correlations collapsing towards 1 (in a crisis
-everything moves together, which is exactly when diversification stops working), and
-market breadth rolling over.
+The tape carries most of it: a volatility shock, correlations collapsing towards 1 (in a
+crisis everything moves together, which is exactly when diversification stops working),
+market breadth rolling over. For SLOW regime shifts these turn before the headlines do.
+
+But not for discrete shocks. A tariff announcement at 14:00 is genuinely not in the
+price at 13:59, and no amount of staring at bars will reveal it. That gap is filled by
+external_risk.py -- a scheduled-event calendar and a news level written by an LLM agent.
+Both fold in here by MINIMUM and, like everything else in this module, can only ever
+reduce exposure. Reacting late to news is fine when you are getting smaller; it is fatal
+when you are getting bigger, because by then the fast money has already traded it and
+what remains for a latecomer is the exit liquidity role.
 
 And the "something is being pumped" case: if you can read that somewhere, you are the
 exit liquidity -- pump schemes need someone to buy the signal. But the pump itself IS
@@ -24,6 +30,7 @@ import numpy as np
 import pandas as pd
 
 import settings
+import external_risk
 from feature_engineering import build_features
 
 CALM, ELEVATED, STRESS, CRISIS = "calm", "elevated", "stress", "crisis"
@@ -136,22 +143,31 @@ def _level(vol_ratio, corr, weak_share, rcfg):
     return level, reasons
 
 
-def assess(bars, weak_share=None):
+def assess(bars, weak_share=None, now=None):
     """The full read. Returns level, a de-risking multiplier in [0, 1], per-symbol
-    anomalies and the correlation matrix (used to enforce real diversification)."""
+    anomalies and the correlation matrix (used to enforce real diversification).
+
+    Folds in the EXTERNAL inputs the tape cannot contain (scheduled events, news level).
+    Combined by MINIMUM, not product: the worst single signal governs, exactly as the
+    tape signals escalate to the worst rather than averaging."""
     rcfg = _rcfg()
+    ext = external_risk.assess(now)
     if not rcfg.get("enabled", True) or len(bars) < 2:
-        return {"enabled": False, "level": CALM, "multiplier": 1.0, "reasons": [],
-                "anomalies": {}, "correlation": None, "corr_matrix": {}}
+        # even with the tape radar off, calendar and news must still be able to protect
+        return {"enabled": False, "level": CALM, "multiplier": ext["multiplier"],
+                "reasons": ext["reasons"], "anomalies": {}, "correlation": None,
+                "corr_matrix": {}, "external": ext}
 
     corr, matrix = market_correlation(bars, rcfg.get("corr_window", 300))
     ratio = vol_shock(bars)
     level, reasons = _level(ratio, corr, weak_share, rcfg)
     mults = rcfg.get("multipliers", {})
-    mult = float(mults.get(level, 1.0))
+    mult = min(float(mults.get(level, 1.0)), ext["multiplier"])
+    reasons = reasons + ext["reasons"]
     # hard guarantee: this component can only ever take risk off
     mult = max(0.0, min(1.0, mult))
     return {
+        "external": ext,
         "enabled": True,
         "level": level,
         "multiplier": round(mult, 3),

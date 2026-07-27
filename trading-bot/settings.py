@@ -50,6 +50,7 @@ MEMORY = STATE_DIR / "memory.jsonl"          # every hypothesis ever tested + it
 CANDIDATES = STATE_DIR / "candidates.json"   # what the LLM proposed this round (never applied directly)
 EVIDENCE = STATE_DIR / "evidence.json"       # the pack the LLM reads (own results, past verdicts)
 LEARNING_REPORT = STATE_DIR / "learning_report.json"  # last research run, for the dashboard
+NEWS_RISK = STATE_DIR / "news_risk.json"     # market-watch agent verdict: ONE integer 0-3
 CONFIG_HISTORY = STATE_DIR / "config_history.jsonl"   # every promotion, with the previous values
 
 _REGIME_NAMES = {

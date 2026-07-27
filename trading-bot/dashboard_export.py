@@ -73,6 +73,7 @@ def build(symbol=None):
         "regime_colors": settings.REGIME_COLORS,
         "market": market,                      # which session each asset class is in, right now
         "radar": heartbeat.get("radar") or {},  # crisis / anomaly read, acts instantly (risk-off only)
+        "external_risk": _external_risk(),      # calendar + news level, both risk-off only
         "live": live,
         "bot": {
             "cycles": bot.get("cycles", 0),
@@ -142,6 +143,18 @@ def build(symbol=None):
     except Exception:
         pass
     return export
+
+
+def _external_risk():
+    """Scheduled events and the news agent's level, read fresh so the dashboard shows the
+    CURRENT state even between bot cycles. Never triggers anything -- reading only."""
+    try:
+        import external_risk
+        out = external_risk.assess()
+        return {k: out[k] for k in ("multiplier", "event_multiplier", "news_multiplier",
+                                    "events", "news", "reasons")}
+    except Exception as e:
+        return {"multiplier": 1.0, "error": str(e)[:120]}
 
 
 def _learning(cfg):
