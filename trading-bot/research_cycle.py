@@ -2,6 +2,8 @@
 
     python research_cycle.py evidence   # 0 tokens. Builds the pack the agent reads.
     python research_cycle.py evaluate   # 0 tokens. Judges candidates, promotes a winner.
+    python research_cycle.py evaluate --quick   # same pipeline, tiny scope: verify it
+                                        # works end to end before spending hours on it.
     python research_cycle.py grid       # 0 tokens. Candidate fallback without an LLM.
     python research_cycle.py status     # what is currently promoted, and why.
 
@@ -123,9 +125,22 @@ def grid_candidates():
 
 
 # ---------------------------------------------------------------- evaluate (0 tokens)
-def evaluate(candidates=None, auto_promote=True):
+QUICK = {"eval_days": 20, "in_sample_bars": 600, "out_sample_bars": 200,
+         "max_candidates": 2, "min_trades": 5, "min_symbols": 1}
+
+
+def evaluate(candidates=None, auto_promote=True, quick=False):
+    """quick=True shrinks the scope drastically (fewer days, shorter windows, 2
+    candidates, one symbol). It proves the pipeline runs end to end in minutes instead
+    of hours -- but its verdicts are NOT trustworthy and are never promoted, because a
+    600-bar window over 20 days cannot support a real out-of-sample claim."""
     import optimizer                      # heavy (pandas + hmmlearn) -- only needed here
     lcfg = _lcfg()
+    if quick:
+        lcfg = dict(lcfg, **QUICK)
+        lcfg["eval_symbols"] = (lcfg.get("eval_symbols") or ["SPY"])[:1]
+        auto_promote = False              # a smoke run must never change the live config
+        print("QUICK-Modus: verkleinerter Umfang, KEINE Promotion, kein Gedaechtnis-Eintrag")
     if not lcfg.get("enabled", False):
         return {"skipped": "learning.enabled ist false"}
 
@@ -144,8 +159,9 @@ def evaluate(candidates=None, auto_promote=True):
         clean, problems = promote.validate(changes)
         if problems:
             skipped.append({**c, "reason": "; ".join(problems)})
-            memory.record(c.get("hypothesis", "?"), c.get("rationale", ""), changes,
-                          memory.REJECTED, {"reason": "abgewiesen: " + "; ".join(problems)})
+            if not quick:
+                memory.record(c.get("hypothesis", "?"), c.get("rationale", ""), changes,
+                              memory.REJECTED, {"reason": "abgewiesen: " + "; ".join(problems)})
             continue
         seen = memory.already_tested(clean)
         if seen:
@@ -165,12 +181,20 @@ def evaluate(candidates=None, auto_promote=True):
 
     promoted = None
     for ev in results["candidates"]:
-        if ev is results.get("winner"):
+        if ev is results.get("winner") or quick:
             continue
         memory.record(ev.get("hypothesis", "?"), ev.get("rationale", ""), ev["changes"],
                       memory.REJECTED, _evidence_of(ev, results["champion"]))
 
     win, hold = results.get("winner"), results.get("holdout")
+    if quick:
+        print(f"QUICK fertig · Champion {(results.get('champion') or {}).get('objective')} · "
+              f"Gewinner {(win or {}).get('objective')} · Holdout "
+              f"{(hold or {}).get('passes')} — nichts gespeichert, nichts uebernommen")
+        return {"quick": True, "champion": (results.get("champion") or {}).get("objective"),
+                "candidates": [{k: c.get(k) for k in ("hypothesis", "objective", "reason")}
+                               for c in results["candidates"]],
+                "holdout": (hold or {}).get("passes")}
     if win and hold:
         ev = _evidence_of(win, results["champion"])
         ev["holdout_objective"] = (hold["candidate"] or {}).get("objective")
@@ -246,7 +270,8 @@ if __name__ == "__main__":
               f"({len(p['tunable_parameters'])} Parameter frei, "
               f"{len(p['memory'])} Erkenntnisse, {len(p['due_for_recheck'])} faellig)")
     elif cmd == "evaluate":
-        r = evaluate(auto_promote="--dry-run" not in sys.argv)
+        quick = "--quick" in sys.argv
+        r = evaluate(auto_promote="--dry-run" not in sys.argv and not quick, quick=quick)
         print(json.dumps({k: r.get(k) for k in ("champion_objective", "tested", "holdout",
                                                 "promoted")}, indent=2, default=str))
     elif cmd == "grid":
