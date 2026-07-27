@@ -1718,12 +1718,13 @@ function renderTrading(){
 
  /* ---------- 11. Entscheidungs-Journal ---------- */
  const jt=t.journal_tail||[];
- const jrows=jt.map(e=>{const dc=e.decision==='TRADE'?'var(--green)':(e.decision==='CLOSED'?'var(--muted)':(e.decision==='FLAT'?'var(--red)':'var(--muted)'));
-  return `<tr><td>${e.ts?fmtStamp(e.ts):'–'}</td><td><b>${esc(e.symbol||'–')}</b></td><td><span class="trd-dot" style="background:${tColor(e.regime)}"></span>${esc(e.regime||'–')}</td>
+ TRADING._decisions=jt;   // stash for the click handler
+ const jrows=jt.map((e,i)=>{const dc=e.decision==='TRADE'?'var(--green)':(e.decision==='CLOSED'?'var(--muted)':(e.decision==='FLAT'?'var(--red)':'var(--muted)'));
+  return `<tr class="dec-row" data-di="${i}" tabindex="0" role="button" data-tip="Vollständige Herleitung dieser Entscheidung"><td>${e.ts?fmtStamp(e.ts):'–'}</td><td><b>${esc(e.symbol||'–')}</b></td><td><span class="trd-dot" style="background:${tColor(e.regime)}"></span>${esc(e.regime||'–')}</td>
    <td>${e.confidence!=null?Math.round(e.confidence*100)+'%':'–'}</td>
    <td class="num">${e.exposure!=null?((e.exposure>0?'+':'')+Math.round(e.exposure*100)+'%'):'–'}</td>
    <td style="color:${dc};font-weight:600">${esc(e.decision||'–')}</td><td>${factorChips(e.factors)}</td></tr>`;}).join('');
- const journalTable=jt.length?`<div class="trd-scroll"><table class="trd-table"><thead><tr><th>Time</th><th>Symbol</th><th>Regime</th><th>Conf</th><th class="num">Target</th><th>Decision</th><th>Faktoren</th></tr></thead><tbody>${jrows}</tbody></table></div><small class="trd-hint">Real cycles from the bot. <b>SKIP</b> = it deliberately did not trade, <b>CLOSED</b> = that market is shut right now, <b>FLAT</b> = a risk breaker forced it out.</small>`:'<div class="chart-empty">No cycles yet — run <code>python main.py --once</code>.</div>';
+ const journalTable=jt.length?`<div class="trd-scroll"><table class="trd-table trd-clickable"><thead><tr><th>Time</th><th>Symbol</th><th>Regime</th><th>Conf</th><th class="num">Target</th><th>Decision</th><th>Faktoren</th></tr></thead><tbody>${jrows}</tbody></table></div><small class="trd-hint"><b>Zeile anklicken</b> zeigt die vollständige Herleitung. Real cycles from the bot. <b>SKIP</b> = it deliberately did not trade, <b>CLOSED</b> = that market is shut right now, <b>FLAT</b> = a risk breaker forced it out.</small>`:'<div class="chart-empty">No cycles yet — run <code>python main.py --once</code>.</div>';
 
 
  /* ---------- 12. Selbstverbesserung: was der Forscher-Agent geaendert hat ---------- */
@@ -1772,7 +1773,12 @@ if(!window.__trdRowDelegated){window.__trdRowDelegated=true;
  const openRow=el=>{
   if(!el||!el.closest)return;
   const jump=el.closest('[data-symjump]');
-  if(jump){const bd=$('#trdModal');if(bd){bd.classList.remove('open');bd.setAttribute('aria-hidden','true');}openSymbol(jump.dataset.symjump);return;}
+  if(jump){closeTradeCard();closeDecision();openSymbol(jump.dataset.symjump);return;}
+  const dec=el.closest('.dec-row');
+  if(dec){
+   if(dec.dataset.sd!=null){openDecisionCard((window.__symDecisions||[])[+dec.dataset.sd]);return;}
+   if(dec.dataset.di!=null){openDecisionCard((TRADING&&TRADING._decisions||[])[+dec.dataset.di]);return;}
+  }
   const sym=el.closest('.sym-row');
   if(sym&&sym.dataset.sym){openSymbol(sym.dataset.sym);return;}
   const r=el.closest('.trd-orow');
@@ -1781,14 +1787,24 @@ if(!window.__trdRowDelegated){window.__trdRowDelegated=true;
  document.addEventListener('click',e=>openRow(e.target));
  document.addEventListener('keydown',e=>{
   const c=e.target&&e.target.classList;
-  if((e.key==='Enter'||e.key===' ')&&c&&(c.contains('trd-orow')||c.contains('sym-row'))){e.preventDefault();openRow(e.target);}});
+  if((e.key==='Enter'||e.key===' ')&&c&&(c.contains('trd-orow')||c.contains('sym-row')||c.contains('dec-row'))){e.preventDefault();openRow(e.target);}});
+ // EIN Escape-Handler fuer den Trading-Stapel: schliesst immer nur die OBERSTE Karte.
+ // CAPTURE-Phase mit stopPropagation, weil es weiter unten einen globalen Handler gibt,
+ // der pauschal JEDES offene .modal-backdrop schliesst — ohne das wuerde ein Escape in
+ // der Entscheidungskarte die Asset-Ansicht darunter gleich mitreissen.
+ document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape')return;
+  for(const [sel,close] of [['#decModal',closeDecision],['#symModal',closeSymbol],['#trdModal',closeTradeCard]]){
+   const m=$(sel);
+   if(m&&m.classList.contains('open')){close();e.stopPropagation();e.preventDefault();return;}
+  }},true);
 }
+function closeTradeCard(){const bd=$('#trdModal');if(bd){bd.classList.remove('open');bd.setAttribute('aria-hidden','true');}}
 function openTradeCard(o){
  if(!o)return;
  let bd=$('#trdModal');
  if(!bd){bd=document.createElement('div');bd.id='trdModal';bd.className='modal-backdrop';bd.setAttribute('aria-hidden','true');document.body.appendChild(bd);
-  bd.addEventListener('click',e=>{if(e.target===bd||e.target.closest('[data-close]')){bd.classList.remove('open');bd.setAttribute('aria-hidden','true');}});
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'){bd.classList.remove('open');bd.setAttribute('aria-hidden','true');}});}
+  bd.addEventListener('click',e=>{if(e.target===bd||e.target.closest('[data-close]'))closeTradeCard();});}
  const rows=[
   ['Symbol',esc(o.symbol)],
   ['Side',`<span style="color:${o.side==='buy'?'var(--green)':'var(--red)'};text-transform:uppercase;font-weight:600">${esc(o.side||'')}</span>`],
@@ -1886,8 +1902,7 @@ async function openSymbol(sym){
  const t=TRADING;if(!t)return;
  let bd=$('#symModal');
  if(!bd){bd=document.createElement('div');bd.id='symModal';bd.className='modal-backdrop';bd.setAttribute('aria-hidden','true');document.body.appendChild(bd);
-  bd.addEventListener('click',e=>{if(e.target===bd||e.target.closest('[data-close]'))closeSymbol();});
-  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSymbol();});}
+  bd.addEventListener('click',e=>{if(e.target===bd||e.target.closest('[data-close]'))closeSymbol();});}
  bd.innerHTML=`<div class="modal sym-modal"><div class="modal-header"><div><span class="eyebrow">ASSET-DETAIL</span><h3>${esc(sym)}</h3></div><button class="icon-button" data-close="1">×</button></div><div class="sym-body"><div class="chart-empty">Kursdaten werden geladen …</div></div></div>`;
  bd.classList.add('open');bd.setAttribute('aria-hidden','false');
  const px=await loadPrices();
@@ -1910,7 +1925,8 @@ async function openSymbol(sym){
   {l:'Orders',v:n0(orders.length),s:fills.length+' gefüllt'},
  ];
  const buys=fills.filter(f=>f.side==='buy').length,sells=fills.length-buys;
- const decRows=decisions.map(d=>`<tr><td>${d.ts?fmtStamp(d.ts):'–'}</td>
+ window.__symDecisions=decisions;
+ const decRows=decisions.map((d,i)=>`<tr class="dec-row" data-sd="${i}" tabindex="0" role="button"><td>${d.ts?fmtStamp(d.ts):'–'}</td>
   <td><span class="trd-dot" style="background:${tColor(d.regime)}"></span>${esc(d.regime||'–')}</td>
   <td>${d.confidence!=null?Math.round(d.confidence*100)+'%':'–'}</td>
   <td class="num">${d.raw_exposure!=null?((d.raw_exposure>0?'+':'')+Math.round(d.raw_exposure*100)+'%'):'–'}</td>
@@ -1918,7 +1934,7 @@ async function openSymbol(sym){
   <td class="num">${d.price!=null?money2(d.price):'–'}</td>
   <td style="font-weight:600;color:${d.decision==='TRADE'?'var(--green)':(d.decision==='FLAT'?'var(--red)':'var(--muted)')}">${esc(d.decision||'–')}</td>
   <td>${factorChips(d.factors)}</td></tr>`).join('');
- const decTable=decisions.length?`<div class="trd-scroll"><table class="trd-table"><thead><tr><th>Zeit</th><th>Regime</th><th>Konf</th><th class="num">Signal</th><th class="num">Final</th><th class="num">Kurs</th><th>Entscheidung</th><th>Faktoren</th></tr></thead><tbody>${decRows}</tbody></table></div><small class="trd-hint"><b>Signal</b> = was das Symbol allein wollte. <b>Final</b> = was nach Radar, Risiko-Multiplikator und Korrelationsschutz übrig blieb. Weichen sie ab, steht der Grund in den Faktoren.</small>`:'<div class="chart-empty">Noch keine Entscheidungen für dieses Symbol im aufbewahrten Verlauf.</div>';
+ const decTable=decisions.length?`<div class="trd-scroll"><table class="trd-table trd-clickable"><thead><tr><th>Zeit</th><th>Regime</th><th>Konf</th><th class="num">Signal</th><th class="num">Final</th><th class="num">Kurs</th><th>Entscheidung</th><th>Faktoren</th></tr></thead><tbody>${decRows}</tbody></table></div><small class="trd-hint"><b>Signal</b> = was das Symbol allein wollte. <b>Final</b> = was nach Radar, Risiko-Multiplikator und Korrelationsschutz übrig blieb. Weichen sie ab, steht der Grund in den Faktoren.</small>`:'<div class="chart-empty">Noch keine Entscheidungen für dieses Symbol im aufbewahrten Verlauf.</div>';
 
  const ordRows=orders.slice(0,40).map(o=>`<tr><td>${o.filled_at?fmtStamp(o.filled_at):(o.submitted_at?fmtStamp(o.submitted_at):'–')}</td>
   <td style="color:${o.side==='buy'?'var(--green)':'var(--red)'};text-transform:uppercase;font-weight:600">${esc(o.side||'')}</td>
@@ -1936,6 +1952,59 @@ async function openSymbol(sym){
   <div class="sym-sec"><div class="sym-sec-head">Orders</div>${ordTable}</div>`;
 }
 function closeSymbol(){const bd=$('#symModal');if(bd){bd.classList.remove('open');bd.setAttribute('aria-hidden','true');}}
+
+
+/* Entscheidungs-Karte: die vollstaendige Herleitung EINER Entscheidung. Der wichtigste
+   Teil ist die Kette Signal -> Final: dort steht, ob Radar, Risiko-Multiplikator oder
+   Korrelationsschutz die Position gekuerzt haben - und um wie viel. */
+function decChain(d){
+ const raw=d.raw_exposure,fin=d.exposure;
+ if(raw==null||fin==null)return '';
+ const p=v=>((v>0?'+':'')+Math.round(v*100)+'%');
+ const cut=Math.abs(raw)>1e-9?1-Math.abs(fin)/Math.abs(raw):0;
+ const same=Math.abs(raw-fin)<1e-9;
+ return `<div class="dec-chain">
+  <div class="dec-step"><span>Signal des Symbols</span><b>${p(raw)}</b></div>
+  <div class="dec-arrow">${same?'unverändert':'−'+Math.round(cut*100)+'%'}</div>
+  <div class="dec-step final"><span>Tatsächlich angestrebt</span><b style="color:${fin>0?'var(--green)':(fin<0?'var(--red)':'inherit')}">${p(fin)}</b></div>
+ </div>${same?'':'<small class="trd-hint">Die Kürzung kommt aus den Faktoren unten — Radar, Risiko-Multiplikator oder Korrelationsschutz.</small>'}`;
+}
+
+function openDecisionCard(d){
+ if(!d)return;
+ let bd=$('#decModal');
+ if(!bd){bd=document.createElement('div');bd.id='decModal';bd.className='modal-backdrop dec-backdrop';bd.setAttribute('aria-hidden','true');document.body.appendChild(bd);
+  bd.addEventListener('click',e=>{if(e.target===bd||e.target.closest('[data-close]'))closeDecision();});}
+ const o=d.order||{};
+ const rows=[
+  ['Symbol',`<b>${esc(d.symbol||'–')}</b>`],
+  ['Zeitpunkt',d.ts?fmtStamp(d.ts):'–'],
+  ['Entscheidung',`<b style="color:${d.decision==='TRADE'?'var(--green)':(d.decision==='FLAT'?'var(--red)':'var(--muted)')}">${esc(d.decision||'–')}</b>`],
+  ['Regime',`<span class="trd-dot" style="background:${tColor(d.regime)}"></span>${esc(d.regime||'–')}${d.n_regimes?` <small class="mut">Rang ${(d.regime_rank||0)+1}/${d.n_regimes}</small>`:''}`],
+  ['Konfidenz',d.confidence!=null?Math.round(d.confidence*100)+'%':'–'],
+  ['Regime stabil',d.stable===true?'ja':(d.stable===false?'<span style="color:var(--yellow)">nein — deshalb kein Handel</span>':'–')],
+  ['Kurs',d.price!=null?money2(d.price):'–'],
+  ['Zielgröße',d.target_notional!=null?money(d.target_notional)+(d.budget?' von '+money(d.budget)+' Budget':''):'–'],
+  ['Deadband',d.deadband!=null?Math.round(d.deadband*100)+'% — darunter bleibt er flat':'–'],
+  ['Markt',`${esc(d.session||'–')}${d.tradable===false?' <span style="color:var(--muted)">(geschlossen)</span>':''}`],
+  ['Risiko-Multiplikator',d.risk_multiplier!=null?d.risk_multiplier+'×':'–'],
+  ['Radar',d.radar_level?`${esc(d.radar_level)} · ×${d.radar_multiplier}`:'–'],
+  ['Breaker',(d.breakers&&d.breakers.length)?`<span style="color:var(--red)">${esc(d.breakers.join(', '))}</span>`:'keine'],
+ ];
+ const orderRow=o.order_id?`<div class="why-head" style="margin-top:14px">Daraus entstandene Order</div>
+  <div class="trd-detail"><div class="trd-drow"><span>Aktion</span><strong>${esc(o.action||'')} ${qty(o.qty)} @~${o.price_ref!=null?money2(o.price_ref):'–'}</strong></div>
+  <div class="trd-drow"><span>Position</span><strong>${qty(o.from)} → ${qty(o.target)}</strong></div>
+  <div class="trd-drow"><span>Order-ID</span><strong><code style="font-size:11px">${esc(o.order_id)}</code></strong></div></div>`
+  :`<div class="why-head" style="margin-top:14px">Order</div><div class="chart-empty">Keine Order — ${esc(d.decision==='CLOSED'?'der Markt war geschlossen':(d.decision==='SKIP'?'die Bedingungen waren nicht erfüllt':'—'))}.</div>`;
+ bd.innerHTML=`<div class="modal trd-modal"><div class="modal-header"><div><span class="eyebrow">ENTSCHEIDUNG · ${esc(d.symbol||'')}</span><h3>${esc(d.decision||'–')} · ${esc(d.regime||'–')}</h3></div><button class="icon-button" data-close="1">×</button></div>
+  ${decChain(d)}
+  <div class="trd-detail">${rows.map(r=>`<div class="trd-drow"><span>${r[0]}</span><strong>${r[1]}</strong></div>`).join('')}</div>
+  <div class="why-head" style="margin-top:14px">Ausschlaggebende Faktoren</div>${factorChips(d.factors)}
+  ${orderRow}
+  <button class="sym-jump" data-symjump="${esc(d.symbol||'')}">Chart und alle Entscheidungen zu ${esc(d.symbol||'')} →</button></div>`;
+ bd.classList.add('open');bd.setAttribute('aria-hidden','false');
+}
+function closeDecision(){const bd=$('#decModal');if(bd){bd.classList.remove('open');bd.setAttribute('aria-hidden','true');}}
 
 function miniGraph(points,color){
  if(!points||points.length<2)return '<svg viewBox="0 0 220 50"></svg>';

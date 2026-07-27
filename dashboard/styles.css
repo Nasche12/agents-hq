@@ -891,6 +891,19 @@ a.doc-row:hover{border-color:rgba(84,226,255,.45);background:rgba(84,226,255,.06
  border:1px solid rgba(126,156,194,.28);background:rgba(126,156,194,.1);color:var(--text);
  transition:background .12s ease-out}
 .sym-jump:hover{background:rgba(126,156,194,.2)}
+/* Entscheidungs-Karte liegt UEBER der Asset-Ansicht (die hat z-index 50), damit man aus
+   dem Verlauf eines Symbols in eine einzelne Entscheidung springen kann, ohne den
+   Kontext zu verlieren. Escape schliesst nur die oberste. */
+.dec-backdrop{z-index:55}
+.dec-chain{display:flex;align-items:stretch;gap:10px;margin-bottom:14px}
+.dec-step{flex:1;padding:11px 13px;border-radius:11px;background:rgba(126,156,194,.08);
+ border:1px solid rgba(126,156,194,.16)}
+.dec-step span{display:block;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.dec-step b{font-size:19px;font-variant-numeric:tabular-nums}
+.dec-step.final{background:rgba(91,217,160,.08);border-color:rgba(91,217,160,.22)}
+.dec-arrow{display:flex;align-items:center;font-size:11px;color:var(--muted);white-space:nowrap}
+tbody tr.dec-row{cursor:pointer}
+
 .sym-modal{max-width:1000px;width:calc(100vw - 48px)}
 .sym-body{max-height:calc(100vh - 190px);overflow-y:auto;margin-top:4px}
 .sym-body .trd-kpis{padding:6px 0 14px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
