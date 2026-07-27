@@ -10,6 +10,7 @@ A third, in-process layer (config_override) exists purely so the optimizer can e
 a candidate parameter set without writing anything to disk."""
 import json
 import os
+import time
 from contextlib import contextmanager
 from copy import deepcopy
 from pathlib import Path
@@ -72,23 +73,43 @@ _FILE_CACHE = {}              # path -> (mtime, parsed)
 _RUNTIME_OVERRIDES = {}       # in-process only, set by config_override()
 
 
+_CACHE_TTL = 1.0          # seconds; backstop against coarse filesystem timestamps
+
+
+def invalidate_config_cache():
+    """Drop the parse cache. MUST be called after writing a config file.
+
+    Reason this is not optional: the cache key includes the file mtime, and many
+    filesystems quantise timestamps (often to a millisecond or worse). Two writes inside
+    the same tick therefore produce the SAME key, and the second write stays invisible.
+    That is not a theoretical race -- promote.apply() reads the current value to record
+    it as `before`, so a stale read would log the wrong previous value and corrupt the
+    rollback. Caught by the test suite on Linux; Windows timestamps happened to be fine
+    enough to hide it."""
+    _FILE_CACHE.clear()
+
+
 def _read_json_cached(path):
-    """Parse a config file, re-reading only when its mtime changes. The backtester calls
+    """Parse a config file, re-reading only when it changes. The backtester calls
     load_config() thousands of times per candidate; re-parsing every time made the
-    optimizer disk-bound for no reason."""
+    optimizer disk-bound for no reason.
+
+    Three layers guard against a stale read: mtime AND size in the key, an explicit
+    invalidation on our own writes, and a one-second TTL so any staleness self-heals."""
     try:
-        m = path.stat().st_mtime_ns
+        st = path.stat()
+        stamp = (st.st_mtime_ns, st.st_size)
     except OSError:
         return {}
     hit = _FILE_CACHE.get(path)
-    if hit and hit[0] == m:
+    if hit and hit[0] == stamp and (time.monotonic() - hit[2]) < _CACHE_TTL:
         return hit[1]
     try:
         with open(path, encoding="utf-8") as f:
             parsed = json.load(f)
     except Exception:
         parsed = {}
-    _FILE_CACHE[path] = (m, parsed)
+    _FILE_CACHE[path] = (stamp, parsed, time.monotonic())
     return parsed
 
 

@@ -113,6 +113,47 @@ def test_revert_last_restores_exact_previous_value():
     assert settings.load_config()["allocation"]["min_change_threshold"] == base
 
 
+def test_back_to_back_writes_are_visible_immediately():
+    """Regression: the config parse cache was keyed on mtime alone. Filesystems quantise
+    timestamps, so two writes inside the same tick shared a key and the second one stayed
+    invisible -- which made promote.apply() record the WRONG previous value and corrupted
+    the rollback. Reproduced on Linux, hidden on Windows by finer timestamps."""
+    for i, value in enumerate((0.03, 0.04, 0.05, 0.06), start=1):
+        promote.apply({"allocation.min_change_threshold": value})
+        assert settings.load_config()["allocation"]["min_change_threshold"] == value,             f"write #{i} was not visible immediately"
+        assert promote.history()[0]["changes"]["allocation.min_change_threshold"] == value
+
+
+def test_survives_a_filesystem_with_frozen_timestamps(monkeypatch):
+    """Proves the FIX, not the platform. On Windows this scenario cannot occur (fine
+    timestamps) so the test above would pass even with the bug. Here every stat() reports
+    the same mtime and size -- the exact behaviour of a coarse-granularity filesystem --
+    so only the explicit cache invalidation can keep the reads correct."""
+    import os
+    real_stat = Path.stat
+
+    class Frozen:
+        st_mtime_ns = 1_000_000_000
+        st_size = 4242
+
+    def fake_stat(self, *a, **kw):
+        if self in (settings.CONFIG_LOCAL, settings.CONFIG_FILE):
+            return Frozen()
+        return real_stat(self, *a, **kw)
+
+    monkeypatch.setattr(Path, "stat", fake_stat)
+    for value in (0.03, 0.05, 0.07):
+        promote.apply({"allocation.min_change_threshold": value})
+        got = settings.load_config()["allocation"]["min_change_threshold"]
+        assert got == value, f"stale read under frozen timestamps: {got} != {value}"
+
+
+def test_promotion_records_the_true_previous_value():
+    promote.apply({"allocation.min_change_threshold": 0.03})
+    promote.apply({"allocation.min_change_threshold": 0.06})
+    assert promote.history()[0]["before"]["allocation.min_change_threshold"] == 0.03,         "a stale read here would make revert restore the wrong value"
+
+
 def test_active_overrides_diffs_against_baseline():
     promote.apply({"execution.cycle_seconds": 180})
     act = promote.active_overrides()

@@ -83,6 +83,7 @@ def apply(changes, reason="", memory_id=None, dry_run=False):
         return record
 
     settings.CONFIG_LOCAL.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
+    settings.invalidate_config_cache()      # coarse mtime granularity would hide this write
     with open(settings.CONFIG_HISTORY, "a", encoding="utf-8") as f:
         f.write(json.dumps(record) + "\n")
     return record
@@ -111,6 +112,7 @@ def revert_all():
     """Full rollback to config.json. One file removed, nothing else touched."""
     existed = settings.CONFIG_LOCAL.exists()
     settings.CONFIG_LOCAL.unlink(missing_ok=True)
+    settings.invalidate_config_cache()
     if existed:
         with open(settings.CONFIG_HISTORY, "a", encoding="utf-8") as f:
             f.write(json.dumps({"ts": datetime.now(timezone.utc).isoformat(),
@@ -157,6 +159,7 @@ def revert_last():
                 merged = settings._deep_merge(merged, settings.expand_flat({key: value}))
                 restore[key] = value
         settings.CONFIG_LOCAL.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
+        settings.invalidate_config_cache()
         with open(settings.CONFIG_HISTORY, "a", encoding="utf-8") as f:
             f.write(json.dumps({"ts": datetime.now(timezone.utc).isoformat(),
                                 "action": "revert_last", "restored": restore,
