@@ -99,6 +99,8 @@ if __name__ == "__main__":
     lowconf = target_allocation("bull", 0.4, 0.010, ref)
     assert bull["alloc"] > crash["alloc"], "crash must be more defensive than bull"
     assert lowconf["alloc"] < bull["alloc"], "low confidence must throttle"
-    assert not needs_rebalance(0.90, 0.93), "tiny change must not rebalance"
+    thr = settings.load_config()["allocation"]["min_change_threshold"]
+    assert not needs_rebalance(0.90, 0.90 + thr * 0.5), "below the deadband must not rebalance"
+    assert needs_rebalance(0.90, 0.90 + thr * 1.5), "above the deadband must rebalance"
     assert needs_rebalance(0.20, 0.95), "large change must rebalance"
     print("strategies self-check ok:", bull, crash)

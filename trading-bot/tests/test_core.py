@@ -66,7 +66,11 @@ def test_allocation_reacts():
     lowconf = target_allocation("bull", 0.4, 0.010, ref)["alloc"]
     assert bull > crash
     assert lowconf < bull
-    assert not needs_rebalance(0.90, 0.93)
+    # The deadband is a TUNABLE (config.allocation.min_change_threshold): lowering it is
+    # how the bot is made to trade more often. So assert the rule, not a hardcoded 5%.
+    thr = settings.load_config()["allocation"]["min_change_threshold"]
+    assert not needs_rebalance(0.90, 0.90 + thr * 0.5), "below the deadband must not rebalance"
+    assert needs_rebalance(0.90, 0.90 + thr * 1.5), "above the deadband must rebalance"
     assert needs_rebalance(0.20, 0.95)
 
 
