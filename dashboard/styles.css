@@ -895,6 +895,21 @@ a.doc-row:hover{border-color:rgba(84,226,255,.45);background:rgba(84,226,255,.06
    dem Verlauf eines Symbols in eine einzelne Entscheidung springen kann, ohne den
    Kontext zu verlieren. Escape schliesst nur die oberste. */
 .dec-backdrop{z-index:55}
+
+/* Trading-Karten koennen sehr hoch werden (Kette + 13 Detailzeilen + Order-Block, bzw.
+   Chart + zwei Tabellen). .modal-backdrop zentriert per grid place-items:center — ein zu
+   hohes Kind ragt dann OBEN UND UNTEN heraus und der obere Teil ist nicht erreichbar,
+   weil der Backdrop selbst nicht scrollt. Deshalb: Karte auf Viewporthoehe begrenzen und
+   INNEN scrollen, Kopfzeile klebt oben, damit der Schliessen-Knopf immer da ist. */
+#decModal .modal,#trdModal .modal,#symModal .modal{
+ max-height:calc(100vh - 32px);overflow-y:auto;overscroll-behavior:contain;padding-top:0}
+#decModal .modal-header,#trdModal .modal-header,#symModal .modal-header{
+ position:sticky;top:0;z-index:3;padding-top:17px;margin-bottom:14px;
+ background:linear-gradient(180deg,#10233a 78%,rgba(16,35,58,.94))}
+#decModal .modal::-webkit-scrollbar,#trdModal .modal::-webkit-scrollbar,
+#symModal .modal::-webkit-scrollbar{width:10px}
+#decModal .modal::-webkit-scrollbar-thumb,#trdModal .modal::-webkit-scrollbar-thumb,
+#symModal .modal::-webkit-scrollbar-thumb{background:rgba(126,156,194,.28);border-radius:6px}
 .dec-chain{display:flex;align-items:stretch;gap:10px;margin-bottom:14px}
 .dec-step{flex:1;padding:11px 13px;border-radius:11px;background:rgba(126,156,194,.08);
  border:1px solid rgba(126,156,194,.16)}
@@ -905,7 +920,7 @@ a.doc-row:hover{border-color:rgba(84,226,255,.45);background:rgba(84,226,255,.06
 tbody tr.dec-row{cursor:pointer}
 
 .sym-modal{max-width:1000px;width:calc(100vw - 48px)}
-.sym-body{max-height:calc(100vh - 190px);overflow-y:auto;margin-top:4px}
+.sym-body{margin-top:4px}
 .sym-body .trd-kpis{padding:6px 0 14px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
 .sym-body .trd-scroll{margin:0}
 .sym-body .trd-hint{margin:8px 0 0}
