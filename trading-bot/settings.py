@@ -22,6 +22,7 @@ ORDERS = STATE_DIR / "orders.json"           # recent orders (detail for the tra
 SIGNALS = STATE_DIR / "signals.json"         # per-symbol HMM signal + target exposure
 HEARTBEAT = STATE_DIR / "heartbeat.json"     # liveness signal for server/dashboard
 EQUITY_HISTORY = STATE_DIR / "equity_history.jsonl"  # real account balance snapshots over time
+BOT_STATE = STATE_DIR / "bot_state.json"     # cycles run, trades sent, uptime (24/7 counters)
 LOCK_FILE = STATE_DIR / "EMERGENCY.lock"     # -10% kill switch: delete by hand to resume
 DASHBOARD_EXPORT = STATE_DIR / "dashboard.json"  # what the Node trading tab reads
 

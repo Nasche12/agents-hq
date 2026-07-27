@@ -49,9 +49,33 @@ systemctl status regime-trader
 tail -f logs/bot.log
 ```
 
-The loop wakes every 5 minutes, uses Alpaca's market clock (handles DST/holidays), trades only
-while the market is open, and keeps the dashboard fresh when it's closed. `Restart=always` brings
-it back after a crash; the -10% lock file still blocks a restart after a hard loss (by design).
+The loop wakes every `execution.cycle_seconds` (default **60s**) and runs **around the clock** —
+it never sleeps through a session. What changes is which symbols are actionable:
+
+* **crypto** (`BTC/USD`, `ETH/USD`, …) — tradable **24/7/365**, so the bot works nights and weekends
+* **equities** (`SPY`, `NVDA`, …) — Mon–Fri only: regular 09:30–16:00 ET, plus pre-market
+  04:00–09:30 and after-hours 16:00–20:00 when `execution.extended_hours` is true (limit orders,
+  whole shares). Outside that they show up as `CLOSED` in the dashboard instead of being faked.
+
+Alpaca's market clock stays authoritative for the regular session (DST + holidays). `Restart=always`
+brings the service back after a crash; the -10% lock file still blocks a restart after a hard loss
+(by design).
+
+### Making it trade more or less
+
+Everything lives in `config.json`, no redeploy needed (the loop re-reads it every cycle):
+
+| Key | Effect |
+|-----|--------|
+| `execution.cycle_seconds` | how often it looks. 60 = busy, 300 = calm |
+| `execution.rebalance_min_pct` | drift needed to send an order. 0.02 = busy, 0.05 = calm |
+| `allocation.min_change_threshold` | neutral deadband on the signal. Lower = more trades |
+| `hmm.live_timeframe` | `5Min` reacts fast, `15Min`/`1Hour` are steadier |
+| `watchlist` | add/remove crypto pairs to change how much 24/7 activity there is |
+
+More trades is **not** automatically better: every extra rebalance pays spread and slippage, and
+5-minute regimes carry more noise than signal. Start where it is and watch the win rate and profit
+factor in the Trading tab before turning it up further.
 
 ## Update / rollback
 

@@ -123,7 +123,7 @@ def test_reconcile_buys_holds_sells():
             self.orders = []
         def positions(self):
             return [{"symbol": "SPY", "qty": self._held}] if self._held else []
-        def submit_order(self, symbol, qty, side):
+        def submit_order(self, symbol, qty, side, extended=False, price_ref=None):
             self.orders.append((side, qty)); return {"id": "x", "status": "accepted"}
 
     flat = FakeBroker(0)

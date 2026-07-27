@@ -1,12 +1,19 @@
-"""Orchestration loop. Phase 1-3 runs in PAPER/dry mode: on startup it checks the
-emergency lock (refuses to start if present), connects to the broker (offline stub until
-keys), trains the HMMs, then each cycle computes regime -> allocation -> risk validation,
-writes a heartbeat + the dashboard export, and journals the decision (including SKIPs, so
-you can see the bot correctly NOT trading). Real order submission is Phase 2 -- it slots
-into the marked spot once paper keys exist.
+"""Orchestration loop -- the 24/7 engine.
+
+The loop itself never sleeps through a market: it runs every `execution.cycle_seconds`
+around the clock. What changes is WHICH symbols are actionable in this second:
+
+    crypto (BTC/USD, ...)  -> tradable 24/7/365
+    equities (SPY, ...)    -> regular 09:30-16:00 ET, plus pre/after-hours when
+                              execution.extended_hours is true; closed nights + weekends
+
+So at 03:00 on a Sunday the bot is fully awake, trading crypto, and honestly reporting
+every equity as 'closed' instead of pretending. Each cycle: per symbol -> HMM regime ->
+signed target exposure -> risk gate -> reconcile -> journal, then one account read-back,
+a heartbeat and the dashboard export.
 
 Run one cycle:   python main.py --once
-Run continuously: python main.py   (5-min bar cadence; skips logic when market closed)"""
+Run continuously: python main.py"""
 import json
 import sys
 import time
@@ -16,6 +23,7 @@ import settings
 import market_data
 import hmm_engine
 import alerts
+import sessions
 import dashboard_export
 import order_executor
 from feature_engineering import build_features
@@ -23,7 +31,11 @@ from regime_strategies import directional_exposure
 from risk_manager import RiskManager
 from alpaca_broker import Broker
 
-CYCLE_SECONDS = 300
+DEFAULT_CYCLE_SECONDS = 60
+
+
+def _cycle_seconds(cfg):
+    return max(15, int(cfg["execution"].get("cycle_seconds", DEFAULT_CYCLE_SECONDS)))
 
 
 def _heartbeat(**kw):
@@ -39,6 +51,8 @@ def _order_row(o):
         "id": o.get("id"), "symbol": o.get("symbol"), "side": o.get("side"),
         "qty": qty, "fill_price": price, "notional": round(qty * price, 2) if price else None,
         "status": o.get("status"), "type": o.get("type"),
+        "asset_class": "crypto" if market_data.is_crypto(o.get("symbol") or "") else "us_equity",
+        "extended_hours": bool(o.get("extended_hours")),
         "submitted_at": o.get("submitted_at"), "filled_at": o.get("filled_at"),
     }
 
@@ -49,9 +63,22 @@ def _journal(entry):
         f.write(json.dumps(entry) + "\n")
 
 
+# ---------------------------------------------------------------- bot counters
+def _load_bot_state():
+    try:
+        return json.loads(settings.BOT_STATE.read_text(encoding="utf-8"))
+    except Exception:
+        return {"cycles": 0, "orders_sent": 0, "errors": 0, "started": None,
+                "last_order": None, "last_error": None}
+
+
+def _save_bot_state(s):
+    settings.BOT_STATE.write_text(json.dumps(s, indent=2), encoding="utf-8")
+
+
 def _signal_for(symbol, model, ref_vol):
-    """HMM regime -> signed target exposure for one symbol, on INTRADAY bars (15-min by
-    default) so regimes shift and trades happen within the day, not once per week.
+    """HMM regime -> signed target exposure for one symbol, on INTRADAY bars (5-min by
+    default) so regimes shift and trades happen within the hour, not once per week.
     Returns (info, exposure, reason, price)."""
     hcfg = settings.load_config()["hmm"]
     df = market_data.get_bars(symbol, days=hcfg["live_days"], timeframe=hcfg["live_timeframe"])
@@ -64,14 +91,24 @@ def _signal_for(symbol, model, ref_vol):
 
 
 def cycle(models, risk, broker):
-    """One pass over the whole watchlist: per symbol -> HMM signal -> signed target ->
-    risk gate -> reconcile (long/short) -> journal. Then read real account state once."""
+    """One pass over the whole watchlist. Per symbol: session gate -> HMM signal ->
+    signed target -> risk gate -> reconcile (long/short) -> journal. Then one real
+    account read-back. Runs 24/7; symbols whose market is shut are marked CLOSED."""
     cfg = settings.load_config()
     exec_cfg = cfg["execution"]
     trading_enabled = exec_cfg.get("trading_enabled", False)
+    allow_extended = exec_cfg.get("extended_hours", True)
     deadband = cfg["allocation"]["min_change_threshold"]
     symbols = list(models)
-    mkt_open = market_is_open(broker)
+    bot = _load_bot_state()
+
+    clock = {}
+    if broker.connected:
+        try:
+            clock = broker.clock()
+        except Exception:
+            clock = {}
+    overview = sessions.market_overview(clock, allow_extended)
 
     acct = broker.account()
     equity = acct.get("equity") or cfg["starting_equity"]
@@ -82,63 +119,114 @@ def cycle(models, risk, broker):
     rstate = risk.update_equity(equity)
     mult = rstate["multiplier"]                          # risk throttle (0 = flat everything)
 
-    signals = []
+    # ONE positions snapshot for the whole cycle -- each symbol only ever reads its own
+    # row, and re-fetching per symbol would cost 9 extra API calls every single minute.
+    held_now = broker.positions() if broker.connected else []
+
+    signals, orders_this_cycle = [], 0
     for sym in symbols:
+        crypto = market_data.is_crypto(sym)
+        session, tradable, extended = sessions.symbol_session(sym, clock, allow_extended)
         m = models[sym]
-        info, expo, reason, price = _signal_for(sym, m["model"], m["ref_vol"])
+        try:
+            info, expo, reason, price = _signal_for(sym, m["model"], m["ref_vol"])
+        except Exception as e:                            # one bad symbol must not kill the cycle
+            bot["errors"] += 1
+            bot["last_error"] = f"{sym}: {str(e)[:120]}"
+            alerts.log_event("data_error", f"{sym}: {str(e)[:180]}")
+            signals.append({"symbol": sym, "asset_class": "crypto" if crypto else "us_equity",
+                            "session": session, "regime": None, "confidence": None,
+                            "exposure": 0.0, "price": None, "direction": "flat",
+                            "decision": "ERROR", "stable": False,
+                            "reason": f"data error: {str(e)[:80]}"})
+            continue
+
         target = 0.0 if rstate["killed"] else expo * mult
-        want = info["stable"] and abs(target) >= deadband
-        will_trade = want and trading_enabled and mkt_open and broker.connected
-        decision = "TRADE" if will_trade else ("FLAT" if rstate["killed"] else "SKIP")
         parts = [reason]
+        if crypto and target < 0:
+            target = 0.0                                  # Alpaca cannot short crypto
+            parts.append("crypto: no shorts -> flat")
+
+        want = info["stable"] and abs(target) >= deadband
+        will_trade = want and trading_enabled and tradable and broker.connected
+        if rstate["killed"]:
+            decision = "FLAT"
+        elif not tradable:
+            decision = "CLOSED"
+        elif will_trade:
+            decision = "TRADE"
+        else:
+            decision = "SKIP"
+
         if not info["stable"]:
             parts.append("not yet stable")
+        if not tradable:
+            parts.append(f"{sessions.SESSION_LABEL.get(session, session)} — no orders")
+        elif extended:
+            parts.append("extended hours (limit order)")
         if rstate["breakers"]:
             parts.append("breakers: " + ",".join(rstate["breakers"]))
         if not trading_enabled:
             parts.append("observe only")
 
         order_info = None
-        if will_trade or (rstate["killed"] and broker.connected and mkt_open):
+        if (will_trade or (rstate["killed"] and broker.connected and tradable)) and tradable:
             try:
                 order_info = order_executor.reconcile_to_target(broker=broker, symbol=sym,
-                                                                target_exposure=target,
-                                                                price=price, budget=per_budget)
+                                                               target_exposure=target,
+                                                               price=price, budget=per_budget,
+                                                               extended=extended,
+                                                               positions=held_now)
                 if order_info.get("order_id"):
+                    orders_this_cycle += 1
+                    bot["orders_sent"] += 1
+                    bot["last_order"] = datetime.now(timezone.utc).isoformat()
                     parts.append(f"{order_info['action']} {order_info['qty']} @~{order_info['price_ref']}")
             except Exception as e:
+                bot["errors"] += 1
+                bot["last_error"] = f"{sym}: {str(e)[:120]}"
                 parts.append(f"order error: {str(e)[:60]}")
                 alerts.log_event("order_error", f"{sym}: {str(e)[:180]}")
 
         reason_full = " · ".join(parts)
         _journal({"type": "cycle", "symbol": sym, "decision": decision, "regime": info["regime"],
                   "confidence": info["confidence"], "exposure": round(target, 4),
-                  "order": order_info, "reason": reason_full})
-        signals.append({"symbol": sym, "regime": info["regime"], "regime_rank": info["regime_rank"],
-                        "n_regimes": info["n_regimes"], "confidence": info["confidence"],
-                        "exposure": round(target, 4), "price": round(price, 2),
+                  "session": session, "order": order_info, "reason": reason_full})
+        signals.append({"symbol": sym, "asset_class": "crypto" if crypto else "us_equity",
+                        "session": session, "session_label": sessions.SESSION_LABEL.get(session, session),
+                        "tradable": tradable, "regime": info["regime"],
+                        "regime_rank": info["regime_rank"], "n_regimes": info["n_regimes"],
+                        "confidence": info["confidence"], "exposure": round(target, 4),
+                        "price": round(price, 2), "target_notional": round(abs(target) * per_budget, 2),
                         "direction": "long" if target > 0 else ("short" if target < 0 else "flat"),
                         "decision": decision, "stable": info["stable"], "reason": reason_full})
 
-    if broker.connected and trading_enabled and mkt_open:
+    if broker.connected and orders_this_cycle:
         time.sleep(2)                                    # let market orders fill before read-back
     positions_live = broker.positions() if broker.connected else []
-    raw_orders = broker.list_orders(status="all", limit=200) if broker.connected else []
+    raw_orders = broker.list_orders(status="all", limit=500) if broker.connected else []
     acct = broker.account() if broker.connected else acct
     settings.ORDERS.write_text(json.dumps([_order_row(o) for o in raw_orders], indent=2), encoding="utf-8")
     settings.POSITIONS.write_text(json.dumps({"open": positions_live, "pending": []}, indent=2), encoding="utf-8")
     settings.SIGNALS.write_text(json.dumps(signals, indent=2), encoding="utf-8")
     if broker.connected and acct.get("equity") is not None:
-        with open(settings.EQUITY_HISTORY, "a", encoding="utf-8") as f:
-            f.write(json.dumps({"ts": datetime.now(timezone.utc).isoformat(),
-                                "equity": acct["equity"], "cash": acct.get("cash")}) + "\n")
+        _append_equity(acct, exec_cfg)
 
-    _heartbeat(alive=True, market_open=mkt_open, killed=rstate["killed"],
-               cash=acct.get("cash"), account_equity=acct.get("equity"),
+    bot["cycles"] += 1
+    bot["started"] = bot.get("started") or datetime.now(timezone.utc).isoformat()
+    _save_bot_state(bot)
+
+    _heartbeat(alive=True, market_open=overview["equity_tradable"] or overview["crypto_tradable"],
+               equity_session=overview["equity_session"], crypto_open=True,
+               session_overview=overview,
+               killed=rstate["killed"], cash=acct.get("cash"), account_equity=acct.get("equity"),
+               buying_power=acct.get("buying_power"),
                broker=("connected" if broker.connected else "offline"),
                open_positions=len(positions_live), orders_placed=len(raw_orders),
+               orders_this_cycle=orders_this_cycle, cycles=bot["cycles"],
                longs=sum(1 for s in signals if s["direction"] == "long"),
-               shorts=sum(1 for s in signals if s["direction"] == "short"))
+               shorts=sum(1 for s in signals if s["direction"] == "short"),
+               tradable_now=sum(1 for s in signals if s.get("tradable")))
     if rstate["breakers"]:
         alerts.log_event("circuit_breaker", ",".join(rstate["breakers"]))
         alerts.send("breaker", f"breakers {rstate['breakers']}")
@@ -146,24 +234,36 @@ def cycle(models, risk, broker):
     return signals
 
 
-def _market_open_heuristic():
-    """Fallback US-equity session gate (Mon-Fri, 13:30-20:00 UTC) when offline."""
-    now = datetime.now(timezone.utc)
-    if now.weekday() >= 5:
-        return False
-    mins = now.hour * 60 + now.minute
-    return 13 * 60 + 30 <= mins <= 20 * 60
+def _append_equity(acct, exec_cfg):
+    """Append one equity snapshot and keep the file from growing without bound --
+    at a 60s cycle this file gains ~1440 lines per day, forever."""
+    with open(settings.EQUITY_HISTORY, "a", encoding="utf-8") as f:
+        f.write(json.dumps({"ts": datetime.now(timezone.utc).isoformat(),
+                            "equity": acct["equity"], "cash": acct.get("cash")}) + "\n")
+    cap = int(exec_cfg.get("equity_history_max", 200000))
+    try:
+        if settings.EQUITY_HISTORY.stat().st_size > cap * 90:      # ~90 bytes per line
+            lines = settings.EQUITY_HISTORY.read_text(encoding="utf-8").splitlines()
+            if len(lines) > cap:
+                settings.EQUITY_HISTORY.write_text("\n".join(lines[-int(cap * 0.8):]) + "\n",
+                                                   encoding="utf-8")
+    except Exception:
+        pass
 
 
 def market_is_open(broker):
-    """Authoritative market status via Alpaca's clock (handles DST + holidays);
-    falls back to the UTC heuristic only when offline."""
+    """Kept for compatibility: true when ANYTHING in the universe can trade. With crypto
+    in the watchlist this is always true -- per-symbol gating happens in cycle()."""
+    cfg = settings.load_config()
+    if any(market_data.is_crypto(s) for s in cfg["watchlist"]):
+        return True
+    clock = {}
     if broker is not None and broker.connected:
         try:
-            return bool(broker.clock().get("is_open"))
+            clock = broker.clock()
         except Exception:
-            pass
-    return _market_open_heuristic()
+            clock = {}
+    return sessions.equity_session(clock) != "closed"
 
 
 def startup():
@@ -179,42 +279,50 @@ def startup():
 
 def _train_models(symbols, cfg):
     """One HMM per symbol on INTRADAY bars (live_timeframe), so regimes are re-estimated
-    from recent intraday structure. Called at startup and re-run once per day."""
+    from recent intraday structure. Called at startup and re-run once per day. Bars are
+    capped by hmm.train_bars_max because 24/7 crypto produces ~3.7x the bars an equity
+    does over the same calendar window."""
     hcfg = cfg["hmm"]
+    cap = int(hcfg.get("train_bars_max", 4000))
     models = {}
     for sym in symbols:
-        df = market_data.get_bars(sym, days=hcfg["live_days"], timeframe=hcfg["live_timeframe"])
-        df.attrs["symbol"] = sym
-        models[sym] = {"model": hmm_engine.train(df),
-                       "ref_vol": float(build_features(df)["realized_vol"].median()) or 0.012}
+        try:
+            df = market_data.get_bars(sym, days=hcfg["live_days"], timeframe=hcfg["live_timeframe"])
+            df = df.tail(cap)
+            df.attrs["symbol"] = sym
+            models[sym] = {"model": hmm_engine.train(df),
+                           "ref_vol": float(build_features(df)["realized_vol"].median()) or 0.012}
+        except Exception as e:
+            alerts.log_event("train_error", f"{sym}: {str(e)[:180]}")
+            print(f"  ! training failed for {sym}: {str(e)[:120]}")
     return models
 
 
 def main():
     once = "--once" in sys.argv
     models, risk, broker = startup()
+    cfg = settings.load_config()
+    crypto_n = sum(1 for s in models if market_data.is_crypto(s))
     print(f"started: {list(models)} | broker {'connected' if broker.connected else 'offline stub'} "
-          f"| mode paper")
+          f"| mode paper | {crypto_n} crypto symbols trade 24/7 | cycle {_cycle_seconds(cfg)}s")
     trained_day = datetime.now(timezone.utc).date()
     try:
         while True:
+            cfg = settings.load_config()
             today = datetime.now(timezone.utc).date()
             if today != trained_day:                     # fresh intraday HMMs once per day
-                models = _train_models(list(models), settings.load_config())
+                models = _train_models(list(models), cfg)
                 trained_day = today
-            if market_is_open(broker) or once:
-                sigs = cycle(models, risk, broker)
-                longs = sum(1 for s in sigs if s["direction"] == "long")
-                shorts = sum(1 for s in sigs if s["direction"] == "short")
-                traded = sum(1 for s in sigs if s["decision"] == "TRADE")
-                print(f"{datetime.now().strftime('%H:%M')} {len(sigs)} signals | "
-                      f"{longs} long {shorts} short | {traded} traded")
-            else:
-                _heartbeat(alive=True, market_open=False, note="market closed - observing")
-                dashboard_export.build()             # keep the tab fresh while closed
+            sigs = cycle(models, risk, broker)            # runs 24/7 -- never skipped
+            longs = sum(1 for s in sigs if s["direction"] == "long")
+            shorts = sum(1 for s in sigs if s["direction"] == "short")
+            traded = sum(1 for s in sigs if s["decision"] == "TRADE")
+            closed = sum(1 for s in sigs if s["decision"] == "CLOSED")
+            print(f"{datetime.now().strftime('%H:%M:%S')} {len(sigs)} signals | "
+                  f"{longs} long {shorts} short | {traded} traded | {closed} market closed")
             if once:
                 break
-            time.sleep(CYCLE_SECONDS)
+            time.sleep(_cycle_seconds(cfg))
     except KeyboardInterrupt:
         alerts.log_event("stop", "keyboard interrupt")
         print("stopped.")

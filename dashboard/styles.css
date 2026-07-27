@@ -823,5 +823,63 @@ a.doc-row:hover{border-color:rgba(84,226,255,.45);background:rgba(84,226,255,.06
 .trd-drow span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .trd-drow strong{font-size:14px;text-align:right}
 .trd-hint{display:block;margin-top:10px;color:var(--muted);font-size:12px}
-@media(max-width:900px){.trd-kpis{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:560px){.trd-kpis{grid-template-columns:repeat(2,1fr)}}
+
+/* ---- Hero: Kontostand + Marktstatus, das Erste was man sieht ---- */
+.trd-hero{margin-bottom:18px;padding:22px 24px 18px;position:relative;overflow:hidden}
+.trd-hero::after{content:'';position:absolute;inset:0;pointer-events:none;background:radial-gradient(120% 140% at 88% -20%,rgba(91,217,160,.13),transparent 58%)}
+.trd-hero>*{position:relative;z-index:1}
+.trd-hero-top{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap}
+.trd-hero-eq{margin:6px 0 0;font-size:40px;line-height:1.05;letter-spacing:-.02em;font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.trd-hero-eq em{font-style:normal;font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}
+.trd-hero-eq em span{color:var(--muted);font-weight:500;font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+.trd-hero-state{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end;padding-top:6px}
+.trd-markets{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0 14px}
+.mk-pill{display:flex;align-items:center;gap:9px;padding:9px 14px;border-radius:12px;font-size:12.5px;
+ border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);color:var(--muted)}
+.mk-pill b{color:var(--text);font-size:12.5px;letter-spacing:.03em}
+.mk-pill small{color:var(--muted-2,var(--muted));font-size:11.5px;margin-left:2px}
+.mk-pill i{width:9px;height:9px;border-radius:50%;background:var(--muted);flex:0 0 auto}
+.mk-pill.open{border-color:rgba(91,217,160,.34);background:rgba(91,217,160,.08)}
+.mk-pill.open i{background:var(--green);box-shadow:0 0 0 4px rgba(91,217,160,.16);animation:mkpulse 2.6s ease-in-out infinite}
+.mk-pill.shut i{background:var(--muted-2,#6a6a72)}
+.mk-pill.neutral{border-style:dashed}
+@keyframes mkpulse{0%,100%{opacity:1}50%{opacity:.45}}
+@media(prefers-reduced-motion:reduce){.mk-pill.open i{animation:none}}
+.trd-note.ok{border-color:rgba(91,217,160,.3);background:rgba(91,217,160,.07)}
+.trd-hero .trd-note{margin:0}
+
+/* ---- Zahlenleiste unter der Chart-Ueberschrift: immer sichtbar, kein Hover ---- */
+.trd-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:1px;margin:6px 20px 12px;
+ background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.07);border-radius:10px;overflow:hidden}
+.trd-stat{display:flex;flex-direction:column;gap:3px;padding:9px 12px;background:var(--panel-2,rgba(11,24,42,.9))}
+.trd-stat span{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.trd-stat b{font-size:14px;font-variant-numeric:tabular-nums}
+
+/* ---- Tabellen: Zahlen rechtsbuendig, tabellarische Ziffern, waagrecht scrollbar ---- */
+.trd-scroll{margin:2px 20px 8px;overflow-x:auto}
+.trd-scroll .trd-table{margin:0;min-width:100%}
+.trd-table td.num,.trd-table th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.trd-table td:first-child{color:var(--muted);white-space:nowrap}
+.trd-table tbody tr:hover{background:rgba(126,156,194,.06)}
+.trd-table .mut{color:var(--muted);font-size:12px}
+.trd-table small.mut{font-size:10.5px}
+.tag{display:inline-block;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:.05em;
+ text-transform:uppercase;border:1px solid rgba(255,255,255,.12);color:var(--muted);vertical-align:middle}
+.tag.crypto{color:#e6c766;border-color:rgba(230,199,102,.4);background:rgba(230,199,102,.1)}
+.tag.equity{color:#7e9cc2;border-color:rgba(126,156,194,.38);background:rgba(126,156,194,.1)}
+.tag.ok{color:var(--green);border-color:rgba(91,217,160,.4);background:rgba(91,217,160,.1)}
+.tag.ext{color:var(--orange,#e0a25c);border-color:rgba(224,162,92,.4);background:rgba(224,162,92,.1)}
+.tag.sess.crypto,.tag.sess.regular{color:var(--green);border-color:rgba(91,217,160,.36);background:rgba(91,217,160,.09)}
+.tag.sess.pre,.tag.sess.after{color:var(--orange,#e0a25c);border-color:rgba(224,162,92,.36);background:rgba(224,162,92,.09)}
+.tag.sess.closed{color:var(--muted);background:rgba(255,255,255,.04)}
+
+/* ---- Exposure-Balken: -100% links, +100% rechts, Mitte = flat ---- */
+.expo{position:relative;display:inline-block;width:54px;height:6px;margin-right:8px;border-radius:3px;
+ background:rgba(255,255,255,.08);vertical-align:middle}
+.expo .mid{position:absolute;left:50%;top:-2px;width:1px;height:10px;background:rgba(255,255,255,.28)}
+.expo .fill{position:absolute;top:0;height:6px;border-radius:3px}
+
+.trd-kpis .analytics-kpi.is-hero{background:rgba(91,217,160,.07);border-color:rgba(91,217,160,.22)}
+.trd-kpis .analytics-kpi strong{font-variant-numeric:tabular-nums}
+@media(max-width:900px){.trd-kpis{grid-template-columns:repeat(2,1fr)}.trd-hero-eq{font-size:32px}.trd-hero-state{justify-content:flex-start}}
+@media(max-width:560px){.trd-kpis{grid-template-columns:repeat(2,1fr)}.trd-hero{padding:18px 16px}.trd-hero-eq{font-size:27px}.trd-markets{flex-direction:column}}

@@ -1,8 +1,11 @@
-"""Layer 0 -- data acquisition. Fetches historical daily bars from Alpaca (Data API v2)
-via requests (no heavy SDK). Caches to disk so repeated backtests don't re-download.
-WITHOUT keys -> a reproducible synthetic dataset (fixed seed) so the backtester and
-tests run fully offline. Every real value comes from the API, never guessed; if the
-API is unavailable it is honestly marked source='synthetic'."""
+"""Layer 0 -- data acquisition. Fetches historical bars from Alpaca (Data API) via
+requests (no heavy SDK). Handles BOTH asset classes:
+  * US equities  -> /v2/stocks/{sym}/bars      (session-bound: Mon-Fri, ~6.5h/day)
+  * crypto       -> /v1beta3/crypto/us/bars    (24/7, symbols look like 'BTC/USD')
+Caches to disk so repeated backtests don't re-download. WITHOUT keys -> a reproducible
+synthetic dataset (fixed seed) so the backtester and tests run fully offline. Every real
+value comes from the API, never guessed; if the API is unavailable it is honestly marked
+source='synthetic'."""
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -12,16 +15,37 @@ import pandas as pd
 import settings
 
 _DATA_URL = "https://data.alpaca.markets/v2/stocks/{sym}/bars"
+_CRYPTO_URL = "https://data.alpaca.markets/v1beta3/crypto/us/bars"
 
 
-# bars per US trading day, used to size synthetic data and tail() windows
-_TF_PER_DAY = {"1Day": 1, "1Hour": 7, "30Min": 13, "15Min": 26, "5Min": 78}
-_TF_FREQ = {"1Day": "B", "1Hour": "h", "30Min": "30min", "15Min": "15min", "5Min": "5min"}
+# bars per day. Equities only trade ~6.5h Mon-Fri, crypto runs 24/7 -> far more bars
+# per calendar day, which is exactly why crypto gives the bot something to do at night.
+_TF_PER_DAY = {"1Day": 1, "1Hour": 7, "30Min": 13, "15Min": 26, "5Min": 78, "1Min": 390}
+_TF_PER_DAY_CRYPTO = {"1Day": 1, "1Hour": 24, "30Min": 48, "15Min": 96, "5Min": 288, "1Min": 1440}
+_TF_FREQ = {"1Day": "B", "1Hour": "h", "30Min": "30min", "15Min": "15min",
+            "5Min": "5min", "1Min": "1min"}
+_TF_FREQ_CRYPTO = dict(_TF_FREQ, **{"1Day": "D"})
+
+
+def is_crypto(symbol):
+    """Alpaca crypto pairs carry a slash ('BTC/USD'); equities never do."""
+    return "/" in str(symbol)
+
+
+def pos_symbol(symbol):
+    """Broker-side symbol. Alpaca reports crypto POSITIONS as 'BTCUSD' but accepts
+    'BTC/USD' on orders -- normalize so position lookups match either spelling."""
+    return str(symbol).replace("/", "").upper()
+
+
+def bars_per_day(timeframe, symbol=None):
+    table = _TF_PER_DAY_CRYPTO if (symbol and is_crypto(symbol)) else _TF_PER_DAY
+    return table.get(timeframe, 1)
 
 
 def _stable_cache(symbol, timeframe):
     """One rolling file per symbol+timeframe that always holds the latest REAL bars."""
-    return settings.CACHE_DIR / f"{symbol}_{timeframe}.parquet"
+    return settings.CACHE_DIR / f"{pos_symbol(symbol)}_{timeframe}.parquet"
 
 
 def _have_keys():
@@ -30,7 +54,7 @@ def _have_keys():
 
 def get_bars(symbol, days=504, timeframe="1Day", end=None, force_synthetic=False):
     """DataFrame [open,high,low,close,volume], DatetimeIndex (UTC), oldest first.
-    timeframe: 1Day | 1Hour | 30Min | 15Min | 5Min (intraday -> more signals).
+    timeframe: 1Day | 1Hour | 30Min | 15Min | 5Min | 1Min (intraday -> more signals).
 
     Data policy:
       1. keys present -> ALWAYS fetch fresh from Alpaca and use that; persist it.
@@ -39,8 +63,11 @@ def get_bars(symbol, days=504, timeframe="1Day", end=None, force_synthetic=False
     df.attrs['source'] = 'alpaca' | 'stored' | 'synthetic'; df.attrs['real'] = bool.
     force_synthetic=True is for the offline test suite only."""
     end = end or datetime.now(timezone.utc).date()
-    start = end - timedelta(days=int(days * 1.5) + 10)  # buffer for weekends/holidays
-    n_bars = days * _TF_PER_DAY.get(timeframe, 1)
+    crypto = is_crypto(symbol)
+    # equities lose weekends/holidays, so ask for a wider calendar window; crypto doesn't
+    span = int(days * (1.05 if crypto else 1.5)) + 10
+    start = end - timedelta(days=span)
+    n_bars = days * bars_per_day(timeframe, symbol)
     stable = _stable_cache(symbol, timeframe)
 
     if force_synthetic:
@@ -49,7 +76,10 @@ def get_bars(symbol, days=504, timeframe="1Day", end=None, force_synthetic=False
     if _have_keys():
         df = _fetch_alpaca(symbol, start, end, timeframe)
         if df is not None and len(df):
-            df.to_parquet(stable)                       # keep the latest real bars
+            try:
+                df.to_parquet(stable)                   # keep the latest real bars
+            except Exception:
+                pass
             return _tag(df, "alpaca", True, n_bars)
         # Alpaca returned nothing (down / rate-limited) -> use last stored real bars
 
@@ -71,12 +101,17 @@ def _tag(df, source, real, n_bars):
     return out
 
 
-def _fetch_alpaca(symbol, start, end, timeframe="1Day"):
-    import requests  # only imported when keys exist
-    headers = {
+def _headers():
+    return {
         "APCA-API-KEY-ID": settings.env("ALPACA_API_KEY"),
         "APCA-API-SECRET-KEY": settings.env("ALPACA_SECRET_KEY"),
     }
+
+
+def _fetch_alpaca(symbol, start, end, timeframe="1Day"):
+    if is_crypto(symbol):
+        return _fetch_crypto(symbol, start, end, timeframe)
+    import requests  # only imported when keys exist
     rows, page = [], None
     for _ in range(20):  # pagination cap
         params = {"timeframe": timeframe, "start": f"{start}T00:00:00Z",
@@ -84,7 +119,8 @@ def _fetch_alpaca(symbol, start, end, timeframe="1Day"):
         if page:
             params["page_token"] = page
         try:
-            r = requests.get(_DATA_URL.format(sym=symbol), headers=headers, params=params, timeout=30)
+            r = requests.get(_DATA_URL.format(sym=symbol), headers=_headers(),
+                             params=params, timeout=30)
         except Exception:
             return None
         if r.status_code != 200:
@@ -95,11 +131,41 @@ def _fetch_alpaca(symbol, start, end, timeframe="1Day"):
         if not page:
             break
         time.sleep(0.2)
+    return _frame(rows)
+
+
+def _fetch_crypto(symbol, start, end, timeframe="1Day"):
+    """Crypto bars (v1beta3). Same shape as equities, but bars arrive keyed by symbol
+    and there is no split adjustment. 24/7 -> no session gaps."""
+    import requests
+    rows, page = [], None
+    for _ in range(20):
+        params = {"symbols": symbol, "timeframe": timeframe,
+                  "start": f"{start}T00:00:00Z", "limit": 10000}
+        if page:
+            params["page_token"] = page
+        try:
+            r = requests.get(_CRYPTO_URL, headers=_headers(), params=params, timeout=30)
+        except Exception:
+            return None
+        if r.status_code != 200:
+            return None
+        j = r.json()
+        rows.extend((j.get("bars") or {}).get(symbol) or [])
+        page = j.get("next_page_token")
+        if not page:
+            break
+        time.sleep(0.2)
+    return _frame(rows)
+
+
+def _frame(rows):
     if not rows:
         return None
     df = pd.DataFrame(rows)
-    df["t"] = pd.to_datetime(df["t"], utc=True)
-    df = df.set_index("t").sort_index()
+    df["t"] = pd.to_datetime(df["t"], utc=True, format="ISO8601", errors="coerce")
+    df = df.dropna(subset=["t"]).set_index("t").sort_index()
+    df = df[~df.index.duplicated(keep="last")]
     return df.rename(columns={"o": "open", "h": "high", "l": "low", "c": "close", "v": "volume"})[
         ["open", "high", "low", "close", "volume"]]
 
@@ -109,13 +175,16 @@ def _synthetic(symbol, start, end, timeframe="1Day"):
     phases so the HMM has something to find. Deterministic -> reproducible tests."""
     seed = abs(hash(symbol)) % (2**32)
     rng = np.random.default_rng(seed)
-    freq = _TF_FREQ.get(timeframe, "B")
+    crypto = is_crypto(symbol)
+    freq = (_TF_FREQ_CRYPTO if crypto else _TF_FREQ).get(timeframe, "B")
     idx = pd.date_range(start=start, end=end, freq=freq, tz="UTC")
     n = len(idx)
     # hidden regime chain: drift/vol per state (crash,bear,neutral,bull,euphoria)
     drift = np.array([-0.004, -0.0012, 0.0002, 0.0011, 0.0025])
     vol = np.array([0.035, 0.018, 0.009, 0.011, 0.016])
-    trans = 0.04  # daily switch probability
+    if crypto:
+        vol = vol * 1.8                      # crypto is structurally more volatile
+    trans = 0.04  # per-bar switch probability
     state = 2
     rets = np.empty(n)
     states = np.empty(n, dtype=int)
@@ -124,7 +193,7 @@ def _synthetic(symbol, start, end, timeframe="1Day"):
             state = int(np.clip(state + rng.integers(-1, 2), 0, 4))
         states[i] = state
         rets[i] = rng.normal(drift[state], vol[state])
-    close = 100 * np.exp(np.cumsum(rets))
+    close = (30000 if crypto else 100) * np.exp(np.cumsum(rets))
     high = close * (1 + np.abs(rng.normal(0, 0.004, n)))
     low = close * (1 - np.abs(rng.normal(0, 0.004, n)))
     open_ = np.concatenate([[close[0]], close[:-1]])
@@ -138,4 +207,9 @@ if __name__ == "__main__":
     print(f"source={d.attrs['source']} rows={len(d)} last_close={d['close'].iloc[-1]:.2f}")
     assert len(d) > 100, "too few bars"
     assert (d["close"] > 0).all(), "negative prices"
+    c = get_bars("BTC/USD", days=30, timeframe="15Min", force_synthetic=True)
+    assert is_crypto("BTC/USD") and not is_crypto("SPY")
+    assert pos_symbol("BTC/USD") == "BTCUSD"
+    assert len(c) > 1000, "crypto 15Min should give far more bars per day than equities"
+    print(f"crypto synthetic rows={len(c)} last={c['close'].iloc[-1]:.0f}")
     print("market_data self-check ok")

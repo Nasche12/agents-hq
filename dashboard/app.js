@@ -51,7 +51,7 @@ const META=id=>id==='master'?{icon:'🧠',role:'Mission orchestration',accent:MA
 let DATA=null,SEL=null,API=false,UPTIME=null,SCHEDULE=null,ANALYTICS=null,RUNCOUNT={},SERVER=null;
 let RUNS={},SRVHIST=null;                                  // Lauf-Datensätze (mit Tokens) + Server-Verlauf
 let VIEW='overview',booted=false,theatreOn=false,builtAuto=false,placeNavActive=()=>{},RANGE='7d';
-let TRADING=null,TRADE_TF='All';
+let TRADING=null,TRADE_TF='24H';
 let ANTAB='website',TOKMODE='agent',ANSITE='all';         // Analytics-Tab + Token-Chart-Modus + gewählte Website ('all' = alle)
 
 /* ===== Mini-Helfer ===== */
@@ -1514,12 +1514,33 @@ function renderSystems(){
  $('#systemsGrid').querySelectorAll('.system-tile').forEach(el=>el.addEventListener('click',()=>window.open(el.dataset.url,'_blank','noopener')));
  $('#systemsGrid').querySelectorAll('button.sys-det').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();openSite(b.dataset.site);}));
 }
-/* ===== TRADING (regime bot – paper) ===== */
-const TF_DAYS={'1M':31,'3M':92,'6M':183,'1Y':366,'All':1e9};
+/* ===== TRADING (regime bot – paper, 24/7) =====
+   Der Bot laeuft rund um die Uhr: Krypto handelt 24/7/365, US-Aktien nur Mo–Fr
+   (regulaer 09:30–16:00 ET, plus Pre/After-Hours). Diese Ansicht zeigt beides
+   getrennt und ehrlich – nichts wird simuliert, jede Zahl kommt aus dem Konto. */
+const TF_HOURS={'1H':1,'6H':6,'24H':24,'7D':168,'30D':720,'All':1e9};
 function tColor(reg){return (TRADING&&TRADING.regime_colors&&TRADING.regime_colors[reg])||'#7f8c8d';}
 function pctS(v,dp){return v==null?'–':((v>0?'+':'')+(v*100).toFixed(dp==null?1:dp)+'%');}
 function money(v){return v==null?'–':'$'+new Intl.NumberFormat('en-US',{maximumFractionDigits:0}).format(v);}
+function money2(v){return v==null?'–':'$'+new Intl.NumberFormat('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}).format(v);}
+function moneyS(v){if(v==null)return '–';const a=Math.abs(v);const s=a>=1000?new Intl.NumberFormat('en-US',{maximumFractionDigits:0}).format(a):a.toFixed(2);return (v>=0?'+$':'−$')+s;}
 function signed(v){return v==null?'–':((v>=0?'+$':'-$')+new Intl.NumberFormat('en-US',{maximumFractionDigits:0}).format(Math.abs(v)));}
+/* Achsenbeschriftung, die sich am Tick-Abstand orientiert: bei engem Bereich (1 h Fenster)
+   braucht es Nachkommastellen, sonst stuenden alle Ticks als dasselbe "108k" da. */
+function kAxis(v,step){const a=Math.abs(v);
+ if(a>=1e6&&(!step||step>=1e4))return (v/1e6).toFixed(1)+'M';
+ if(a>=1000){const d=!step?0:(step>=1000?0:(step>=100?1:2));return (v/1e3).toFixed(d)+'k';}
+ return step&&step<1?v.toFixed(2):Math.round(v);}
+/* Im Trading-Tab durchgaengig en-US formatieren, damit '0.025' Stueck und '$91,234.50'
+   nicht mit gemischten Dezimaltrennzeichen nebeneinander stehen. */
+function n0(v){return v==null?'–':new Intl.NumberFormat('en-US',{maximumFractionDigits:0}).format(v);}
+function qty(v){return (v==null||isNaN(v))?'–':new Intl.NumberFormat('en-US',{maximumFractionDigits:6}).format(v);}
+function ago(sec){if(sec==null)return '–';if(sec<60)return sec+'s';if(sec<3600)return Math.round(sec/60)+' min';if(sec<86400)return (sec/3600).toFixed(1)+' h';return (sec/86400).toFixed(1)+' d';}
+function tone(v){return v==null?'':(v>0?'var(--green)':(v<0?'var(--red)':'inherit'));}
+/* Ein KPI-Kachelraster – Zahlen sind IMMER sichtbar, kein Hover noetig. */
+function kpiGrid(cells,cls){return `<div class="analytics-kpis trd-kpis ${cls||''}">${cells.map(k=>`<div class="analytics-kpi${k.hi?' is-hero':''}"><span>${esc(k.l)}</span><strong style="color:${k.c||'inherit'}">${k.raw?k.v:esc(''+k.v)}</strong><small>${esc(k.s||'')}</small></div>`).join('')}</div>`;}
+function sectionHead(eyebrow,title,chip,chipCls){return `<div class="panel-header"><div><span class="eyebrow">${esc(eyebrow)}</span><h3>${esc(title)}</h3></div>${chip?`<span class="status-chip ${chipCls||''}">${esc(chip)}</span>`:''}</div>`;}
+
 function renderTrading(){
  const box=$('#tradingBody');if(!box)return;
  const t=TRADING;
@@ -1532,87 +1553,183 @@ function renderTrading(){
    <div class="chart-empty">No live Alpaca account. Put paper keys in <code>.env</code>, then from <code>trading-bot/</code> run <code>.venv/Scripts/python main.py --once</code> → <code>python dashboard_export.py</code>. Everything stays <b>paper</b>.</div></section>`;
   return;}
  if(pill)pill.textContent=(t.mode||'paper').toUpperCase();
- const live=t.live||{},risk=t.risk||{};
+ const live=t.live||{},risk=t.risk||{},bot=t.bot||{},mk=t.market||{},uni=t.universe||{},ts=t.trade_stats||{};
+ const signals=t.signals||[],pos=acc.open_positions||[],trades=t.trades||[];
+ /* Alpaca meldet Krypto-Positionen als 'BTCUSD', Orders aber als 'BTC/USD'.
+    Ueberall die Schreibweise aus der Watchlist zeigen, damit die Tabellen zusammenpassen. */
+ const SYMMAP={};(t.watchlist||[]).forEach(w=>{SYMMAP[String(w).replace('/','').toUpperCase()]=w;});
+ const dsym=x=>SYMMAP[String(x||'').replace('/','').toUpperCase()]||x||'–';
 
- // ---- header ----
- const regBadge=live&&live.regime?`<span class="trd-regime" style="--rc:${tColor(live.regime)}">${esc(live.regime)} · conf ${live.confidence!=null?Math.round(live.confidence*100)+'%':'–'}</span>`:'<span class="trd-regime muted">no live cycle</span>';
- const statusCls=t.status==='running'?'good':'warn';
- const header=`<div class="an-toolbar">
-   <div><span class="eyebrow">REGIME TRADING BOT · ${esc((t.watchlist||[t.symbol]).join(', '))}</span><h3 class="an-title">Live paper account</h3></div>
-   <div class="ph-right"><span class="status-chip ${statusCls}">${esc(t.status||'idle')} · ${esc(t.mode||'paper')}</span>${regBadge}<span class="status-chip">as of ${live.last_cycle?fmtClock(live.last_cycle):(t.generated?fmtDay(t.generated):'–')}</span></div></div>`;
+ /* ---------- 1. Kommandozeile: laeuft der Bot, und welcher Markt ist offen? ---------- */
+ const fresh=live.stale_seconds!=null&&live.stale_seconds<Math.max(180,(bot.cycle_seconds||60)*3);
+ const running=t.status==='running'&&fresh;
+ const cryptoPill=uni.crypto_count?`<span class="mk-pill open"><i></i>Crypto 24/7 · <b>OPEN</b><small>${uni.crypto_count} pairs</small></span>`:'';
+ const eqOpen=mk.equity_tradable;
+ const eqPill=`<span class="mk-pill ${eqOpen?'open':'shut'}"><i></i>US equities · <b>${esc((mk.equity_label||'–').toUpperCase())}</b><small>${uni.equity_count||0} tickers${mk.next_open&&!eqOpen?' · opens '+fmtStamp(mk.next_open):(mk.next_close&&eqOpen?' · closes '+fmtClock(mk.next_close):'')}</small></span>`;
+ const hero=`<section class="panel trd-hero">
+  <div class="trd-hero-top">
+   <div><span class="eyebrow">REGIME TRADING BOT · PAPER</span>
+    <h2 class="trd-hero-eq">${money(acc.equity)}<em style="color:${tone(acc.day_change)}">${moneyS(acc.day_change)} ${acc.day_change_pct!=null?'('+pctS(acc.day_change_pct,2)+')':''} <span>24 h</span></em></h2></div>
+   <div class="trd-hero-state">
+    <span class="status-chip ${running?'good':'warn'}">${running?'running':(t.status||'idle')}</span>
+    <span class="status-chip">${bot.runs_247?'24/7':'session only'} · cycle ${bot.cycle_seconds||60}s</span>
+    <span class="status-chip" title="${esc(live.last_cycle||'')}">last cycle ${ago(live.stale_seconds)} ago</span>
+   </div></div>
+  <div class="trd-markets">${cryptoPill}${eqPill}<span class="mk-pill neutral"><i></i>Now · <b>${esc(mk.now_et||'–')}</b><small>${live.tradable_now||0} of ${signals.length} symbols actionable</small></span></div>
+  <div class="trd-note ${acc.trading_enabled===false?'':'ok'}">${acc.trading_enabled===false
+   ?'⏸ <b>Observe only</b> — the bot computes HMM signals and logs why, but sends <b>no orders</b>. Set <code>trading_enabled: true</code> in <code>config.json</code>.'
+   :`✅ <b>Live paper trading, round the clock.</b> Crypto trades 24/7; equities only when their session is open${acc.extended_hours?' (incl. pre/after-hours via limit orders)':''}. Hard limits: <b>${money(acc.per_trade_cap)} max per trade</b>, margin capped at <b>${money(acc.max_margin||0)}</b>, rebalance from <b>${Math.round((acc.rebalance_min_pct||0.02)*100)}%</b> drift.`}</div>
+ </section>`;
 
- // ---- real account KPIs ----
- const nPos=(acc.open_positions||[]).length,nOrders=acc.orders_placed||0;
+ /* ---------- 2. Konto – alle harten Zahlen auf einen Blick ---------- */
  const accCells=[
-  {l:'Paper balance',v:money(acc.equity),s:'live · Alpaca'},
-  {l:'Cash',v:money(acc.cash)},
+  {l:'Paper balance',v:money(acc.equity),s:'live · Alpaca',hi:1},
+  {l:'Day P&L',v:moneyS(acc.day_change),s:pctS(acc.day_change_pct,2)+' in 24 h',c:tone(acc.day_change)},
+  {l:'Total P&L',v:moneyS(acc.total_change),s:'since '+money(acc.starting_equity),c:tone(acc.total_change)},
+  {l:'Unrealized',v:moneyS(acc.unrealized_pl),s:'on open positions',c:tone(acc.unrealized_pl)},
+  {l:'Cash',v:money(acc.cash),s:'settled'},
+  {l:'Buying power',v:money(acc.buying_power),s:'incl. margin'},
   {l:'Deployed',v:money(acc.deployed),s:acc.budget?'of '+money(acc.budget)+' budget':''},
-  {l:'Open positions',v:nPos,s:nPos?'held':'flat'},
-  {l:'Long',v:acc.longs!=null?acc.longs:'–',s:'positions'},
-  {l:'Short',v:acc.shorts!=null?acc.shorts:'–',s:live.market_open?'market open':'market closed'},
+  {l:'Open positions',v:pos.length,s:(acc.longs||0)+' long · '+(acc.shorts||0)+' short'},
  ];
- const kpiRow=`<div class="analytics-kpis trd-kpis">${accCells.map(k=>`<div class="analytics-kpi"><span>${esc(k.l)}</span><strong>${esc(''+k.v)}</strong><small>${esc(k.s||'')}</small></div>`).join('')}</div>`;
- const observeNote=acc.trading_enabled===false?`<div class="trd-note">⏸ <b>Observe only</b> — the bot computes HMM signals and logs why, but sends <b>no orders</b>. Set <code>trading_enabled: true</code> in <code>config.json</code> to buy/hold/sell for real (paper).</div>`:`<div class="trd-note">✅ <b>Live paper trading</b> — the bot longs/shorts on the intraday HMM regime. Hard limits: <b>${acc.per_trade_cap?money(acc.per_trade_cap):'–'} max per trade</b>, margin capped at <b>${acc.max_margin?money(acc.max_margin):'$0'}</b>.</div>`;
 
- // ---- real balance over time (account snapshots), timeframe-windowed ----
- const eq=t.equity_history||[];
- let balanceSection='<div class="chart-empty">Balance history builds up as the bot runs — needs 2+ cycles.</div>';
- if(eq.length>=2){
-  const lastT=new Date(eq[eq.length-1][0]).getTime(),win=TF_DAYS[TRADE_TF]*864e5;
-  const keep=eq.filter(p=>lastT-new Date(p[0]).getTime()<=win);
-  const times=keep.map(p=>p[0]),ev=keep.map(p=>p[1]);
-  const first=ev[0],chg=first?ev[ev.length-1]/first-1:null;
-  const tfBtns=Object.keys(TF_DAYS).map(k=>`<button data-tf="${k}" class="${TRADE_TF===k?'active':''}">${k}</button>`).join('');
-  const line=svgLine([{pts:ev,color:'#5bd9a0'}],{w:760,h:220,times,unit:'$',zero:false,vfmt:v=>money(v),xfmt:fmtDay,aria:'Account balance over time'});
-  balanceSection=`<div class="panel-header compact"><div><span class="eyebrow">BALANCE OVER TIME · LIVE</span><h3>${money(ev[ev.length-1])} ${chg!=null?'· '+pctS(chg)+' ('+TRADE_TF+')':''}</h3></div><div class="seg-toggle trd-tf">${tfBtns}</div></div>${line}`;
+ /* ---------- 3. Performance – nur aus echten, geschlossenen Round-Trips ---------- */
+ const perfCells=[
+  {l:'Realized P&L',v:moneyS(ts.realized_pnl),s:(ts.trades||0)+' closed trades',c:tone(ts.realized_pnl),hi:1},
+  {l:'Win rate',v:ts.win_rate!=null?Math.round(ts.win_rate*100)+'%':'–',s:(ts.wins||0)+' W / '+(ts.losses||0)+' L'},
+  {l:'Profit factor',v:ts.profit_factor!=null?ts.profit_factor.toFixed(2):'–',s:'gross win / loss',c:ts.profit_factor!=null?(ts.profit_factor>=1?'var(--green)':'var(--red)'):''},
+  {l:'Avg trade',v:moneyS(ts.avg_pnl),s:'per round-trip',c:tone(ts.avg_pnl)},
+  {l:'Avg win',v:moneyS(ts.avg_win),s:'winners only',c:ts.avg_win!=null?'var(--green)':''},
+  {l:'Avg loss',v:moneyS(ts.avg_loss),s:'losers only',c:ts.avg_loss!=null?'var(--red)':''},
+  {l:'Best trade',v:moneyS(ts.best),s:'single round-trip',c:tone(ts.best)},
+  {l:'Worst trade',v:moneyS(ts.worst),s:'single round-trip',c:tone(ts.worst)},
+ ];
+
+ /* ---------- 4. Aktivitaet – beantwortet "handelt er genug?" ---------- */
+ const actCells=[
+  {l:'Orders 24 h',v:n0(ts.orders_24h||0),s:money(ts.volume_24h||0)+' volume',hi:1},
+  {l:'Orders 7 d',v:n0(ts.orders_7d||0),s:'filled'},
+  {l:'Orders total',v:n0(ts.orders_filled||0),s:(ts.buys||0)+' buy · '+(ts.sells||0)+' sell'},
+  {l:'Crypto / equity',v:(ts.crypto_orders||0)+' / '+(ts.equity_orders||0),s:'orders by asset class'},
+  {l:'Cycles run',v:n0(bot.cycles||0),s:'every '+(bot.cycle_seconds||60)+'s'},
+  {l:'Uptime',v:bot.uptime_hours!=null?bot.uptime_hours+' h':'–',s:bot.started?'since '+fmtStamp(bot.started):''},
+  {l:'Total volume',v:money(ts.volume_total||0),s:'all filled orders'},
+  {l:'Errors',v:n0(bot.errors||0),s:bot.last_error?String(bot.last_error).slice(0,42):'none',c:bot.errors?'var(--yellow)':'var(--green)'},
+ ];
+
+ /* ---------- 5. Kontostand ueber Zeit – Stunden bis Monate ---------- */
+ const hours=TF_HOURS[TRADE_TF]||24;
+ const fine=t.equity_history||[],coarse=t.equity_history_coarse||[];
+ let src=(hours<=48&&fine.length>=2)?fine:(coarse.length>=2?coarse:fine);
+ const nowT=src.length?new Date(src[src.length-1][0]).getTime():0;
+ let keep=src.filter(p=>nowT-new Date(p[0]).getTime()<=hours*36e5);
+ if(keep.length<2)keep=src.slice(-Math.max(2,Math.min(src.length,60)));
+ const tfBtns=Object.keys(TF_HOURS).map(k=>`<button data-tf="${k}" class="${TRADE_TF===k?'active':''}">${k}</button>`).join('');
+ let balanceSection=`<div class="panel-header"><div><span class="eyebrow">BALANCE OVER TIME · LIVE</span><h3>Account equity</h3></div><div class="seg-toggle trd-tf">${tfBtns}</div></div><div class="chart-empty">Balance history builds up as the bot runs — needs 2+ cycles (${(bot.cycle_seconds||60)}s each).</div>`;
+ if(keep.length>=2){
+  const times=keep.map(p=>p[0]),ev=keep.map(p=>p[1]),cv=keep.map(p=>p[2]);
+  const hasCash=cv.some(v=>v!=null);
+  const first=ev[0],last=ev[ev.length-1],chg=first?last/first-1:null,abs=last-first;
+  const hi=Math.max(...ev),lo=Math.min(...ev);
+  const shortWin=hours<=48;
+  // NUR die Equity-Kurve: Cash mit auf die Achse zu legen wuerde die Skala aufblaehen und
+  // die eigentliche Bewegung zu einer geraden Linie plaetten. Cash steht in der Zahlenleiste.
+  const line=svgLine([{pts:ev,color:'#5bd9a0',name:'Equity'}],
+   {w:820,h:210,times,unit:'$',zero:false,area:'#5bd9a0',vfmt:v=>money2(v),ylab:kAxis,
+    xfmt:shortWin?fmtClock:fmtDay,aria:'Account balance over time'});
+  // Zahlenleiste: die Werte stehen fest da, auch ohne Maus ueber dem Chart.
+  const strip=[['Now',money2(last),''],['Change',moneyS(abs)+' · '+pctS(chg,2),tone(abs)],
+   ['High',money2(hi),'var(--green)'],['Low',money2(lo),'var(--red)'],
+   ['Cash',hasCash?money2(cv[cv.length-1]):'–',''],['Points',n0(keep.length)+' · '+(shortWin?'raw':'sampled'),'']]
+   .map(r=>`<div class="trd-stat"><span>${esc(r[0])}</span><b style="color:${r[2]||'inherit'}">${esc(r[1])}</b></div>`).join('');
+  balanceSection=`<div class="panel-header"><div><span class="eyebrow">BALANCE OVER TIME · LIVE</span><h3>${money2(last)} <em style="color:${tone(abs)};font-style:normal;font-size:15px">${moneyS(abs)} (${pctS(chg,2)}) · ${TRADE_TF}</em></h3></div><div class="seg-toggle trd-tf">${tfBtns}</div></div><div class="trd-stats">${strip}</div>${line}`;
  }
 
- // ---- open positions table ----
- const pos=acc.open_positions||[];
+ /* ---------- 6. HMM-Signale: eine Zeile pro Symbol, alle Zahlen sichtbar ---------- */
+ const expoBar=e=>{const v=Math.max(-1,Math.min(1,e||0)),w=Math.abs(v)*50,c=v>0?'var(--green)':'var(--red)';
+  return `<span class="expo"><i class="mid"></i><i class="fill" style="left:${v>=0?50:50-w}%;width:${w}%;background:${c}"></i></span>`;};
+ const sigRows=signals.map(s=>{
+  const dc=s.direction==='long'?'var(--green)':(s.direction==='short'?'var(--red)':'var(--muted)');
+  const dd=s.decision==='TRADE'?'var(--green)':(s.decision==='FLAT'?'var(--red)':(s.decision==='ERROR'?'var(--yellow)':'var(--muted)'));
+  const cls=s.asset_class==='crypto'?'crypto':'equity';
+  return `<tr><td><b>${esc(s.symbol)}</b> <span class="tag ${cls}">${cls==='crypto'?'24/7':'stock'}</span></td>
+   <td><span class="trd-dot" style="background:${tColor(s.regime)}"></span>${esc(s.regime||'–')}${s.n_regimes?` <small class="mut">${(s.regime_rank||0)+1}/${s.n_regimes}</small>`:''}</td>
+   <td>${s.confidence!=null?Math.round(s.confidence*100)+'%':'–'}</td>
+   <td style="color:${dc};text-transform:uppercase;font-weight:600">${esc(s.direction||'–')}</td>
+   <td class="num">${expoBar(s.exposure)}<b>${(s.exposure||0)>0?'+':''}${Math.round((s.exposure||0)*100)}%</b></td>
+   <td class="num">${s.target_notional!=null?money(s.target_notional):'–'}</td>
+   <td class="num">${s.price!=null?money2(s.price):'–'}</td>
+   <td class="num">${s.held_qty?qty(+s.held_qty):'–'}</td>
+   <td class="num" style="color:${tone(s.unrealized_pl)}">${s.unrealized_pl!=null?moneyS(s.unrealized_pl):'–'}</td>
+   <td class="num" style="color:${tone(s.realized_pl)}">${s.realized_pl!=null?moneyS(s.realized_pl):'–'}</td>
+   <td><span class="tag sess ${esc(s.session||'')}">${esc(s.session_label||s.session||'–')}</span></td>
+   <td style="color:${dd};font-weight:600">${esc(s.decision||'–')}</td></tr>`;}).join('');
+ const signalsTable=signals.length?`<div class="trd-scroll"><table class="trd-table"><thead><tr><th>Symbol</th><th>Regime (HMM)</th><th>Conf</th><th>Dir</th><th class="num">Target</th><th class="num">Size</th><th class="num">Price</th><th class="num">Held</th><th class="num">Unreal.</th><th class="num">Realized</th><th>Session</th><th>Decision</th></tr></thead><tbody>${sigRows}</tbody></table></div><small class="trd-hint">The HMM regime per symbol drives direction and size: strong regime → long, weak → short, neutral → flat. <b>CLOSED</b> means that market is shut right now — crypto never shows CLOSED.</small>`:'<div class="chart-empty">No signals yet — run a cycle.</div>';
+
+ /* ---------- 7. Offene Positionen ---------- */
  const posRows=pos.map(p=>{const q=+p.qty,dir=q>=0?'long':'short',dc=q>=0?'var(--green)':'var(--red)';
-  return `<tr><td>${esc(p.symbol)}</td><td style="color:${dc};text-transform:uppercase;font-weight:600">${dir}</td><td style="text-align:right">${num(Math.abs(q))}</td><td style="text-align:right">${money(Math.abs(p.market_value))}</td><td style="text-align:right;color:${p.unrealized_pl>=0?'var(--green)':'var(--red)'}">${signed(p.unrealized_pl)}</td></tr>`;}).join('');
- const posTable=pos.length?`<table class="trd-table"><thead><tr><th>Symbol</th><th>Side</th><th style="text-align:right">Qty</th><th style="text-align:right">Value</th><th style="text-align:right">Unreal. P&amp;L</th></tr></thead><tbody>${posRows}</tbody></table>`:'<div class="chart-empty">No open positions — account is flat.</div>';
+  return `<tr><td><b>${esc(dsym(p.symbol))}</b></td><td style="color:${dc};text-transform:uppercase;font-weight:600">${dir}</td>
+   <td class="num">${qty(Math.abs(q))}</td><td class="num">${money2(p.avg_entry)}</td>
+   <td class="num">${p.current_price!=null?money2(p.current_price):'–'}</td>
+   <td class="num">${money2(Math.abs(p.market_value))}</td>
+   <td class="num" style="color:${tone(p.unrealized_pl)}">${moneyS(p.unrealized_pl)}</td>
+   <td class="num" style="color:${tone(p.unrealized_pl)}">${p.unrealized_plpc!=null?pctS(p.unrealized_plpc,2):'–'}</td></tr>`;}).join('');
+ const posTable=pos.length?`<div class="trd-scroll"><table class="trd-table"><thead><tr><th>Symbol</th><th>Side</th><th class="num">Qty</th><th class="num">Entry</th><th class="num">Last</th><th class="num">Value</th><th class="num">Unreal. P&amp;L</th><th class="num">%</th></tr></thead><tbody>${posRows}</tbody></table></div>`:'<div class="chart-empty">No open positions — account is flat.</div>';
 
- // ---- per-symbol HMM signals (buy/hold/sell + long/short) ----
- const signals=t.signals||[];
- const sigRows=signals.map(s=>{const dc=s.direction==='long'?'var(--green)':(s.direction==='short'?'var(--red)':'var(--muted)');
-  const dd=s.decision==='TRADE'?'var(--green)':(s.decision==='FLAT'?'var(--red)':'var(--muted)');
-  return `<tr><td><b>${esc(s.symbol)}</b></td><td><span class="trd-dot" style="background:${tColor(s.regime)}"></span>${esc(s.regime)}</td><td>${s.confidence!=null?Math.round(s.confidence*100)+'%':'–'}</td><td style="color:${dc};text-transform:uppercase;font-weight:600">${esc(s.direction)}</td><td style="text-align:right">${(s.exposure||0)>0?'+':''}${Math.round((s.exposure||0)*100)}%</td><td style="color:${dd};font-weight:600">${esc(s.decision)}</td></tr>`;}).join('');
- const signalsTable=signals.length?`<table class="trd-table"><thead><tr><th>Symbol</th><th>Regime (HMM)</th><th>Conf</th><th>Direction</th><th style="text-align:right">Target</th><th>Decision</th></tr></thead><tbody>${sigRows}</tbody></table><small class="trd-hint">The HMM regime per symbol drives direction and size: strong regime → long, weak → short, neutral → flat. Size scales into the per-symbol budget.</small>`:'<div class="chart-empty">No signals yet — run a cycle.</div>';
+ /* ---------- 8. Geschlossene Round-Trips (FIFO aus echten Fills) ---------- */
+ const trRows=trades.slice(0,60).map(x=>`<tr><td>${x.closed?fmtStamp(x.closed):'–'}</td><td><b>${esc(dsym(x.symbol))}</b></td>
+  <td style="text-transform:uppercase;font-weight:600;color:${x.side==='long'?'var(--green)':'var(--red)'}">${esc(x.side)}</td>
+  <td class="num">${qty(+x.qty)}</td><td class="num">${money2(x.entry)}</td><td class="num">${money2(x.exit)}</td>
+  <td class="num" style="color:${tone(x.pnl)};font-weight:600">${moneyS(x.pnl)}</td>
+  <td class="num" style="color:${tone(x.pnl)}">${pctS(x.pnl_pct,2)}</td></tr>`).join('');
+ const tradesTable=trades.length?`<div class="trd-scroll"><table class="trd-table"><thead><tr><th>Closed</th><th>Symbol</th><th>Side</th><th class="num">Qty</th><th class="num">Entry</th><th class="num">Exit</th><th class="num">P&amp;L</th><th class="num">%</th></tr></thead><tbody>${trRows}</tbody></table></div><small class="trd-hint">FIFO-matched from real fills. A position only appears here once it has been fully or partially closed — open positions sit in the table above.</small>`:'<div class="chart-empty">No closed round-trips yet — positions are still open.</div>';
 
- // ---- risk panel (real, from account equity) ----
+ /* ---------- 9. Risiko ---------- */
  const th=risk.thresholds||{};
- const risks=[
+ const riskCells=[
   {l:'Equity',v:money(risk.equity),s:'peak '+money(risk.peak_equity)},
-  {l:'Day P&L',v:pctS(risk.day_dd),s:'flat at -'+Math.round((th.day_flat_pct||0)*100)+'%',up:(risk.day_dd||0)>=0},
-  {l:'Week P&L',v:pctS(risk.week_dd),s:'resize at -'+Math.round((th.week_resize_pct||0)*100)+'%',up:(risk.week_dd||0)>=0},
-  {l:'From peak',v:pctS(risk.peak_dd),s:'kill at -'+Math.round((th.kill_from_peak_pct||0)*100)+'%',up:(risk.peak_dd||0)>=-0.0001},
-  {l:'Size mult.',v:(risk.size_multiplier!=null?risk.size_multiplier+'×':'–'),s:risk.size_multiplier<1?'throttled':'full',up:risk.size_multiplier>=1},
-  {l:'Kill switch',v:risk.killed?'ARMED':'safe',s:risk.lock_file?'lock file present':'no lock',up:!risk.killed},
+  {l:'Day P&L',v:pctS(risk.day_dd,2),s:'flat at -'+Math.round((th.day_flat_pct||0)*100)+'%',c:tone(risk.day_dd)},
+  {l:'Week P&L',v:pctS(risk.week_dd,2),s:'resize at -'+Math.round((th.week_resize_pct||0)*100)+'%',c:tone(risk.week_dd)},
+  {l:'From peak',v:pctS(risk.peak_dd,2),s:'kill at -'+Math.round((th.kill_from_peak_pct||0)*100)+'%',c:tone(risk.peak_dd)},
+  {l:'Size mult.',v:(risk.size_multiplier!=null?risk.size_multiplier+'×':'–'),s:risk.size_multiplier<1?'throttled':'full',c:risk.size_multiplier>=1?'var(--green)':'var(--yellow)'},
+  {l:'Kill switch',v:risk.killed?'ARMED':'safe',s:risk.lock_file?'lock file present':'no lock',c:risk.killed?'var(--red)':'var(--green)'},
+  {l:'Max leverage',v:(th.max_leverage||1)+'×',s:'hard cap'},
+  {l:'Per-trade risk',v:Math.round((th.per_trade_pct||0)*100)+'%',s:'of portfolio'},
  ];
- const riskRow=`<div class="analytics-kpis trd-kpis">${risks.map(k=>`<div class="analytics-kpi"><span>${esc(k.l)}</span><strong style="color:${k.up===false?'var(--red)':(k.up===true?'var(--green)':'inherit')}">${esc(k.v)}</strong><small>${esc(k.s)}</small></div>`).join('')}</div>`;
 
- // ---- real orders (clickable -> detail card) ----
+ /* ---------- 10. Orders (klickbar) ---------- */
  const orders=(t.orders||[]).filter(o=>o&&o.symbol);
  TRADING._orders=orders;   // stash for the click handler
- const oRows=orders.map((o,i)=>{const sc=o.side==='buy'?'var(--green)':'var(--red)';
-  return `<tr class="trd-orow" data-oid="${i}" tabindex="0" role="button"><td>${o.filled_at?fmtDay(o.filled_at):(o.submitted_at?fmtDay(o.submitted_at):'–')}</td><td>${esc(o.symbol)}</td><td style="color:${sc};text-transform:uppercase;font-weight:600">${esc(o.side||'')}</td><td style="text-align:right">${num(o.qty)}</td><td style="text-align:right">${o.fill_price!=null?money(o.fill_price):'–'}</td><td style="text-align:right">${o.notional!=null?money(o.notional):'–'}</td><td>${esc(o.status||'')}</td></tr>`;}).join('');
- const ordersTable=orders.length?`<table class="trd-table trd-clickable"><thead><tr><th>Date</th><th>Symbol</th><th>Side</th><th style="text-align:right">Qty</th><th style="text-align:right">Fill price</th><th style="text-align:right">Total</th><th>Status</th></tr></thead><tbody>${oRows}</tbody></table><small class="trd-hint">Click a row for full order details.</small>`:'<div class="chart-empty">No orders yet.</div>';
+ const oRows=orders.slice(0,120).map((o,i)=>{const sc=o.side==='buy'?'var(--green)':'var(--red)';
+  const st=(o.status||'').toLowerCase();
+  return `<tr class="trd-orow" data-oid="${i}" tabindex="0" role="button"><td>${o.filled_at?fmtStamp(o.filled_at):(o.submitted_at?fmtStamp(o.submitted_at):'–')}</td>
+   <td><b>${esc(dsym(o.symbol))}</b>${o.extended_hours?' <span class="tag ext">ext</span>':''}</td>
+   <td style="color:${sc};text-transform:uppercase;font-weight:600">${esc(o.side||'')}</td>
+   <td class="num">${qty(+o.qty)}</td><td class="num">${o.fill_price!=null?money2(o.fill_price):'–'}</td>
+   <td class="num">${o.notional!=null?money2(o.notional):'–'}</td><td>${esc(o.type||'market')}</td>
+   <td><span class="tag ${st==='filled'?'ok':'mutedtag'}">${esc(o.status||'')}</span></td></tr>`;}).join('');
+ const ordersTable=orders.length?`<div class="trd-scroll"><table class="trd-table trd-clickable"><thead><tr><th>Time</th><th>Symbol</th><th>Side</th><th class="num">Qty</th><th class="num">Fill price</th><th class="num">Total</th><th>Type</th><th>Status</th></tr></thead><tbody>${oRows}</tbody></table></div><small class="trd-hint">Click a row for full order details. Showing the newest ${Math.min(orders.length,120)} of ${orders.length}.</small>`:'<div class="chart-empty">No orders yet.</div>';
 
- // ---- activity feed: real bot decisions (incl. skips) ----
+ /* ---------- 11. Entscheidungs-Journal ---------- */
  const jt=t.journal_tail||[];
- const jrows=jt.map(e=>{const dc=e.decision==='TRADE'?'var(--green)':'var(--muted)';
-  return `<tr><td>${e.ts?fmtDay(e.ts):'–'}</td><td><span class="trd-dot" style="background:${tColor(e.regime)}"></span>${esc(e.regime||'–')}</td><td>${e.confidence!=null?Math.round(e.confidence*100)+'%':'–'}</td><td style="color:${dc};font-weight:600">${esc(e.decision||'–')}</td><td style="color:var(--muted)">${esc(e.reason||'')}</td></tr>`;}).join('');
- const table=jt.length?`<table class="trd-table"><thead><tr><th>Time</th><th>Regime</th><th>Conf</th><th>Decision</th><th>Reason</th></tr></thead><tbody>${jrows}</tbody></table><small class="trd-hint">Real cycles from the bot. “SKIP” = it deliberately did not trade. No orders are sent in observe mode.</small>`:'<div class="chart-empty">No cycles yet — run <code>python main.py --once</code>.</div>';
+ const jrows=jt.map(e=>{const dc=e.decision==='TRADE'?'var(--green)':(e.decision==='CLOSED'?'var(--muted)':(e.decision==='FLAT'?'var(--red)':'var(--muted)'));
+  return `<tr><td>${e.ts?fmtStamp(e.ts):'–'}</td><td><b>${esc(e.symbol||'–')}</b></td><td><span class="trd-dot" style="background:${tColor(e.regime)}"></span>${esc(e.regime||'–')}</td>
+   <td>${e.confidence!=null?Math.round(e.confidence*100)+'%':'–'}</td>
+   <td class="num">${e.exposure!=null?((e.exposure>0?'+':'')+Math.round(e.exposure*100)+'%'):'–'}</td>
+   <td style="color:${dc};font-weight:600">${esc(e.decision||'–')}</td><td class="mut">${esc(e.reason||'')}</td></tr>`;}).join('');
+ const journalTable=jt.length?`<div class="trd-scroll"><table class="trd-table"><thead><tr><th>Time</th><th>Symbol</th><th>Regime</th><th>Conf</th><th class="num">Target</th><th>Decision</th><th>Reason</th></tr></thead><tbody>${jrows}</tbody></table></div><small class="trd-hint">Real cycles from the bot. <b>SKIP</b> = it deliberately did not trade, <b>CLOSED</b> = that market is shut right now, <b>FLAT</b> = a risk breaker forced it out.</small>`:'<div class="chart-empty">No cycles yet — run <code>python main.py --once</code>.</div>';
 
- box.innerHTML=`${header}
-  <section class="panel trd-section"><div class="panel-header"><div><span class="eyebrow">YOUR PAPER ACCOUNT · LIVE</span><h3>Alpaca — ${esc((t.watchlist||[]).join(', '))}</h3></div><span class="status-chip good">connected</span></div>${kpiRow}${observeNote}</section>
-  <section class="panel trd-section"><div class="panel-header"><div><span class="eyebrow">HMM SIGNALS · LIVE</span><h3>Per-symbol regime → long / short</h3></div><span class="status-chip">${signals.length} symbols</span></div>${signalsTable}</section>
+ box.innerHTML=`${hero}
+  <section class="panel trd-section">${sectionHead('YOUR PAPER ACCOUNT · LIVE','Alpaca — '+(uni.equity_count||0)+' tickers + '+(uni.crypto_count||0)+' crypto pairs','connected','good')}${kpiGrid(accCells)}</section>
+  <section class="panel trd-section">${sectionHead('PERFORMANCE · REALIZED','Closed round-trips',(ts.trades||0)+' trades')}${kpiGrid(perfCells)}</section>
   <section class="panel trd-section">${balanceSection}</section>
-  <section class="panel trd-section"><div class="panel-header"><div><span class="eyebrow">SAFETY</span><h3>Risk status</h3></div><span class="status-chip ${risk.killed?'warn':'good'}">${risk.killed?'halted':'all clear'}</span></div>${riskRow}</section>
-  <section class="panel trd-section"><div class="panel-header"><div><span class="eyebrow">POSITIONS</span><h3>Open positions</h3></div><span class="status-chip">${nPos} held</span></div>${posTable}</section>
-  <section class="panel trd-section"><div class="panel-header"><div><span class="eyebrow">TRADES · LIVE</span><h3>Orders</h3></div><span class="status-chip">${orders.length}</span></div>${ordersTable}</section>
-  <section class="panel trd-section"><div class="panel-header"><div><span class="eyebrow">BOT ACTIVITY · LIVE</span><h3>Decisions (incl. skips)</h3></div></div>${table}</section>`;
+  <section class="panel trd-section">${sectionHead('ACTIVITY · 24/7','How busy the bot is',(ts.orders_24h||0)+' orders / 24 h')}${kpiGrid(actCells)}</section>
+  <section class="panel trd-section">${sectionHead('HMM SIGNALS · LIVE','Per-symbol regime → long / short',signals.length+' symbols')}${signalsTable}</section>
+  <section class="panel trd-section">${sectionHead('POSITIONS','Open positions',pos.length+' held')}${posTable}</section>
+  <section class="panel trd-section">${sectionHead('CLOSED TRADES','Round-trip P&L',(ts.trades||0)+' closed')}${tradesTable}</section>
+  <section class="panel trd-section">${sectionHead('SAFETY','Risk status',risk.killed?'halted':'all clear',risk.killed?'warn':'good')}${kpiGrid(riskCells)}</section>
+  <section class="panel trd-section">${sectionHead('TRADES · LIVE','Order book',orders.length+' orders')}${ordersTable}</section>
+  <section class="panel trd-section">${sectionHead('BOT ACTIVITY · LIVE','Decisions (incl. skips)',jt.length+' entries')}${journalTable}</section>`;
 
  box.querySelectorAll('.trd-tf button').forEach(b=>b.addEventListener('click',()=>{TRADE_TF=b.dataset.tf;renderTrading();}));
  hydrateCharts(box);
@@ -1632,7 +1749,7 @@ function openTradeCard(o){
  const rows=[
   ['Symbol',esc(o.symbol)],
   ['Side',`<span style="color:${o.side==='buy'?'var(--green)':'var(--red)'};text-transform:uppercase;font-weight:600">${esc(o.side||'')}</span>`],
-  ['Quantity',num(o.qty)+' shares'],
+  ['Quantity',qty(o.qty)+' shares'],
   ['Fill price',o.fill_price!=null?money(o.fill_price):'–'],
   ['Total value',o.notional!=null?`<b>${money(o.notional)}</b>`:'–'],
   ['Order type',esc(o.type||'market')],
@@ -1641,7 +1758,7 @@ function openTradeCard(o){
   ['Filled',o.filled_at?new Date(o.filled_at).toLocaleString():'–'],
   ['Order ID',`<code style="font-size:11px">${esc(o.id||'–')}</code>`],
  ];
- bd.innerHTML=`<div class="modal trd-modal"><div class="modal-header"><div><span class="eyebrow">${esc((o.side||'').toUpperCase())} ${esc(o.symbol||'')}</span><h3>${num(o.qty)} @ ${o.fill_price!=null?money(o.fill_price):'–'} = ${o.notional!=null?money(o.notional):'–'}</h3></div><button class="icon-button" data-close="1">×</button></div>
+ bd.innerHTML=`<div class="modal trd-modal"><div class="modal-header"><div><span class="eyebrow">${esc((o.side||'').toUpperCase())} ${esc(o.symbol||'')}</span><h3>${qty(o.qty)} @ ${o.fill_price!=null?money(o.fill_price):'–'} = ${o.notional!=null?money(o.notional):'–'}</h3></div><button class="icon-button" data-close="1">×</button></div>
   <div class="trd-detail">${rows.map(r=>`<div class="trd-drow"><span>${r[0]}</span><strong>${r[1]}</strong></div>`).join('')}</div></div>`;
  bd.classList.add('open');bd.setAttribute('aria-hidden','false');
 }
@@ -1674,17 +1791,29 @@ function svgLine(series,o){
  const timeMode=tms.length===n&&tms.every(v=>!isNaN(v))&&tms[n-1]>tms[0];
  const t0=timeMode?tms[0]:0,t1=timeMode?tms[n-1]:1;
  const X=i=>timeMode?(pl+(tms[i]-t0)/(t1-t0)*plotW):(pl+(i/(n-1))*plotW);
- const grid=yv.map(v=>`<line class="gl" x1="${pl}" y1="${Y(v).toFixed(1)}" x2="${W-pr}" y2="${Y(v).toFixed(1)}"/><text class="gt" x="${pl-5}" y="${(Y(v)+4).toFixed(1)}" text-anchor="end">${Math.round(v)}</text>`).join('');
+ /* ylab bekommt den Tick-Abstand mit, damit enge Bereiche nicht alle gleich beschriftet werden */
+ const ylab=o.ylab||(v=>Math.round(v));
+ const grid=yv.map(v=>`<line class="gl" x1="${pl}" y1="${Y(v).toFixed(1)}" x2="${W-pr}" y2="${Y(v).toFixed(1)}"/><text class="gt" x="${pl-5}" y="${(Y(v)+4).toFixed(1)}" text-anchor="end">${esc(''+ylab(v,stepN))}</text>`).join('');
  const xf=o.xfmt||fmtClock;
  let xticks;
  if(timeMode){xticks=[0,1,2,3].map(k=>({x:pl+k/3*plotW,l:xf(new Date(t0+k/3*(t1-t0)).toISOString())}));}
  else{const idx=[...new Set([0,Math.round((n-1)/3),Math.round(2*(n-1)/3),n-1])].filter(i=>i>=0&&i<n);xticks=idx.map(i=>({x:X(i),l:times[i]?xf(times[i]):'#'+(i+1)}));}
- const xax=xticks.map(t=>`<text class="gt" x="${t.x.toFixed(1)}" y="${H-9}" text-anchor="middle">${esc(t.l)}</text>`).join('');
+ /* Randbeschriftungen nach innen ziehen, sonst schneidet die viewBox das letzte Label ab */
+ const xax=xticks.map(t=>`<text class="gt" x="${clamp(t.x,pl+16,W-pr-18).toFixed(1)}" y="${H-9}" text-anchor="middle">${esc(t.l)}</text>`).join('');
  const unit=`<text class="gt" x="${pl-5}" y="10" text-anchor="end" opacity=".85">${esc(o.unit!=null?o.unit:'ms')}</text>`;
  const lines=series.map(s=>{let d='',pen=false;s.pts.forEach((v,i)=>{if(v==null||isNaN(v)){pen=false;return;}d+=(pen?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1)+' ';pen=true;});return d?`<path d="${d}" fill="none" stroke="${s.color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`:'';}).join('');
  const dots=series.map(s=>{for(let i=s.pts.length-1;i>=0;i--){const v=s.pts[i];if(v!=null&&!isNaN(v))return `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="3" fill="${s.color}"/>`;}return '';}).join('');
+ /* Optionale Flaeche unter der ERSTEN Serie (o.area = Farbe) – rein additiv */
+ let area='',defs='';
+ if(o.area&&series[0]&&series[0].pts.length){
+  const gid='ag'+(chartSeq+1);let d='',open=false,lastX=null;
+  series[0].pts.forEach((v,i)=>{if(v==null||isNaN(v))return;const x=X(i),y=Y(v);if(!open){d+='M'+x.toFixed(1)+' '+(H-pb).toFixed(1)+' L'+x.toFixed(1)+' '+y.toFixed(1)+' ';open=true;}else{d+='L'+x.toFixed(1)+' '+y.toFixed(1)+' ';}lastX=x;});
+  if(open&&lastX!=null){d+='L'+lastX.toFixed(1)+' '+(H-pb).toFixed(1)+' Z';
+   defs=`<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${o.area}" stop-opacity=".34"/><stop offset="100%" stop-color="${o.area}" stop-opacity="0"/></linearGradient></defs>`;
+   area=`<path d="${d}" fill="url(#${gid})" stroke="none"/>`;}
+ }
  const id=regChart({type:'line',series,times,tms,timeMode,t0,t1,W,H,pl,pr,n,vfmt:o.vfmt||(v=>v+' ms'),nullLabel:o.nullLabel||'— down'});
- return `<div class="chartwrap" data-chart="${id}"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.aria||'Chart')}">${grid}${unit}${xax}${lines}${dots}</svg><div class="cguide"></div><div class="ctip"></div></div>`;
+ return `<div class="chartwrap" data-chart="${id}"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.aria||'Chart')}">${defs}${grid}${unit}${xax}${area}${lines}${dots}</svg><div class="cguide"></div><div class="ctip"></div></div>`;
 }
 function svgBars(rows,o){
  o=o||{};const W=344,pad=6,rowH=46,top=8,thr=o.threshold||21;
