@@ -156,6 +156,76 @@ def test_squeeze_is_low_when_the_market_is_coiled():
     assert v < 0, f"a quiet stretch after a noisy one should rank low, got {v}"
 
 
+# ---------------------------------------------------------------- classical patterns
+def _series_from(points, per=8):
+    """Build a price path through a list of turning points, so a real formation exists."""
+    seg = []
+    for a, b in zip(points, points[1:]):
+        seg.append(np.linspace(a, b, per, endpoint=False))
+    close = np.concatenate(seg + [np.array([points[-1]])])
+    return _bars(close, high=close * 1.002, low=close * 0.998,
+                 open_=np.concatenate([[close[0]], close[:-1]]))
+
+
+def test_pivots_are_append_only_and_lagged():
+    """The non-repainting contract: confirm = index + RIGHT, and extending the history
+    never alters or removes a pivot that was already emitted. A ZigZag fails this."""
+    import chart_patterns as cp
+    d = _series_from([100, 120, 105, 125, 100, 130, 95, 128, 90, 135])
+    piv = cp.pivots(d)
+    assert piv, "no pivots detected"
+    for idx, confirm, price, kind in piv:
+        assert confirm == idx + cp.RIGHT
+        assert kind in (1, -1)
+    shorter = cp.pivots(d.iloc[:len(d) - 20])
+    assert shorter == piv[:len(shorter)], "extending history rewrote an earlier pivot"
+
+
+def test_double_top_is_detected_and_is_bearish():
+    import chart_patterns as cp
+    # two peaks at ~the same level, a trough between, then a break below the trough
+    d = _series_from([100, 130, 110, 129, 95, 90])
+    s = cp.double_pattern(d)
+    assert (s < 0).any(), "a double top must produce a bearish signal"
+
+
+def test_double_bottom_is_detected_and_is_bullish():
+    import chart_patterns as cp
+    d = _series_from([130, 100, 120, 101, 135, 140])
+    s = cp.double_pattern(d)
+    assert (s > 0).any(), "a double bottom must produce a bullish signal"
+
+
+def test_head_and_shoulders_is_detected_and_is_bearish():
+    import chart_patterns as cp
+    # left shoulder 120, head 140, right shoulder 121, then break the ~105 neckline
+    d = _series_from([100, 120, 105, 140, 106, 121, 95, 90])
+    s = cp.head_shoulders(d)
+    assert (s < 0).any(), "head & shoulders must produce a bearish signal"
+
+
+def test_inverse_head_and_shoulders_is_bullish():
+    import chart_patterns as cp
+    d = _series_from([140, 120, 135, 100, 134, 121, 145, 150])
+    s = cp.head_shoulders(d)
+    assert (s > 0).any(), "inverse head & shoulders must produce a bullish signal"
+
+
+def test_structure_break_signs_correctly():
+    import chart_patterns as cp
+    up = _series_from([100, 110, 105, 130, 128, 145])
+    down = _series_from([145, 130, 135, 110, 112, 95])
+    assert cp.structure_break(up).iloc[-1] > 0
+    assert cp.structure_break(down).iloc[-1] < 0
+
+
+def test_pattern_signals_stay_bounded(df):
+    import chart_patterns as cp
+    for name, fn in cp.BUILDERS.items():
+        v = fn(df)
+        assert v.between(-1.0001, 1.0001).all(), f"{name} outside [-1, 1]"
+
+
 def test_gap_is_zero_without_gaps():
     close = np.linspace(100, 110, 50)
     g = cf.gap(_bars(close, open_=np.concatenate([[100], close[:-1]]))).dropna()

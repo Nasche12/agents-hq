@@ -8,7 +8,9 @@
     "volume": "Karpoff 1987 - Zusammenhang von Volumen und Preisbewegung.",
     "range_estimator": "Parkinson 1980 - High-Low-Schaetzer ist bei gleichem Fenster deutlich effizienter als Close-zu-Close.",
     "chart_patterns": "Lo, Mamaysky & Wang 2000, Journal of Finance - die ernsthafte Untersuchung klassischer Chartmuster. Fand etwas statistischen Gehalt, schwach und seither weitgehend wegarbitriert. Deshalb hier als 'weak' gefuehrt und nicht als Wissen verkauft.",
-    "nicht_enthalten": "Elliott-Wellen und Fibonacci-Retracements. Keine belastbare Out-of-Sample-Evidenz - sie stehen bewusst weder im Backlog noch in chart_features.py."
+    "nicht_enthalten": "Elliott-Wellen und Fibonacci-Retracements. Keine belastbare Out-of-Sample-Evidenz - sie stehen bewusst weder im Backlog noch in chart_features.py.",
+    "chart_patterns_impl": "Regeln aus den gaengigen veroeffentlichten Definitionen: Kopf-Schulter bestaetigt durch Schlusskurs unter der Nackenlinie, Ziel = Abstand Kopf-Nackenlinie ab Bruchstelle projiziert (IG, OANDA, Investopedia-Standard). Doppeltop-Toleranz zwischen den Hochs 2-6% (Bulkowski nennt 6%), Bestaetigung durch Schluss unter dem Zwischentief, Volumen am zweiten Hoch niedriger. Dreiecke: aufsteigend = flache Oberkante + steigende Tiefs, absteigend = flache Unterkante + fallende Hochs.",
+    "repainting": "Der wichtigste Implementierungspunkt: ZigZag-/Pivot-Indikatoren REPAINTEN - ein Swing wird erst k Bars spaeter bestaetigt und historische Marker werden nachtraeglich verschoben. Wer darauf einen Backtest baut, testet ein System, das die Zukunft liest. chart_patterns.py ist deshalb append-only ohne Zusammenfassen von Pivots."
   },
   "backlog": [
     {
@@ -16,7 +18,9 @@
       "rationale": "Der HMM sieht aktuell nur Rendite, Volatilitaet und Volumen - er kennt die Lage im Trend gar nicht. Zeitreihen-Momentum ist einer der am besten replizierten Effekte; wenn er hier traegt, sollte das Trend-Set die Regime-Trennung verbessern.",
       "evidence": "strong",
       "source": "momentum",
-      "changes": {"hmm.feature_set": "trend"},
+      "changes": {
+        "hmm.feature_set": "trend"
+      },
       "priority": 1
     },
     {
@@ -24,7 +28,9 @@
       "rationale": "Volatilitaets-Clustering ist der belastbarste Befund ueberhaupt, und Regimewechsel zeigen sich zuerst in der Vol-Struktur (vol_of_vol, Squeeze). Naheliegendster Kandidat nach 'trend'.",
       "evidence": "strong",
       "source": "vol_clustering",
-      "changes": {"hmm.feature_set": "volatility"},
+      "changes": {
+        "hmm.feature_set": "volatility"
+      },
       "priority": 2
     },
     {
@@ -32,7 +38,9 @@
       "rationale": "5-Minuten-Bars wurden gewaehlt, um die Handelsfrequenz zu erhoehen - nicht, weil sie nachweislich besser prognostizieren. Bei 15Min ist das Signal-Rausch-Verhaeltnis pro Bar hoeher, die Frequenz aber niedriger. Der Zielkonflikt gehoert gemessen statt geraten.",
       "evidence": "moderate",
       "source": "vol_clustering",
-      "changes": {"hmm.live_timeframe": "15Min"},
+      "changes": {
+        "hmm.live_timeframe": "15Min"
+      },
       "priority": 3
     },
     {
@@ -40,7 +48,9 @@
       "rationale": "Bis zu 7 Regime auf Intraday-Bars heisst viele Parameter auf wenig Daten. Eine engere Obergrenze koennte out-of-sample stabiler sein, auch wenn BIC in-sample mehr Zustaende bevorzugt.",
       "evidence": "moderate",
       "source": "vol_clustering",
-      "changes": {"hmm.max_regimes": 5},
+      "changes": {
+        "hmm.max_regimes": 5
+      },
       "priority": 4
     },
     {
@@ -48,7 +58,9 @@
       "rationale": "stability_min_bars steht auf 1, d.h. der Bot handelt auf einen einzigen Bar Regimewechsel. Das erzeugt Aktivitaet, aber vermutlich auch Fehlsignale. 2-3 Bars Bestaetigung kostet Reaktionszeit und koennte den Profit Factor heben.",
       "evidence": "moderate",
       "source": "mean_reversion",
-      "changes": {"hmm.stability_min_bars": 3},
+      "changes": {
+        "hmm.stability_min_bars": 3
+      },
       "priority": 5
     },
     {
@@ -56,7 +68,9 @@
       "rationale": "Auf kurzen Horizonten dominiert oft Rueckkehr zum Mittel statt Trend. Da der Bot auf 5-Minuten-Bars laeuft, ist das der Horizont, auf dem der Effekt am ehesten existiert. Testet zugleich, ob RSI und Donchian-Position ueberhaupt etwas beitragen.",
       "evidence": "moderate",
       "source": "mean_reversion",
-      "changes": {"hmm.feature_set": "meanrev"},
+      "changes": {
+        "hmm.feature_set": "meanrev"
+      },
       "priority": 6
     },
     {
@@ -64,7 +78,9 @@
       "rationale": "Kombiniert Trend, Range, Volatilitaet und Volumen. Hoechstes Ueberanpassungsrisiko der Liste - deshalb bewusst NACH den einzelnen Sets, damit man weiss, welcher Baustein gewirkt hat, bevor man sie mischt.",
       "evidence": "moderate",
       "source": "momentum",
-      "changes": {"hmm.feature_set": "broad"},
+      "changes": {
+        "hmm.feature_set": "broad"
+      },
       "priority": 7
     },
     {
@@ -72,7 +88,9 @@
       "rationale": "Bewusst als SKEPTISCHER Test aufgenommen: close_pos_in_bar, body_ratio und gap sind die messbaren Fassungen von Hammer, Doji und Gap. Die Evidenz fuer Chartmuster ist schwach - wenn das Set durchfaellt, ist das ein wertvolles Ergebnis, weil es die Frage fuer dieses System endgueltig beantwortet.",
       "evidence": "weak",
       "source": "chart_patterns",
-      "changes": {"hmm.feature_set": "shape"},
+      "changes": {
+        "hmm.feature_set": "shape"
+      },
       "priority": 8
     },
     {
@@ -80,7 +98,9 @@
       "rationale": "20 Tage Intraday-Historie koennen zu wenig sein, um seltene Regime (crash) ueberhaupt zu sehen. Mehr Historie heisst stabilere Schaetzung, aber auch veraltete Marktstruktur im Modell.",
       "evidence": "moderate",
       "source": "vol_clustering",
-      "changes": {"hmm.live_days": 45},
+      "changes": {
+        "hmm.live_days": 45
+      },
       "priority": 9
     },
     {
@@ -88,8 +108,40 @@
       "rationale": "rebalance_min_pct steht auf 2%, was viel Aktivitaet erzeugt. Jeder Rebalance zahlt Spread und Slippage. Falls der Profit Factor unter 1 liegt, ist Ueberhandeln die erste zu pruefende Ursache.",
       "evidence": "strong",
       "source": "volume",
-      "changes": {"execution.rebalance_min_pct": 0.05},
+      "changes": {
+        "execution.rebalance_min_pct": 0.05
+      },
       "priority": 10
+    },
+    {
+      "hypothesis": "Klassische Chartmuster als Features",
+      "rationale": "Doppeltop/-boden, Kopf-Schulter und Strukturbruch als nicht-repaintende Detektoren. Evidenz ist schwach (Lo/Mamaysky/Wang 2000) - genau deshalb gehoert es gemessen statt geglaubt. Faellt es durch, ist die Frage fuer dieses System beantwortet.",
+      "evidence": "weak",
+      "source": "chart_patterns",
+      "changes": {
+        "hmm.feature_set": "patterns"
+      },
+      "priority": 11
+    },
+    {
+      "hypothesis": "Alle Mustererkenner gleichzeitig",
+      "rationale": "patterns_wide = 9 Dimensionen auf einem 7-Zustands-HMM. Hoechstes Ueberanpassungsrisiko im Backlog, bewusst als LETZTES - erst wenn 'patterns' etwas zeigt, lohnt die breite Variante.",
+      "evidence": "weak",
+      "source": "chart_patterns",
+      "changes": {
+        "hmm.feature_set": "patterns_wide"
+      },
+      "priority": 13
+    },
+    {
+      "hypothesis": "Trend + Range + Musterscore kombiniert",
+      "rationale": "pattern_score buendelt alle Detektoren in EINE Dimension, dazu Trendstaerke und Kanalposition. Kompromiss aus Breite und Sparsamkeit - nur 6 Features.",
+      "evidence": "moderate",
+      "source": "momentum",
+      "changes": {
+        "hmm.feature_set": "combo"
+      },
+      "priority": 12
     }
   ]
 }

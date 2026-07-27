@@ -17,9 +17,12 @@ EVIDENCE TIERS, stated honestly so nothing here gets more credit than it has ear
             though heavily crowded by now.
   moderate  short-horizon mean reversion (Lo-MacKinlay 1988), volume-volatility relation
             (Karpoff 1987).
-  weak      classical chart PATTERNS -- head and shoulders, flags, and friends. The
-            serious study (Lo-Mamaysky-Wang, Journal of Finance 2000) found some
-            statistical content, weak and largely arbitraged away since.
+  weak      classical chart PATTERNS -- head and shoulders, double tops, triangles,
+            flags. The serious study (Lo-Mamaysky-Wang, Journal of Finance 2000) found
+            some statistical content, weak and largely arbitraged away since. They are
+            IMPLEMENTED anyway, in chart_patterns.py, because "weak evidence" is an
+            argument for testing something, not for refusing to build it -- that is what
+            the walk-forward gate is for. It gets to answer the question for THIS system.
   none      Elliott waves, Fibonacci retracements. No credible out-of-sample evidence.
             Deliberately absent from this module.
 
@@ -28,6 +31,8 @@ bars <= t. Every rolling window here looks backward; nothing is shifted forward.
 enforced by tests/test_chart_features.py for EVERY feature, not just some."""
 import numpy as np
 import pandas as pd
+
+import chart_patterns
 
 EPS = 1e-12
 
@@ -154,6 +159,9 @@ def volume_trend_agree(df, n=20):
 
 # ---------------------------------------------------------------- registry
 BUILDERS = {
+    # classical multi-bar formations (double top, head & shoulders, triangles, flags,
+    # divergences) live in chart_patterns.py -- non-repainting, see its docstring
+    **chart_patterns.BUILDERS,
     "trend_strength": trend_strength,
     "ma_slope": ma_slope,
     "range_pos": range_pos,
@@ -181,6 +189,13 @@ FEATURE_SETS = {
     "volatility": CORE + ["atr_norm", "vol_of_vol", "squeeze"],
     "shape":      CORE + ["close_pos_in_bar", "body_ratio", "gap"],
     "broad":      CORE + ["trend_strength", "range_pos", "atr_norm", "obv_slope"],
+    # classical chart patterns as detectors. "patterns" keeps the three most structural
+    # ones; "patterns_wide" adds the rest and is the most overfitting-prone set here --
+    # 9 dimensions on a 7-state Gaussian HMM is a lot of parameters for the data.
+    "patterns":   CORE + ["structure_break", "double_pattern", "head_shoulders"],
+    "patterns_wide": CORE + ["structure_break", "double_pattern", "head_shoulders",
+                             "triangle", "flag", "rsi_divergence"],
+    "combo":      CORE + ["trend_strength", "range_pos", "pattern_score"],
 }
 
 

@@ -85,6 +85,27 @@ Warum aus dem Tape statt aus News: Wenn eine Krise in den Schlagzeilen steht, is
 
 Die Watchlist ist entsprechend umgebaut: vorher waren SPY/QQQ/AAPL/MSFT/NVDA fünf Varianten derselben Tech-Wette. Jetzt US-Breite, Tech, Small Caps, Anleihen, Gold, Energie, Finanzwerte plus ein 12er-Krypto-Korb für den 24/7-Betrieb.
 
+## Chartanalyse — Muster als Detektoren
+
+`chart_patterns.py` erkennt die klassischen Formationen algorithmisch, `chart_features.py` liefert die Einzelindikatoren. Alles als Zahl in `[-1, +1]`, alles look-ahead-frei, alles vom Walk-Forward beurteilbar.
+
+| Formation | Regel | Signal |
+|---|---|---|
+| Doppeltop / -boden | zwei Extreme innerhalb 3 %, Gegenpivot dazwischen, Schluss jenseits davon | −1 / +1 |
+| Kopf-Schulter (+ invers) | drei Extreme, mittleres am extremsten, äußere innerhalb 3 %, Nackenlinienbruch | −1 / +1 |
+| Dreieck | flache Seite + konvergierende Seite, Ausbruch | ±1 (aufsteigend/absteigend) |
+| Flagge / Wimpel | Impuls > 2 ATR, ruhige Konsolidierung, Fortsetzung | ±1 |
+| Strukturbruch (BOS) | Schluss jenseits des letzten bestätigten Swings | ±1 |
+| RSI-Divergenz | höheres Hoch bei schwächerem RSI (und umgekehrt) | ∓1 |
+
+**Der entscheidende Punkt: nicht-repaintend.** Ein Swing-Hoch bei Bar *i* ist bei Bar *i* nicht bekannt — erst wenn *k* weitere Bars es nicht überboten haben. Genau deshalb repainten ZigZag-Indikatoren: Sie zeichnen die Historie neu, wenn neue Bars kommen. Ein Backtest darauf testet ein System, das die Zukunft liest.
+
+Zwei Regeln verhindern das hier: Pivots sind **append-only** (kein Zusammenfassen gleichartiger Läufe — genau dieser Bequemlichkeitsschritt macht ZigZag repaintend), und ein Muster darf frühestens an dem Bar feuern, an dem *jeder* beteiligte Pivot bestätigt ist. Der Nackenlinienbruch wird strikt vorwärts gesucht.
+
+Feature-Sets: `patterns` (3 Detektoren), `patterns_wide` (alle 6 — höchstes Überanpassungsrisiko), `combo` (Trend + Range + gebündelter `pattern_score`). Auswählbar über `hmm.feature_set`, für den Forscher-Agenten freigegeben.
+
+**Quellen** — Regeln aus den gängigen veröffentlichten Definitionen: [IG](https://www.ig.com/en/trading-strategies/comprehensive-guide-on-the-head-and-shoulders-chart-pattern-for--240919) und [OANDA](https://www.oanda.com/us-en/trade-tap-blog/analysis/technical/chart-patterns-how-to-trade-head-and-shoulders-pattern/) (Kopf-Schulter, Nackenlinie, Measured Move), [FXOpen](https://fxopen.com/blog/en/trading-the-double-top-pattern-structure-signals-and-strategy/) und [TradingSim](https://www.tradingsim.com/blog/double-top) (Doppeltop-Toleranz 2–6 %, Bulkowski 6 %, Volumenregel), [TradingView](https://www.tradingview.com/scripts/zigzagindicator/) (Repainting-Verhalten von ZigZag). Wissenschaftliche Einordnung der Musterevidenz: Lo/Mamaysky/Wang 2000, *Journal of Finance*.
+
 ## Selbstverbesserung
 
 Der Bot lernt aus **seinen eigenen gemessenen Ergebnissen** — nie aus Texten. Die Regel: *Das LLM schlägt vor, die Daten entscheiden.*

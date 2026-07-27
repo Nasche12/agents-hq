@@ -189,7 +189,10 @@
           "meanrev",
           "volatility",
           "shape",
-          "broad"
+          "broad",
+          "patterns",
+          "patterns_wide",
+          "combo"
         ]
       }
     }
