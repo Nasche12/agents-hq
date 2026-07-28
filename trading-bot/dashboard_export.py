@@ -12,6 +12,9 @@ from datetime import datetime, timedelta, timezone
 import settings
 import sessions
 import trade_stats
+import trade_review
+import trade_forensics
+import news_log
 from market_data import is_crypto, pos_symbol
 
 FINE_POINTS = 3000        # raw snapshots kept for the 1h/6h/24h windows
@@ -41,6 +44,8 @@ def build(symbol=None):
     closed = trade_stats.realized_trades(orders)
     stats = trade_stats.summarize(closed)
     per_sym_pnl = trade_stats.by_symbol(closed, open_pos)
+    timeline = news_log.load()
+    reviewed = _attach_reviews(closed[:200], journal, timeline)   # per-trade right/wrong verdict
 
     market = heartbeat.get("session_overview") or sessions.market_overview(
         None, exec_cfg.get("extended_hours", True))
@@ -125,7 +130,8 @@ def build(symbol=None):
             "shorts": heartbeat.get("shorts", 0),
         },
         "orders": orders,                       # real filled/placed orders (clickable detail)
-        "trades": closed[:200],                 # FIFO-matched closed round-trips
+        "trades": reviewed,                     # closed round-trips + per-trade right/wrong review
+        "news_events": _news_events(timeline),  # world-context markers for the charts
         "trade_stats": dict(stats, **_activity_counts(orders, closed)),
         "per_symbol": per_sym_pnl,
         "learning": _learning(cfg),             # what the research agent changed, and why
@@ -156,6 +162,46 @@ def _external_risk():
                                     "events", "news", "reasons")}
     except Exception as e:
         return {"multiplier": 1.0, "error": str(e)[:120]}
+
+
+def _news_ctx(timeline, opened, closed):
+    """(worst news level, its summary) while a trade was open -- the world-context the trade
+    happened in. Empty when the market-watch agent never ran."""
+    lvl = news_log.max_level_between(timeline, opened, closed)
+    if not lvl:
+        return 0, ""
+    c = _parse(closed) or _parse(opened)
+    summ = ""
+    for e in timeline:
+        t = _parse(e.get("ts"))
+        if t and int(e.get("level", 0) or 0) == lvl and (c is None or t <= c):
+            summ = e.get("summary", "") or summ
+    return lvl, summ
+
+
+def _attach_reviews(trades, journal, timeline):
+    """Every closed round-trip gets a plain-language verdict (right/wrong + why), compared
+    against the HMM regime at entry AND the world news level during the hold."""
+    idx = trade_forensics._journal_index(journal)
+    out = []
+    for t in trades:
+        regime = trade_forensics._regime_at(idx, t.get("symbol"), t.get("opened"))
+        lvl, summ = _news_ctx(timeline, t.get("opened"), t.get("closed"))
+        out.append(dict(t, review=trade_review.review(t, regime=regime, news_level=lvl, news_summary=summ)))
+    return out
+
+
+def _news_events(timeline, limit=40):
+    """Recorded world-risk changes (level >= 1) as chart markers: when the world got riskier
+    and why. This is what lets a price move be read against 'USA hits Iran -> oil up'."""
+    out = []
+    for e in timeline or []:
+        lvl = int(e.get("level", 0) or 0)
+        if lvl >= 1:
+            out.append({"ts": e.get("ts"), "level": lvl,
+                        "label": trade_review.LEVEL_LABEL.get(lvl, str(lvl)),
+                        "summary": str(e.get("summary", ""))[:200]})
+    return out[-limit:]
 
 
 def _connections():

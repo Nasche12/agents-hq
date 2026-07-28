@@ -1692,8 +1692,9 @@ function renderTrading(){
   <td style="text-transform:uppercase;font-weight:600;color:${x.side==='long'?'var(--green)':'var(--red)'}">${esc(x.side)}</td>
   <td class="num">${qty(+x.qty)}</td><td class="num">${money2(x.entry)}</td><td class="num">${money2(x.exit)}</td>
   <td class="num" style="color:${tone(x.pnl)};font-weight:600">${moneyS(x.pnl)}</td>
-  <td class="num" style="color:${tone(x.pnl)}">${pctS(x.pnl_pct,2)}</td></tr>`);
- const tradesTable=trades.length?pagedTable(trRows,'<tr><th>Closed</th><th>Symbol</th><th>Side</th><th class="num">Qty</th><th class="num">Entry</th><th class="num">Exit</th><th class="num">P&amp;L</th><th class="num">%</th></tr>',{key:'trd',size:25,hint:'FIFO-matched from real fills. A position only appears here once it has been fully or partially closed — open positions sit in the table above.'}):'<div class="chart-empty">No closed round-trips yet — positions are still open.</div>';
+  <td class="num" style="color:${tone(x.pnl)}">${pctS(x.pnl_pct,2)}</td>
+  <td>${reviewBadge(x.review)}</td></tr>`);
+ const tradesTable=trades.length?pagedTable(trRows,'<tr><th>Closed</th><th>Symbol</th><th>Side</th><th class="num">Qty</th><th class="num">Entry</th><th class="num">Exit</th><th class="num">P&amp;L</th><th class="num">%</th><th>Bewertung</th></tr>',{key:'trd',size:25,hint:'FIFO-matched from real fills. <b>Bewertung</b> = automatischer Rückblick pro Trade (Hover zeigt Gründe + Lehre): Weltlage, Regime und Haltedauer fließen ein — ein Verlust in einer Stress-/Krisenlage ist ein exogener Schock, kein Strategiefehler.'}):'<div class="chart-empty">No closed round-trips yet — positions are still open.</div>';
 
  /* ---------- 9. Risiko ---------- */
  const th=risk.thresholds||{};
@@ -1872,8 +1873,9 @@ function svgPriceChart(bars,markers,o){
  const his=bars.map(b=>b[2]),los=bars.map(b=>b[3]);
  const mp=(markers||[]).map(m=>m.price).filter(v=>v!=null&&!isNaN(v));
  const smp=(o.stopMarks||[]).map(m=>m.price).filter(v=>v!=null&&!isNaN(v));
+ const tgp=(o.targets||[]).map(t=>t.price).filter(v=>v!=null&&!isNaN(v));
  const hasStop=o.stop!=null&&!isNaN(o.stop);
- let lo=Math.min(...los,...mp,...smp,...(hasStop?[o.stop]:[])),hi=Math.max(...his,...mp,...smp,...(hasStop?[o.stop]:[]));
+ let lo=Math.min(...los,...mp,...smp,...tgp,...(hasStop?[o.stop]:[])),hi=Math.max(...his,...mp,...smp,...tgp,...(hasStop?[o.stop]:[]));
  if(!(hi>lo)){hi=lo+1;}
  const pad=(hi-lo)*0.06;lo-=pad;hi+=pad;
  const raw=(hi-lo)/3,mag=Math.pow(10,Math.floor(Math.log10(raw||1))),nrm=raw/mag,step=(nrm>=5?5:nrm>=2?2:1)*mag;
@@ -1908,8 +1910,17 @@ function svgPriceChart(bars,markers,o){
  const smarks=(o.stopMarks||[]).filter(m=>{const t=new Date(m.ts).getTime();return t>=t0&&t<=t1&&m.price!=null;})
   .map(m=>{const x=X(new Date(m.ts).getTime()),y=Y(m.price),s=4.5;
    return `<g class="smark" data-tip="${esc(m.reason||'Stop-Loss ausgelöst')}"><line x1="${(x-s).toFixed(1)}" y1="${(y-s).toFixed(1)}" x2="${(x+s).toFixed(1)}" y2="${(y+s).toFixed(1)}"/><line x1="${(x-s).toFixed(1)}" y1="${(y+s).toFixed(1)}" x2="${(x+s).toFixed(1)}" y2="${(y-s).toFixed(1)}"/></g>`;}).join('');
+ /* Verkaufsziele: wo der Bot bei Gewinn abbauen wuerde (Scale-Out-Stufen, gruene Linien). */
+ let tpEl='';
+ (o.targets||[]).forEach(t=>{if(t.price!=null&&t.price>lo&&t.price<hi){const ty=Y(t.price);
+  tpEl+=`<line class="tpline" x1="${pl}" y1="${ty.toFixed(1)}" x2="${W-pr}" y2="${ty.toFixed(1)}"/>`
+   +`<text class="tplbl" x="${(pl+3).toFixed(1)}" y="${(ty-3).toFixed(1)}">Verkauf +${Math.round((t.pct||0)*100)}% · Abbau→${Math.round((t.keep||0)*100)}%</text>`;}});
+ /* Welt-Ereignisse: aufgezeichnete Nachrichtenlage (🌍) als senkrechte Marker mit Hover. */
+ const nmarks=(o.newsEvents||[]).filter(n=>{const t=new Date(n.ts).getTime();return t>=t0&&t<=t1;})
+  .map(n=>{const x=X(new Date(n.ts).getTime()),col=(n.level>=3?'#ff4d4d':(n.level>=2?'#f4707f':'#f8d45c'));
+   return `<g class="nmark" data-tip="🌍 ${esc(n.label||'')}: ${esc(n.summary||'')}"><line x1="${x.toFixed(1)}" y1="${pt}" x2="${x.toFixed(1)}" y2="${(H-pb).toFixed(1)}" stroke="${col}"/><text x="${x.toFixed(1)}" y="${(pt+9).toFixed(1)}" text-anchor="middle">🌍</text></g>`;}).join('');
  const id=regChart({type:'price',bars,tms,W,H,pl,pr,pt,pb,lo,hi,t0,t1,stop:hasStop?o.stop:null});
- return `<div class="chartwrap pricewrap" data-chart="${id}"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.aria||'Kursverlauf mit Trades und Stop-Loss')}">${area}${grid}${xax}${line}${stopEl}${marks}${smarks}</svg><div class="cguide"></div><div class="cguide-h"></div><div class="ctip"></div></div>`;
+ return `<div class="chartwrap pricewrap" data-chart="${id}"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.aria||'Kursverlauf mit Trades, Stop-Loss und Verkaufszielen')}">${area}${grid}${xax}${nmarks}${line}${stopEl}${tpEl}${marks}${smarks}</svg><div class="cguide"></div><div class="cguide-h"></div><div class="ctip"></div></div>`;
 }
 
 /* Faktoren als einzelne Chips statt eines zusammengeklebten Satzes — genau das macht
@@ -1917,6 +1928,15 @@ function svgPriceChart(bars,markers,o){
 function factorChips(factors){
  if(!factors||!factors.length)return '<span class="mut">–</span>';
  return `<span class="fchips">${factors.map(f=>`<span class="fchip">${esc(f)}</span>`).join('')}</span>`;
+}
+
+/* Per-Trade-Rueckblick als Badge: was war richtig/falsch. Hover zeigt Gruende + Lehre. */
+function reviewBadge(r){
+ if(!r)return '<span class="mut">–</span>';
+ const c=r.grade==='gut'?'var(--green)':(r.grade==='schlecht'?'var(--red)':'var(--muted)');
+ const ic=r.grade==='gut'?'👍':(r.grade==='schlecht'?'👎':'➖');
+ const tip=esc([r.verdict,...(r.reasons||[]),r.lesson?('→ '+r.lesson):''].filter(Boolean).join(' · '));
+ return `<span class="rev-badge" style="color:${c};border-color:${c}" data-tip="${tip}">${ic} ${esc(r.verdict||'')}</span>`;
 }
 
 function whyBlock(w){
@@ -1960,6 +1980,8 @@ async function openSymbol(sym){
  // Stop-Loss auf dem Chart: die LINIE = aktuelles (vola-skaliertes) Stop-Niveau der offenen
  // Position, die MARKER = wo ein Stop/Trailing tatsaechlich geschlossen hat.
  const stopLevel=(pos&&sig.stop_price!=null)?sig.stop_price:null;
+ const targets=(pos&&Array.isArray(sig.targets))?sig.targets:[];   // wo der Bot bei Gewinn verkaufen wuerde
+ const newsEvents=t.news_events||[];                                // Welt-Lage als Chart-Marker
  const stopMarks=decisions.filter(d=>d.decision==='EXIT'&&d.price!=null)
   .map(d=>({ts:d.ts,price:d.price,reason:(d.factors||[]).join(' · ')||'Stop-Loss'}));
 
@@ -1996,9 +2018,9 @@ async function openSymbol(sym){
   ${kpiGrid(head)}
   ${pos?`<div class="sym-actions"><button class="closepos-btn" data-closepos="${esc(sym)}">Position schließen</button>
    <span class="sym-actions-note">Schließt die offene Position (${dir2(pos)} ${qty(Math.abs(pos.qty))}, ${moneyS(pos.unrealized_pl)} unrealisiert) am Markt. Der Bot führt es im nächsten Zyklus (≤60 s) aus und hält das Symbol danach kurz flach, damit es nicht sofort wieder aufgemacht wird.</span></div>`:''}
-  <div class="sym-sec"><div class="sym-sec-head">Kursverlauf mit Trades <small>${bars.length} Bars · ${buys} Käufe ▲ · ${sells} Verkäufe ▼${stopMarks.length?' · '+stopMarks.length+' Stop-Loss ✕':''}${stopLevel!=null?' · SL '+money2(stopLevel):''}</small></div>
-   ${svgPriceChart(bars,fills,{aria:'Kursverlauf von '+sym+' mit Trades und Stop-Loss',stop:stopLevel,stopMarks:stopMarks})}
-   <div class="chart-legend"><span class="lg lg-buy">▲ Kauf</span><span class="lg lg-sell">▼ Verkauf</span><span class="lg lg-sl">✕ Stop-Loss ausgelöst</span><span class="lg lg-line">╌ Stop-Niveau</span></div></div>
+  <div class="sym-sec"><div class="sym-sec-head">Kursverlauf mit Trades <small>${bars.length} Bars · ${buys} Käufe ▲ · ${sells} Verkäufe ▼${stopMarks.length?' · '+stopMarks.length+' Stop-Loss ✕':''}${stopLevel!=null?' · SL '+money2(stopLevel):''}${targets.length?' · '+targets.length+' Verkaufsziele':''}</small></div>
+   ${svgPriceChart(bars,fills,{aria:'Kursverlauf von '+sym+' mit Trades, Stop-Loss und Verkaufszielen',stop:stopLevel,stopMarks:stopMarks,targets:targets,newsEvents:newsEvents})}
+   <div class="chart-legend"><span class="lg lg-buy">▲ Kauf</span><span class="lg lg-sell">▼ Verkauf</span><span class="lg lg-line">╌ Stop-Niveau</span><span class="lg lg-sl">✕ Stop ausgelöst</span><span class="lg lg-tp">─ Verkaufsziel</span><span class="lg lg-news">🌍 Weltereignis</span></div></div>
   <div class="sym-sec"><div class="sym-sec-head">Jede Entscheidung, mit Begründung</div>${decTable}</div>
   <div class="sym-sec"><div class="sym-sec-head">Orders</div>${ordTable}</div>`;
  hydrateCharts(symBody);

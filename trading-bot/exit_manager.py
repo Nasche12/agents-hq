@@ -136,7 +136,15 @@ def evaluate(positions, cfg, state, vol_ratios=None, now=None):
         stop_price = None
         if entry and entry > 0:
             stop_price = round(entry * (1 + stop_e), 6) if side == "short" else round(entry * (1 - stop_e), 6)
-        sx = {"stop_price": stop_price, "stop_pct": round(stop_e, 4)}   # merged into every held decision
+        # where the bot WOULD sell if the trade works out: the scale-out ladder as price levels
+        # (entry moved by each profit tier). This is the honest "take-profit" -- the bot banks
+        # progressively, it has no single fixed target.
+        targets = []
+        if entry and entry > 0:
+            for thr, cap in sorted(tiers or [], key=lambda t: t[0]):
+                tp = round(entry * (1 - thr), 6) if side == "short" else round(entry * (1 + thr), 6)
+                targets.append({"pct": round(thr, 4), "keep": round(cap, 3), "price": tp})
+        sx = {"stop_price": stop_price, "stop_pct": round(stop_e, 4), "targets": targets}
 
         if cooling:                                     # holding during cooldown -> flatten remainder
             decisions[key] = {"close": True, "block": True, "cap": 0.0,

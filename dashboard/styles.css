@@ -163,8 +163,17 @@ button{color:inherit}
 .pricewrap .smark{cursor:help}
 .chart-legend{display:flex;gap:16px;flex-wrap:wrap;margin:8px 4px 2px;font-size:11px}
 .chart-legend .lg{color:var(--muted)}
-.chart-legend .lg-buy{color:#5bd9a0}
+.chart-legend .lg-buy,.chart-legend .lg-tp{color:#5bd9a0}
 .chart-legend .lg-sell,.chart-legend .lg-sl,.chart-legend .lg-line{color:#f4707f}
+.chart-legend .lg-news{color:#f8d45c}
+/* Verkaufsziel-Linien (Scale-Out) + Welt-Ereignis-Marker */
+.pricewrap .tpline{stroke:#5bd9a0;stroke-width:1;stroke-dasharray:2 4;opacity:.75}
+.pricewrap .tplbl{fill:#5bd9a0;font-size:9px;font-family:ui-monospace,monospace;opacity:.9}
+.pricewrap .nmark line{stroke-width:1;stroke-dasharray:3 3;opacity:.5}
+.pricewrap .nmark text{font-size:11px}
+.pricewrap .nmark{cursor:help}
+/* Per-Trade-Rueckblick-Badge */
+.rev-badge{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;border:1px solid;border-radius:7px;padding:3px 8px;cursor:help;white-space:nowrap;background:rgba(255,255,255,.03)}
 /* Manuelles Schliessen einer Position (Asset-Detail) */
 .sym-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:4px 2px 10px;padding:12px 14px;border:1px solid var(--panel-border);border-radius:12px;background:rgba(244,112,127,.06)}
 .closepos-btn{background:rgba(244,112,127,.14);border:1px solid rgba(244,112,127,.5);color:#f4707f;font-weight:700;border-radius:10px;padding:9px 16px;font-size:13px;cursor:pointer;transition:.14s;white-space:nowrap}
