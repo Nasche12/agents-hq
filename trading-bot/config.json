@@ -25,7 +25,7 @@
     "BCH/USD"
   ],
   "_strategy_note": "strategy = 'trend_long' (validiert, OOS-getestet) oder 'hmm' (alte Richtungslogik, <50% Accuracy). trend_long: halte jedes Symbol nur ueber seinem SMA-Filter (long), sonst Cash - keine Richtungsprognose, nur Trend-Reaktion. Pro-Symbol target 1.0/0.0 ergibt automatisch breiten-skaliertes Gleichgewicht. Risiko-Breaker, News-Multiplikator und Korrelationsschutz bleiben aktiv; die engen Positions-Stops sind im trend_long-Modus AUS (der SMA-Filter IST der Exit).",
-  "strategy": "trend_long",
+  "strategy": "hmm",
   "trend_long": {
     "sma_days": 200
   },
@@ -34,7 +34,7 @@
     "max_regimes": 7,
     "train_days": 504,
     "live_timeframe": "5Min",
-    "feature_set": "core",
+    "feature_set": "combo",
     "live_days": 20,
     "train_bars_max": 4000,
     "random_state": 42,
@@ -46,6 +46,9 @@
     "_note": "min_change_threshold is the neutral deadband: LOWER = more trades, more churn.",
     "_trend_note": "trend_filter=true: die HMM-Richtung wird NUR genommen, wenn der Preistrend (MA-Slope) zustimmt, sonst flat. Ein HMM auf Intraday-Returns erkennt Vol-Regime, nicht Richtung - der Mean-Return-Rang ist Rauschen. Der Trend entscheidet die Seite, das HMM sizet/gated. Schneidet zugleich Fehlsignale und Handelsfrequenz.",
     "trend_filter": true,
+    "_chart_note": "chart_decides=true: die kombinierte Chartanalyse-Stimme (chart_features.chart_bias: EMA-Slope, MACD, Muster, RSI-Divergenz, Range) entscheidet die SEITE, HMM+Vola nur die GROESSE. chart_min = wie klar die Chartlage sein muss, sonst flat. Genau derselbe chart_bias laeuft im Backtester -> der Lern-Loop optimiert, was live handelt.",
+    "chart_decides": true,
+    "chart_min": 0.1,
     "extreme_long_cap": 0.25,
     "leverage": 1.0,
     "low_vol_alloc": 0.95,
@@ -161,6 +164,10 @@
         "min": 0.01,
         "max": 0.08
       },
+      "allocation.chart_min": {
+        "min": 0.05,
+        "max": 0.5
+      },
       "allocation.low_vol_alloc": {
         "min": 0.3,
         "max": 0.95
@@ -223,7 +230,10 @@
           "broad",
           "patterns",
           "patterns_wide",
-          "combo"
+          "combo",
+          "indicators",
+          "classic",
+          "full"
         ]
       }
     }

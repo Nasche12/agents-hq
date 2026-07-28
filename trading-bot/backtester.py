@@ -110,6 +110,7 @@ def walk_forward(df, start_equity=None, crash_shock=False):
         X = feats[model.features].values
         rank, conf = model.filter_states(X)
         slope = chart_features.ma_slope(block_df).reindex(feats.index).values   # trend for confirmation
+        cbias = chart_features.chart_bias_series(block_df).reindex(feats.index).values  # chart-decides side
         feat_dates = feats.index
         prev_alloc = all_alloc[-1] if all_alloc else 0.0
         for t in range(i, block_end):
@@ -121,8 +122,9 @@ def walk_forward(df, start_equity=None, crash_shock=False):
             confidence = float(conf[pos])
             vol = float(feats["realized_vol"].iloc[pos])
             tr = float(slope[pos]) if pos < len(slope) and np.isfinite(slope[pos]) else None
+            cb = float(cbias[pos]) if pos < len(cbias) and np.isfinite(cbias[pos]) else None
             expo, _ = directional_exposure(int(rank[pos]), model.n_regimes, confidence,
-                                           vol, ref_vol, False, trend=tr)
+                                           vol, ref_vol, False, trend=tr, chart=cb)
             # live stability gate: act only once the regime has held stab_n bars, else hold prev
             stable = pos + 1 >= stab_n and len(set(rank[max(0, pos - stab_n + 1):pos + 1])) == 1
             if not stable:

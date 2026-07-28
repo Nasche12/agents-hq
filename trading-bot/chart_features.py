@@ -23,8 +23,13 @@ EVIDENCE TIERS, stated honestly so nothing here gets more credit than it has ear
             IMPLEMENTED anyway, in chart_patterns.py, because "weak evidence" is an
             argument for testing something, not for refusing to build it -- that is what
             the walk-forward gate is for. It gets to answer the question for THIS system.
-  none      Elliott waves, Fibonacci retracements. No credible out-of-sample evidence.
-            Deliberately absent from this module.
+  none      Elliott waves, Fibonacci retracements, floor-trader pivots. No credible
+            out-of-sample evidence. Present anyway (fib_position, wave_position,
+            pivot_dist) by explicit request, implemented in the ONLY honest form -- as
+            non-repainting numbers off CONFIRMED pivots / the previous bar, so the
+            walk-forward gate gets to reject them for THIS system instead of a hand-drawn
+            line deciding. MACD, EMA slope and Bollinger %B are just the standard indicator
+            forms of the trend / mean-reversion / volatility facts already listed above.
 
 CORE RULE, same as feature_engineering: no look-ahead. Every value at bar t uses only
 bars <= t. Every rolling window here looks backward; nothing is shifted forward. This is
@@ -157,6 +162,127 @@ def volume_trend_agree(df, n=20):
     return r.rolling(n).corr(v)
 
 
+# ---------------------------------------------------------------- indicators (evidence: moderate)
+def ema(series, n):
+    """Exponential moving average -- weights recent bars more than the SMA. Backward only."""
+    return series.astype(float).ewm(span=n, adjust=False).mean()
+
+
+def ema_slope(df, n=21, k=10):
+    """Slope of an EMA, ATR-scaled. Reacts faster than the SMA slope in ma_slope()."""
+    e = ema(df["close"], n)
+    return (e - e.shift(k)) / (atr(df, n=14) + EPS)
+
+
+def macd(df, fast=12, slow=26, signal=9):
+    """MACD histogram (line - signal line), ATR-normalized so it compares across a $90k BTC
+    and a $30 ETF. Signed: >0 momentum turning up, <0 turning down. Standard 12/26/9,
+    backward only -- this is 'momentum' as the chart-reader's favourite number."""
+    close = df["close"].astype(float)
+    line = ema(close, fast) - ema(close, slow)
+    sig = line.ewm(span=signal, adjust=False).mean()
+    return (line - sig) / (atr(df, n=14) + EPS)
+
+
+def bollinger_b(df, n=20, k=2.0):
+    """Bollinger %B mapped to [-1, +1]: where price sits BETWEEN the bands (-1 lower band,
+    +1 upper). squeeze() gives band WIDTH, this gives POSITION -- the two together are the
+    whole Bollinger picture as numbers instead of three drawn lines."""
+    close = df["close"].astype(float)
+    mid = close.rolling(n).mean()
+    sd = close.rolling(n).std()
+    span = (2 * k * sd).replace(0, np.nan)
+    return (((close - (mid - k * sd)) / span) * 2 - 1).clip(-1, 1)
+
+
+def pivot_dist(df):
+    """Distance from the close to the classical floor-trader pivot P=(H+L+C)/3 of the
+    PREVIOUS bar (shift(1) -> non-repainting), ATR-scaled. Signed: + above the pivot
+    (bullish bias), - below. 'Pivot points' as one number, not five drawn levels."""
+    high, low, close = df["high"].astype(float), df["low"].astype(float), df["close"].astype(float)
+    p = (high.shift(1) + low.shift(1) + close.shift(1)) / 3
+    return (close - p) / (atr(df, n=14) + EPS)
+
+
+# ---------------------------------------------------------------- swing structure (evidence: none)
+def _last_confirmed_levels(df):
+    """Step series of the most recent CONFIRMED pivot-high and pivot-low price. Each level
+    updates ONLY at that pivot's confirmation bar, so it can never repaint."""
+    piv = chart_patterns.pivots(df)
+    n = len(df)
+    hi, lo = np.full(n, np.nan), np.full(n, np.nan)
+    events = sorted((p[1], p[2], p[3]) for p in piv)        # (confirm_bar, price, kind)
+    last_hi = last_lo = np.nan
+    ei = 0
+    for t in range(n):
+        while ei < len(events) and events[ei][0] <= t:
+            _, price, kind = events[ei]
+            if kind > 0:
+                last_hi = price
+            else:
+                last_lo = price
+            ei += 1
+        hi[t], lo[t] = last_hi, last_lo
+    return pd.Series(hi, index=df.index), pd.Series(lo, index=df.index)
+
+
+def fib_position(df):
+    """Where the close sits inside the last CONFIRMED swing (low..high), mapped to [-1, +1]:
+    +1 at the swing high, -1 at the swing low, ~0 near the 50% retracement. The Fibonacci
+    LEVELS have no out-of-sample edge; this exposes 'how far has the move retraced' as a
+    testable number so the walk-forward judges it, not folklore. Non-repainting via the
+    confirmed-pivot swing."""
+    hi, lo = _last_confirmed_levels(df)
+    close = df["close"].astype(float)
+    span = (hi - lo).replace(0, np.nan)
+    return (((close - lo) / span) * 2 - 1).clip(-1, 1)
+
+
+def wave_position(df):
+    """Experimental Elliott-inspired swing read, evidence tier NONE. +1 when the last
+    confirmed highs AND lows are both rising (impulse up), -1 when both fall, 0 mixed.
+    Non-repainting (confirmed pivots only). Present so 'wave structure' is a number the
+    gate can accept or reject, not a hand-drawn count that changes every bar."""
+    highs, lows = chart_patterns._split(chart_patterns.pivots(df))
+    n = len(df)
+
+    def step_dir(seq):
+        arr = np.zeros(n)
+        prev = last = np.nan
+        for p in sorted(seq, key=lambda x: x[1]):
+            c = p[1]
+            if c >= n:
+                continue
+            prev, last = last, p[2]
+            arr[c:] = 0.0 if np.isnan(prev) else (1.0 if last > prev else (-1.0 if last < prev else 0.0))
+        return arr
+
+    return pd.Series((step_dir(highs) + step_dir(lows)) / 2.0, index=df.index)
+
+
+# ---------------------------------------------------------------- combined decision vote
+def chart_bias_series(df):
+    """The whole toolkit distilled into ONE signed [-1, +1] directional vote per bar -- the
+    module's answer to 'let the chart analysis DECIDE the side'. Trend (EMA slope), momentum
+    (MACD), completed patterns (pattern_score), RSI divergence and range position each cast a
+    bounded vote; the mean is the bias. Deliberately equal-weighted: the research loop tunes
+    how hard this STEERS size (allocation.chart_min), not fifty coefficients hidden here.
+    Non-repainting (every input is). NaN inputs contribute no vote."""
+    votes = pd.DataFrame(index=df.index)
+    votes["trend"] = np.tanh(ema_slope(df))
+    votes["macd"] = np.tanh(macd(df))
+    votes["pattern"] = chart_patterns.pattern_score(df).clip(-1, 1)
+    votes["divergence"] = chart_patterns.rsi_divergence(df)
+    votes["range"] = range_pos(df)
+    return votes.mean(axis=1, skipna=True).fillna(0.0).clip(-1, 1)
+
+
+def chart_bias(df):
+    """Scalar chart-analysis vote for the latest bar (see chart_bias_series)."""
+    s = chart_bias_series(df)
+    return float(s.iloc[-1]) if len(s) else 0.0
+
+
 # ---------------------------------------------------------------- registry
 BUILDERS = {
     # classical multi-bar formations (double top, head & shoulders, triangles, flags,
@@ -164,6 +290,13 @@ BUILDERS = {
     **chart_patterns.BUILDERS,
     "trend_strength": trend_strength,
     "ma_slope": ma_slope,
+    "ema_slope": ema_slope,
+    "macd": macd,
+    "bollinger_b": bollinger_b,
+    "pivot_dist": pivot_dist,
+    "fib_position": fib_position,
+    "wave_position": wave_position,
+    "chart_bias": chart_bias_series,
     "range_pos": range_pos,
     "rsi": rsi,
     "atr_norm": atr_norm,
@@ -196,6 +329,13 @@ FEATURE_SETS = {
     "patterns_wide": CORE + ["structure_break", "double_pattern", "head_shoulders",
                              "triangle", "flag", "rsi_divergence"],
     "combo":      CORE + ["trend_strength", "range_pos", "pattern_score"],
+    # indicator sets covering the classic chart-analysis toolkit (MACD, EMA, Bollinger %B,
+    # RSI, pivots, Fibonacci). "full" is the widest -- 9 dims on a Gaussian HMM is the most
+    # overfitting-prone set here; it exists so the walk-forward can PROVE that, not assume it.
+    "indicators": CORE + ["macd", "rsi", "bollinger_b"],
+    "classic":    CORE + ["ema_slope", "macd", "rsi", "bollinger_b", "range_pos", "pivot_dist"],
+    "full":       CORE + ["trend_strength", "macd", "bollinger_b", "range_pos",
+                          "pattern_score", "fib_position"],
 }
 
 
@@ -232,5 +372,10 @@ if __name__ == "__main__":
 
     for name, cols in FEATURE_SETS.items():
         assert cols[:3] == CORE, f"{name} must keep the core features"
+
+    # the combined decision vote must stay bounded and be a real directional signal
+    cb = chart_bias_series(df).dropna()
+    assert cb.between(-1, 1).all(), "chart_bias out of [-1,1]"
+    assert (cb != 0).any(), "chart_bias never fires -- vote is dead"
     print(f"chart_features ok: {len(BUILDERS)} Features, {len(FEATURE_SETS)} Sets, "
           f"kein Look-Ahead")

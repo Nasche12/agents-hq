@@ -155,9 +155,10 @@ def _signal_for(symbol, model, ref_vol, df):
     info = model.latest(df)
     vol = float(build_features(df)["realized_vol"].iloc[-1])
     trend = _trend_of(df)
+    chart = _chart_of(df)
     expo, reason = directional_exposure(info["regime_rank"], info["n_regimes"],
                                         info["confidence"], vol, ref_vol, info["flickering"],
-                                        trend=trend)
+                                        trend=trend, chart=chart)
     price = float(df["close"].iloc[-1])
     return info, expo, reason, price, vol
 
@@ -168,6 +169,17 @@ def _trend_of(df):
     try:
         s = float(chart_features.ma_slope(df).iloc[-1])
         return s if math.isfinite(s) else None
+    except Exception:
+        return None
+
+
+def _chart_of(df):
+    """Combined chart-analysis vote [-1,+1] (chart_features.chart_bias) -- the side-decider
+    in chart_decides mode. None on too little history -> directional_exposure falls back to
+    the trend filter. Same function the backtester reads, so live == backtest."""
+    try:
+        c = chart_features.chart_bias(df)
+        return c if math.isfinite(c) else None
     except Exception:
         return None
 
@@ -637,7 +649,10 @@ def main():
         while True:
             cfg = settings.load_config()
             today = datetime.now(timezone.utc).date()
-            if today != trained_day and cfg.get("strategy") != "trend_long":   # HMM retrain daily
+            # retrain: daily, OR right now if we just switched INTO hmm at runtime (the models
+            # were empty stubs from a trend_long start -> without this every cycle KeyErrors).
+            switched_into_hmm = cfg.get("strategy") != "trend_long" and not any(models.values())
+            if switched_into_hmm or (today != trained_day and cfg.get("strategy") != "trend_long"):
                 models = _train_models(list(models), cfg)
                 trained_day = today
             sigs = cycle(models, risk, broker)            # runs 24/7 -- never skipped

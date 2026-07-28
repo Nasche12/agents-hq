@@ -51,7 +51,8 @@ def target_allocation(regime, confidence, vol, vol_ref, trend_ok=True, flickerin
     return {"alloc": round(alloc, 4), "leverage": round(lev, 3), "reason": reason, "bucket": bucket}
 
 
-def directional_exposure(regime_rank, n_regimes, confidence, vol, vol_ref, flickering=False, trend=None):
+def directional_exposure(regime_rank, n_regimes, confidence, vol, vol_ref, flickering=False,
+                         trend=None, chart=None):
     """Signed target exposure in [-1, 1].
 
     The HMM proposes a DIRECTION from its regime ranking (weakest -> short, strongest ->
@@ -61,7 +62,12 @@ def directional_exposure(regime_rank, n_regimes, confidence, vol, vol_ref, flick
     trend disagrees or is flat, we go flat rather than fight the tape on a noisy read. This
     is the fix for 'HMM used as a direction oracle': the HMM now sizes/gates, the trend
     decides the side. `trend` is a signed trend measure (e.g. MA slope); None or trend_filter
-    off restores the old regime-only behaviour. Returns (exposure, reason)."""
+    off restores the old regime-only behaviour.
+
+    `chart` is the combined chart-analysis vote in [-1,+1] (chart_features.chart_bias). When
+    allocation.chart_decides is on, the CHART picks the side and the HMM/vol path only sets
+    the SIZE -- this is the 'Chartanalyse entscheidet' mode. A chart vote below chart_min in
+    magnitude means 'no readable structure' -> flat. Returns (exposure, reason)."""
     cfg = load_config_alloc()
     if n_regimes <= 1:
         base = 0.0
@@ -80,7 +86,18 @@ def directional_exposure(regime_rank, n_regimes, confidence, vol, vol_ref, flick
         expo *= 0.5
 
     trend_note = ""
-    if cfg.get("trend_filter", True) and trend is not None and expo != 0:
+    if cfg.get("chart_decides", False) and chart is not None and expo != 0:
+        # CHART DECIDES THE SIDE. The HMM/vol path above set the SIZE (|expo|); the combined
+        # chart-analysis vote sets the direction. A near-neutral chart -> flat (a shapeless
+        # tape is not a trade). This is the mode the user asked for.
+        cmin = cfg.get("chart_min", 0.1)
+        mag = abs(expo)
+        if abs(chart) < cmin:
+            expo, trend_note = 0.0, f" · Chart neutral (<{cmin:.2f}) -> flat"
+        else:
+            expo = mag if chart > 0 else -mag
+            trend_note = f" · Chartanalyse entscheidet {'long' if chart > 0 else 'short'} ({chart:+.2f})"
+    elif cfg.get("trend_filter", True) and trend is not None and expo != 0:
         # confirmation: take the HMM's side only if the trend points the same way.
         if trend == 0 or (expo > 0) != (trend > 0):
             expo = 0.0
@@ -132,4 +149,10 @@ if __name__ == "__main__":
     none, _ = directional_exposure(2, 3, 0.9, 0.010, ref, trend=None)
     assert up > 0 and none > 0, (up, none)
     assert dn == 0.0, f"trend against a long must go flat, got {dn}"
+    # chart-decides mode: the chart vote sets the SIDE, a neutral vote goes flat
+    with settings.config_override({"allocation.chart_decides": True, "allocation.chart_min": 0.1}):
+        clong, _ = directional_exposure(2, 3, 0.9, 0.010, ref, chart=0.5)
+        cshort, _ = directional_exposure(2, 3, 0.9, 0.010, ref, chart=-0.5)
+        cflat, _ = directional_exposure(2, 3, 0.9, 0.010, ref, chart=0.02)
+    assert clong > 0 and cshort < 0 and cflat == 0.0, (clong, cshort, cflat)
     print("strategies self-check ok:", bull, crash)
