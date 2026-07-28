@@ -351,6 +351,9 @@ def cycle(models, risk, broker):
     except Exception:
         pass
 
+    # held quantity per symbol -> lets a symbol that dropped to target 0 (e.g. below its SMA)
+    # actually be SOLD. Without this the deadband swallows a "target 0" and the position stays.
+    held_pos = {market_data.pos_symbol(p["symbol"]): abs(float(p.get("qty") or 0)) for p in held_now}
     signals, orders_this_cycle = [], 0
     for sym in symbols:
         mm = meta.get(sym) or {}
@@ -369,7 +372,8 @@ def cycle(models, risk, broker):
         if radar.get("multiplier", 1.0) < 1.0:
             parts.append(f"Radar {radar['level']} x{radar['multiplier']}")
 
-        want = info["stable"] and abs(target) >= deadband
+        has_pos = held_pos.get(market_data.pos_symbol(sym), 0) > 0
+        want = info["stable"] and (abs(target) >= deadband or has_pos)   # hold a position -> reconcile it (incl. exit to 0)
         will_trade = want and trading_enabled and tradable and broker.connected
         if rstate["killed"]:
             decision = "FLAT"
