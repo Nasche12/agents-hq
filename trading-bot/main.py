@@ -103,7 +103,7 @@ def _signal_for(symbol, model, ref_vol, df):
     expo, reason = directional_exposure(info["regime_rank"], info["n_regimes"],
                                         info["confidence"], vol, ref_vol, info["flickering"])
     price = float(df["close"].iloc[-1])
-    return info, expo, reason, price
+    return info, expo, reason, price, vol
 
 
 def cycle(models, risk, broker):
@@ -153,7 +153,7 @@ def cycle(models, risk, broker):
                          "tradable": tradable, "extended": extended, "crypto": crypto}
             continue
         try:
-            info, expo, reason, price = _signal_for(sym, m["model"], m["ref_vol"], bars[sym])
+            info, expo, reason, price, vol = _signal_for(sym, m["model"], m["ref_vol"], bars[sym])
         except Exception as e:
             bot["errors"] += 1
             bot["last_error"] = f"{sym}: {str(e)[:120]}"
@@ -168,7 +168,8 @@ def cycle(models, risk, broker):
             notes.append("crypto: no shorts -> flat")
         raw[sym] = target
         meta[sym] = {"info": info, "price": price, "notes": notes, "session": session,
-                     "tradable": tradable, "extended": extended, "crypto": crypto}
+                     "tradable": tradable, "extended": extended, "crypto": crypto,
+                     "vol": vol, "ref_vol": m["ref_vol"]}
 
     # keep the per-symbol target BEFORE the portfolio adjustments, so the journal can show
     # "the symbol wanted +0.95, the radar and the correlation cap left +0.24"
@@ -210,7 +211,14 @@ def cycle(models, risk, broker):
         exit_state = json.loads(settings.EXITS_STATE.read_text(encoding="utf-8"))
     except Exception:
         exit_state = {}
-    exit_dec, exit_state = exit_manager.evaluate(held_now, cfg.get("exits", {}), exit_state)
+    # current vol vs. each symbol's own normal -> lets the stop widen in wild vol, tighten in calm
+    vol_ratios = {}
+    for s, mm in meta.items():
+        rv = mm.get("ref_vol") or 0
+        if mm.get("vol") is not None and rv > 0:
+            vol_ratios[market_data.pos_symbol(s)] = mm["vol"] / rv
+    exit_dec, exit_state = exit_manager.evaluate(held_now, cfg.get("exits", {}), exit_state,
+                                                 vol_ratios=vol_ratios)
     for sym in list(raw):
         d = exit_dec.get(market_data.pos_symbol(sym))
         if d and d.get("cap") is not None and d["cap"] < 1.0 and not d.get("close") and not d.get("block"):

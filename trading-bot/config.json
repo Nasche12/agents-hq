@@ -50,13 +50,16 @@
     "high_vol_pct": 1.3
   },
   "exits": {
-    "_note": "Positions-Exits, die der Ziel-Rebalancer strukturell nicht kann. GESPERRT (locked_prefixes) - der Lern-Agent darf einen Stop nie lockern. stop_loss_pct GERING halten schneidet Verlierer frueh, erzeugt aber auf 5-Min-Krypto Whipsaw (jeder Stop zahlt Spread); erst nach Messung enger stellen. Trailing + Scale-Out sichern Gewinn 'stetig', wenn viel Profit da ist.",
+    "_note": "Positions-Exits, die der Ziel-Rebalancer strukturell nicht kann. GESPERRT (locked_prefixes) - der Lern-Agent darf einen Stop nie lockern. vol_scaled=true: stop_loss_pct/arm/giveback sind die BASIS bei NORMALER Vol und werden mit vol/ref_vol (geklemmt auf [vol_ratio_min, vol_ratio_max]) skaliert - eng wenn ruhig, weit genug wenn wild. Das behebt den Whipsaw eines fixen Prozent-Stops. Scale-Out sichert Gewinn 'stetig' in Prozent-Stufen.",
     "enabled": true,
     "stop_loss_pct": 0.012,
     "cooldown_minutes": 20,
     "arm_profit_pct": 0.02,
     "trail_giveback_pct": 0.008,
-    "scale_out": [[0.03, 0.7], [0.05, 0.5], [0.08, 0.3]]
+    "scale_out": [[0.03, 0.7], [0.05, 0.5], [0.08, 0.3]],
+    "vol_scaled": true,
+    "vol_ratio_min": 0.5,
+    "vol_ratio_max": 3.0
   },
   "risk": {
     "day_halve_pct": 0.02,
