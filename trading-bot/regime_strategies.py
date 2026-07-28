@@ -88,6 +88,13 @@ def directional_exposure(regime_rank, n_regimes, confidence, vol, vol_ref, flick
         else:
             trend_note = " · Trend bestätigt"
 
+    # The MOST extreme bullish regime (top rank = euphoria/mania) is an exhaustion zone, not a
+    # continuation signal -- live data showed longs there lose ~100% (regime=euphoria: 0% win).
+    # The HMM ranks it "strongest -> max long", which is exactly backwards at the top. Cap it.
+    if expo > 0 and n_regimes > 1 and regime_rank == n_regimes - 1:
+        expo *= cfg.get("extreme_long_cap", 0.25)
+        trend_note += " · Euphorie-Cap"
+
     if abs(expo) < cfg["min_change_threshold"]:            # deadband near neutral -> flat
         expo = 0.0
 

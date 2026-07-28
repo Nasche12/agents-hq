@@ -1064,17 +1064,37 @@ function renderAgents(){
  list.sort((a,b)=>((PRI[a.status]??9)-(PRI[b.status]??9))||a.name.localeCompare(b.name));
  const cat=$('#agentCatalog');cat.className='agent-list';
  if(!list.length){cat.innerHTML='<div class="data-empty">Kein Agent passt zu diesem Filter.</div>';return;}
- const head=`<div class="arow arow--head"><span>Agent</span><span>Status</span><span>Aktivität</span><span>Nächster Lauf</span><span></span></div>`;
+ // Zustand je Agent aus dem Zeitplan: automatisch geplant / auf Abruf / AUS.
+ const sched=(SCHEDULE&&SCHEDULE.agents)||{};
+ const isOff=id=>{const s=sched[id];return !!(s&&s.enabled===false);};
+ const isDemand=id=>{const c=((sched[id]&&sched[id].cadence)||'').toLowerCase();return c===''||c.includes('abruf')||c==='on demand';};
+ const full=fleet();
+ const nRun=full.filter(a=>a.status==='running').length;
+ const nAuto=full.filter(a=>!isOff(a.id)&&!isDemand(a.id)).length;
+ const nDemand=full.filter(a=>!isOff(a.id)&&isDemand(a.id)).length;
+ const nOff=full.filter(a=>isOff(a.id)).length;
+ const nNeed=full.filter(a=>a.status==='error'||a.status==='waiting').length;
+ const summary=`<div class="ag-summary">
+  <span class="ag-sum tot"><b>${full.length}</b> Agenten</span>
+  <span class="ag-sum run"><i></i><b>${nRun}</b> laufen gerade</span>
+  <span class="ag-sum ok"><i></i><b>${nAuto}</b> automatisch geplant</span>
+  <span class="ag-sum mut"><i></i><b>${nDemand}</b> auf Abruf</span>
+  <span class="ag-sum off"><i></i><b>${nOff}</b> aus</span>
+  ${nNeed?`<span class="ag-sum warn"><i></i><b>${nNeed}</b> brauchen dich</span>`:''}
+  <span class="ag-sum-hint">Zeile anklicken → Logs, letzte Läufe und was der Agent tut. Ein-/Ausschalten im Tab „Automations".</span></div>`;
+ const head=`<div class="arow arow--head"><span>Agent</span><span>Status</span><span>Aktivität</span><span>Plan / zuletzt</span><span></span></div>`;
  const rows=list.map(a=>{const st=a.status,col=COLORS[st]||COLORS.idle;
   const prog=st==='running'?`<span class="arow-prog" title="${a.progress||0}%"><i style="width:${clamp(a.progress||0,0,100)}%"></i></span>`:'';
+  const plan=isOff(a.id)?'<b class="ag-off">AUS</b>':esc(nextRunOf(a.id));
+  const last=a.last_run?`<small class="arow-last">zuletzt ${esc(relTime(a.last_run))}</small>`:(isOff(a.id)?'':'<small class="arow-last">noch nie gelaufen</small>');
   return `<div class="arow is-click" data-agent="${a.id}" tabindex="0" role="button" style="--agent-color:${a.accent}" data-tip="${esc(a.name)} öffnen">`
    +`<span class="arow-id"><span class="arow-ava">${a.icon}</span><span class="arow-name"><strong>${esc(a.name)}</strong><small>${esc(a.role)}</small></span></span>`
    +`<span class="arow-status" style="color:${col}"><i class="dot" style="background:${col};box-shadow:0 0 7px ${col}"></i>${esc(LABELS[st]||st)}</span>`
    +`<span class="arow-act"><span class="arow-msg">${esc(a.message||a.phase||'—')}</span>${prog}</span>`
-   +`<span class="arow-next">${esc(nextRunOf(a.id))}</span>`
+   +`<span class="arow-next">${plan}${last}</span>`
    +`<span class="arow-do"><button type="button" class="mrow-act" data-run="${a.id}"${API?'':' disabled'} data-tip="${esc(a.name)} jetzt starten">▶ Start</button><button type="button" class="arow-open" data-open="${a.id}">Details</button></span>`
    +`</div>`;}).join('');
- cat.innerHTML=head+rows;
+ cat.innerHTML=summary+head+rows;
  cat.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();openAgent(b.dataset.open);}));
  cat.querySelectorAll('[data-run]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();startRun(b.dataset.run,b);}));
  cat.querySelectorAll('.arow[role="button"]').forEach(el=>{el.addEventListener('click',()=>openAgent(el.dataset.agent));el.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openAgent(el.dataset.agent);}});});

@@ -41,6 +41,7 @@
     "_note": "min_change_threshold is the neutral deadband: LOWER = more trades, more churn.",
     "_trend_note": "trend_filter=true: die HMM-Richtung wird NUR genommen, wenn der Preistrend (MA-Slope) zustimmt, sonst flat. Ein HMM auf Intraday-Returns erkennt Vol-Regime, nicht Richtung - der Mean-Return-Rang ist Rauschen. Der Trend entscheidet die Seite, das HMM sizet/gated. Schneidet zugleich Fehlsignale und Handelsfrequenz.",
     "trend_filter": true,
+    "extreme_long_cap": 0.25,
     "leverage": 1.0,
     "low_vol_alloc": 0.95,
     "low_vol_leverage": 1.25,

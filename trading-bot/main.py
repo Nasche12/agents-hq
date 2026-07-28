@@ -39,6 +39,14 @@ from alpaca_broker import Broker
 
 DEFAULT_CYCLE_SECONDS = 60
 
+# In-memory guard against an order that keeps getting rejected (e.g. Alpaca's crypto
+# wash-trade 403 when churn re-submits the same pair): after repeated failures we pause
+# that symbol for a while instead of hammering the API every cycle. Resets on restart.
+_ORDER_ERR = {}          # symbol -> consecutive order errors
+_ORDER_COOLDOWN = {}     # symbol -> datetime until which orders are skipped
+ORDER_ERR_LIMIT = 2      # this many consecutive errors -> pause
+ORDER_ERR_PAUSE_MIN = 15
+
 
 def _cycle_seconds(cfg):
     return max(15, int(cfg["execution"].get("cycle_seconds", DEFAULT_CYCLE_SECONDS)))
@@ -359,7 +367,11 @@ def cycle(models, risk, broker):
                     alerts.log_event("order_error", f"{sym} exit: {str(e)[:180]}")
             decision = "EXIT" if exd.get("close") else "COOLDOWN"
 
-        if not did_exit and (will_trade or (rstate["killed"] and broker.connected and tradable)) and tradable:
+        now_utc = datetime.now(timezone.utc)
+        paused = _ORDER_COOLDOWN.get(sym)
+        if not did_exit and paused and paused > now_utc:
+            parts.append(f"Order pausiert (wiederholte Fehler, bis {paused:%H:%M})")
+        elif not did_exit and (will_trade or (rstate["killed"] and broker.connected and tradable)) and tradable:
             try:
                 order_info = order_executor.reconcile_to_target(broker=broker, symbol=sym,
                                                                target_exposure=target,
@@ -371,11 +383,17 @@ def cycle(models, risk, broker):
                     bot["orders_sent"] += 1
                     bot["last_order"] = datetime.now(timezone.utc).isoformat()
                     parts.append(f"{order_info['action']} {order_info['qty']} @~{order_info['price_ref']}")
+                _ORDER_ERR[sym] = 0                       # a clean pass clears the error streak
             except Exception as e:
                 bot["errors"] += 1
                 bot["last_error"] = f"{sym}: {str(e)[:120]}"
+                _ORDER_ERR[sym] = _ORDER_ERR.get(sym, 0) + 1
                 parts.append(f"order error: {str(e)[:60]}")
                 alerts.log_event("order_error", f"{sym}: {str(e)[:180]}")
+                if _ORDER_ERR[sym] >= ORDER_ERR_LIMIT:    # stop hammering a rejecting symbol
+                    _ORDER_COOLDOWN[sym] = now_utc + timedelta(minutes=ORDER_ERR_PAUSE_MIN)
+                    alerts.log_event("order_pause",
+                                     f"{sym}: {ORDER_ERR_PAUSE_MIN} min pausiert nach {_ORDER_ERR[sym]} Fehlern")
 
         reason_full = " · ".join(parts)
         # The journal is the audit trail: `factors` keeps the reasons SEPARATE instead of
