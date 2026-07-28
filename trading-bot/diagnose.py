@@ -65,6 +65,15 @@ def main():
     print(f"  grades {dict(collections.Counter((t.get('review') or {}).get('grade') for t in tr))}")
     print(f"  verdicts {dict(collections.Counter((t.get('review') or {}).get('verdict') for t in tr))}")
 
+    strat = (d.get("account", {}) or {})  # strategy lives in config, not export; infer from signals
+    sigs = d.get("signals") or []
+    if any(s.get("regime") in ("aufwärts", "abwärts") for s in sigs):
+        ups = [s for s in sigs if s.get("regime") == "aufwärts"]
+        print(f"\n== TREND-SIGNALE (trend_long) -- {len(ups)}/{len(sigs)} im Aufwaertstrend ==")
+        for s in sigs:
+            print(f"    {str(s.get('symbol')):10} {str(s.get('regime')):9} "
+                  f"exp {s.get('exposure')}  {s.get('decision')}")
+
     print("\n== SCHLECHTESTE SYMBOLE (realisiert) ==")
     ps = d.get("per_symbol", {}) or {}
     for s, v in sorted(ps.items(), key=lambda kv: (kv[1] or {}).get("realized", 0))[:10]:
