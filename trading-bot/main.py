@@ -334,7 +334,9 @@ def cycle(models, risk, broker):
                         "confidence": info["confidence"], "exposure": round(target, 4),
                         "price": round(price, 2), "target_notional": round(abs(target) * per_budget, 2),
                         "direction": "long" if target > 0 else ("short" if target < 0 else "flat"),
-                        "decision": decision, "stable": info["stable"], "reason": reason_full})
+                        "decision": decision, "stable": info["stable"], "reason": reason_full,
+                        "stop_price": (exit_dec.get(market_data.pos_symbol(sym)) or {}).get("stop_price"),
+                        "stop_pct": (exit_dec.get(market_data.pos_symbol(sym)) or {}).get("stop_pct")})
 
     if broker.connected and orders_this_cycle:
         time.sleep(2)                                    # let market orders fill before read-back

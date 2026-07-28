@@ -130,23 +130,31 @@ def evaluate(positions, cfg, state, vol_ratios=None, now=None):
         r = _clamp(float(vol_ratios.get(key, 1.0)), vr_lo, vr_hi) if vol_scaled else 1.0
         stop_e, arm_e, give_e = stop * r, arm * r, give * r
 
+        # the price level the stop currently sits at (for the dashboard chart line)
+        entry = p.get("avg_entry")
+        side = p.get("side") or ("long" if float(p.get("qty") or 0) >= 0 else "short")
+        stop_price = None
+        if entry and entry > 0:
+            stop_price = round(entry * (1 + stop_e), 6) if side == "short" else round(entry * (1 - stop_e), 6)
+        sx = {"stop_price": stop_price, "stop_pct": round(stop_e, 4)}   # merged into every held decision
+
         if cooling:                                     # holding during cooldown -> flatten remainder
             decisions[key] = {"close": True, "block": True, "cap": 0.0,
-                              "reason": "Cooldown aktiv -> flach", "plpc": round(plpc, 4), "peak": round(peak, 4)}
+                              "reason": "Cooldown aktiv -> flach", "plpc": round(plpc, 4), "peak": round(peak, 4), **sx}
             new_state[key] = {"peak": 0.0, "cooldown_until": prev.get("cooldown_until")}
             continue
 
         if plpc <= -stop_e:                             # 1) tight, vol-scaled hard stop
             decisions[key] = {"close": True, "block": True, "cap": 0.0,
                               "reason": f"Stop-Loss {plpc:+.1%} <= -{stop_e:.1%} (Vol x{r:.1f}) -> flach + Cooldown",
-                              "plpc": round(plpc, 4), "peak": round(peak, 4)}
+                              "plpc": round(plpc, 4), "peak": round(peak, 4), **sx}
             new_state[key] = {"peak": 0.0, "cooldown_until": (now + cooldown).isoformat()}
             continue
 
         if peak >= arm_e and plpc <= peak - give_e:     # 2) trailing giveback after being green
             decisions[key] = {"close": True, "block": True, "cap": 0.0,
                               "reason": f"Trailing: Peak {peak:+.1%}, jetzt {plpc:+.1%} -> Gewinn sichern",
-                              "plpc": round(plpc, 4), "peak": round(peak, 4)}
+                              "plpc": round(plpc, 4), "peak": round(peak, 4), **sx}
             new_state[key] = {"peak": 0.0, "cooldown_until": (now + cooldown).isoformat()}
             continue
 
@@ -155,7 +163,7 @@ def evaluate(positions, cfg, state, vol_ratios=None, now=None):
         if cap < 1.0:
             reason = f"Abbau auf {cap:.0%} (Peak {peak:+.1%} -> Gewinn stetig sichern)"
         decisions[key] = {"close": False, "block": False, "cap": round(cap, 3),
-                          "reason": reason, "plpc": round(plpc, 4), "peak": round(peak, 4)}
+                          "reason": reason, "plpc": round(plpc, 4), "peak": round(peak, 4), **sx}
         new_state[key] = {"peak": round(peak, 6), "cooldown_until": None}
 
     return decisions, new_state

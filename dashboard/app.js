@@ -1674,8 +1674,8 @@ function renderTrading(){
    <td class="num" style="color:${tone(s.unrealized_pl)}">${s.unrealized_pl!=null?moneyS(s.unrealized_pl):'–'}</td>
    <td class="num" style="color:${tone(s.realized_pl)}">${s.realized_pl!=null?moneyS(s.realized_pl):'–'}</td>
    <td><span class="tag sess ${esc(s.session||'')}">${esc(s.session_label||s.session||'–')}</span></td>
-   <td style="color:${dd};font-weight:600">${esc(s.decision||'–')}</td></tr>`;}).join('');
- const signalsTable=signals.length?`<div class="trd-scroll"><table class="trd-table trd-clickable"><thead><tr><th>Symbol</th><th>Regime (HMM)</th><th>Conf</th><th>Dir</th><th class="num">Target</th><th class="num">Size</th><th class="num">Price</th><th class="num">Held</th><th class="num">Unreal.</th><th class="num">Realized</th><th>Session</th><th>Decision</th></tr></thead><tbody>${sigRows}</tbody></table></div><small class="trd-hint"><b>Zeile anklicken</b> öffnet Chart, Trades und jede Entscheidung zu diesem Asset. The HMM regime per symbol drives direction and size: strong regime → long, weak → short, neutral → flat. <b>CLOSED</b> means that market is shut right now — crypto never shows CLOSED.</small>`:'<div class="chart-empty">No signals yet — run a cycle.</div>';
+   <td style="color:${dd};font-weight:600">${esc(s.decision||'–')}</td></tr>`;});
+ const signalsTable=signals.length?pagedTable(sigRows,'<tr><th>Symbol</th><th>Regime (HMM)</th><th>Conf</th><th>Dir</th><th class="num">Target</th><th class="num">Size</th><th class="num">Price</th><th class="num">Held</th><th class="num">Unreal.</th><th class="num">Realized</th><th>Session</th><th>Decision</th></tr>',{key:'sig',size:25,cls:'trd-table trd-clickable',hint:'<b>Zeile anklicken</b> öffnet Chart, Trades und jede Entscheidung zu diesem Asset. The HMM regime per symbol drives direction and size: strong regime → long, weak → short, neutral → flat. <b>CLOSED</b> means that market is shut right now — crypto never shows CLOSED.'}):'<div class="chart-empty">No signals yet — run a cycle.</div>';
 
  /* ---------- 7. Offene Positionen ---------- */
  const posRows=pos.map(p=>{const q=+p.qty,dir=q>=0?'long':'short',dc=q>=0?'var(--green)':'var(--red)';
@@ -1684,16 +1684,16 @@ function renderTrading(){
    <td class="num">${p.current_price!=null?money2(p.current_price):'–'}</td>
    <td class="num">${money2(Math.abs(p.market_value))}</td>
    <td class="num" style="color:${tone(p.unrealized_pl)}">${moneyS(p.unrealized_pl)}</td>
-   <td class="num" style="color:${tone(p.unrealized_pl)}">${p.unrealized_plpc!=null?pctS(p.unrealized_plpc,2):'–'}</td></tr>`;}).join('');
- const posTable=pos.length?`<div class="trd-scroll"><table class="trd-table"><thead><tr><th>Symbol</th><th>Side</th><th class="num">Qty</th><th class="num">Entry</th><th class="num">Last</th><th class="num">Value</th><th class="num">Unreal. P&amp;L</th><th class="num">%</th></tr></thead><tbody>${posRows}</tbody></table></div>`:'<div class="chart-empty">No open positions — account is flat.</div>';
+   <td class="num" style="color:${tone(p.unrealized_pl)}">${p.unrealized_plpc!=null?pctS(p.unrealized_plpc,2):'–'}</td></tr>`;});
+ const posTable=pos.length?pagedTable(posRows,'<tr><th>Symbol</th><th>Side</th><th class="num">Qty</th><th class="num">Entry</th><th class="num">Last</th><th class="num">Value</th><th class="num">Unreal. P&amp;L</th><th class="num">%</th></tr>',{key:'pos',size:25}):'<div class="chart-empty">No open positions — account is flat.</div>';
 
  /* ---------- 8. Geschlossene Round-Trips (FIFO aus echten Fills) ---------- */
- const trRows=trades.slice(0,60).map(x=>`<tr><td>${x.closed?fmtStamp(x.closed):'–'}</td><td><b>${esc(dsym(x.symbol))}</b></td>
+ const trRows=trades.map(x=>`<tr><td>${x.closed?fmtStamp(x.closed):'–'}</td><td><b>${esc(dsym(x.symbol))}</b></td>
   <td style="text-transform:uppercase;font-weight:600;color:${x.side==='long'?'var(--green)':'var(--red)'}">${esc(x.side)}</td>
   <td class="num">${qty(+x.qty)}</td><td class="num">${money2(x.entry)}</td><td class="num">${money2(x.exit)}</td>
   <td class="num" style="color:${tone(x.pnl)};font-weight:600">${moneyS(x.pnl)}</td>
-  <td class="num" style="color:${tone(x.pnl)}">${pctS(x.pnl_pct,2)}</td></tr>`).join('');
- const tradesTable=trades.length?`<div class="trd-scroll"><table class="trd-table"><thead><tr><th>Closed</th><th>Symbol</th><th>Side</th><th class="num">Qty</th><th class="num">Entry</th><th class="num">Exit</th><th class="num">P&amp;L</th><th class="num">%</th></tr></thead><tbody>${trRows}</tbody></table></div><small class="trd-hint">FIFO-matched from real fills. A position only appears here once it has been fully or partially closed — open positions sit in the table above.</small>`:'<div class="chart-empty">No closed round-trips yet — positions are still open.</div>';
+  <td class="num" style="color:${tone(x.pnl)}">${pctS(x.pnl_pct,2)}</td></tr>`);
+ const tradesTable=trades.length?pagedTable(trRows,'<tr><th>Closed</th><th>Symbol</th><th>Side</th><th class="num">Qty</th><th class="num">Entry</th><th class="num">Exit</th><th class="num">P&amp;L</th><th class="num">%</th></tr>',{key:'trd',size:25,hint:'FIFO-matched from real fills. A position only appears here once it has been fully or partially closed — open positions sit in the table above.'}):'<div class="chart-empty">No closed round-trips yet — positions are still open.</div>';
 
  /* ---------- 9. Risiko ---------- */
  const th=risk.thresholds||{};
@@ -1711,7 +1711,7 @@ function renderTrading(){
  /* ---------- 10. Orders (klickbar) ---------- */
  const orders=(t.orders||[]).filter(o=>o&&o.symbol);
  TRADING._orders=orders;   // stash for the click handler
- const oRows=orders.slice(0,120).map((o,i)=>{const sc=o.side==='buy'?'var(--green)':'var(--red)';
+ const oRows=orders.map((o,i)=>{const sc=o.side==='buy'?'var(--green)':'var(--red)';
   const st=(o.status||'').toLowerCase();
   return `<tr class="trd-orow" data-oid="${i}" tabindex="0" role="button"><td>${o.filled_at?fmtStamp(o.filled_at):(o.submitted_at?fmtStamp(o.submitted_at):'–')}</td>
    <td><b>${esc(dsym(o.symbol))}</b>${o.extended_hours?' <span class="tag ext">ext</span>':''}</td>
@@ -1719,8 +1719,8 @@ function renderTrading(){
    <td class="num">${qty(+o.qty)}</td><td class="num">${o.fill_price!=null?money2(o.fill_price):'–'}</td>
    <td class="num">${o.notional!=null?money2(o.notional):'–'}</td><td>${esc(o.type||'market')}</td>
    <td><span class="tag ${st==='filled'?'ok':'mutedtag'}">${esc(o.status||'')}</span></td>
-   <td class="mut whycell">${esc((o.why&&o.why.reason)||'–')}</td></tr>`;}).join('');
- const ordersTable=orders.length?`<div class="trd-scroll"><table class="trd-table trd-clickable"><thead><tr><th>Time</th><th>Symbol</th><th>Side</th><th class="num">Qty</th><th class="num">Fill price</th><th class="num">Total</th><th>Type</th><th>Status</th><th>Warum</th></tr></thead><tbody>${oRows}</tbody></table></div><small class="trd-hint">Click a row for full order details. Showing the newest ${Math.min(orders.length,120)} of ${orders.length}.</small>`:'<div class="chart-empty">No orders yet.</div>';
+   <td class="mut whycell">${esc((o.why&&o.why.reason)||'–')}</td></tr>`;});
+ const ordersTable=orders.length?pagedTable(oRows,'<tr><th>Time</th><th>Symbol</th><th>Side</th><th class="num">Qty</th><th class="num">Fill price</th><th class="num">Total</th><th>Type</th><th>Status</th><th>Warum</th></tr>',{key:'ord',size:25,cls:'trd-table trd-clickable',hint:'Click a row for full order details.'}):'<div class="chart-empty">No orders yet.</div>';
 
  /* ---------- 11. Entscheidungs-Journal ---------- */
  const jt=t.journal_tail||[];
@@ -1729,19 +1729,19 @@ function renderTrading(){
   return `<tr class="dec-row" data-di="${i}" tabindex="0" role="button" data-tip="Vollständige Herleitung dieser Entscheidung"><td>${e.ts?fmtStamp(e.ts):'–'}</td><td><b>${esc(e.symbol||'–')}</b></td><td><span class="trd-dot" style="background:${tColor(e.regime)}"></span>${esc(e.regime||'–')}</td>
    <td>${e.confidence!=null?Math.round(e.confidence*100)+'%':'–'}</td>
    <td class="num">${e.exposure!=null?((e.exposure>0?'+':'')+Math.round(e.exposure*100)+'%'):'–'}</td>
-   <td style="color:${dc};font-weight:600">${esc(e.decision||'–')}</td><td>${factorChips(e.factors)}</td></tr>`;}).join('');
- const journalTable=jt.length?`<div class="trd-scroll"><table class="trd-table trd-clickable"><thead><tr><th>Time</th><th>Symbol</th><th>Regime</th><th>Conf</th><th class="num">Target</th><th>Decision</th><th>Faktoren</th></tr></thead><tbody>${jrows}</tbody></table></div><small class="trd-hint"><b>Zeile anklicken</b> zeigt die vollständige Herleitung. Real cycles from the bot. <b>SKIP</b> = it deliberately did not trade, <b>CLOSED</b> = that market is shut right now, <b>FLAT</b> = a risk breaker forced it out.</small>`:'<div class="chart-empty">No cycles yet — run <code>python main.py --once</code>.</div>';
+   <td style="color:${dc};font-weight:600">${esc(e.decision||'–')}</td><td>${factorChips(e.factors)}</td></tr>`;});
+ const journalTable=jt.length?pagedTable(jrows,'<tr><th>Time</th><th>Symbol</th><th>Regime</th><th>Conf</th><th class="num">Target</th><th>Decision</th><th>Faktoren</th></tr>',{key:'jrnl',size:30,cls:'trd-table trd-clickable',hint:'<b>Zeile anklicken</b> zeigt die vollständige Herleitung. Real cycles from the bot. <b>SKIP</b> = it deliberately did not trade, <b>CLOSED</b> = that market is shut right now, <b>FLAT</b> = a risk breaker forced it out.'}):'<div class="chart-empty">No cycles yet — run <code>python main.py --once</code>.</div>';
 
 
  /* ---------- 12. Selbstverbesserung: was der Forscher-Agent geaendert hat ---------- */
  const L=t.learning||{},lr=L.last_run||{},lm=L.memory||{};
  const ovRows=Object.entries(L.overrides||{}).map(([k,v])=>
-  `<tr><td><code>${esc(k)}</code></td><td class="num mut">${esc(''+v.baseline)}</td><td class="num"><b style="color:var(--green)">${esc(''+v.now)}</b></td></tr>`).join('');
- const ovTable=ovRows?`<div class="trd-scroll"><table class="trd-table"><thead><tr><th>Parameter</th><th class="num">Basis (config.json)</th><th class="num">gelernt</th></tr></thead><tbody>${ovRows}</tbody></table></div><small class="trd-hint">Gelernte Werte liegen in <code>config.local.json</code> (nicht in git). Zuruecksetzen: <code>python promote.py revert</code>.</small>`
+  `<tr><td><code>${esc(k)}</code></td><td class="num mut">${esc(''+v.baseline)}</td><td class="num"><b style="color:var(--green)">${esc(''+v.now)}</b></td></tr>`);
+ const ovTable=ovRows.length?pagedTable(ovRows,'<tr><th>Parameter</th><th class="num">Basis (config.json)</th><th class="num">gelernt</th></tr>',{key:'ovr',size:25,hint:'Gelernte Werte liegen in <code>config.local.json</code> (nicht in git). Zuruecksetzen: <code>python promote.py revert</code>.'})
   :'<div class="chart-empty">Noch nichts gelernt — der Bot laeuft exakt auf deiner <code>config.json</code>.</div>';
  const candRows=(lr.candidates||[]).map(c=>
-  `<tr><td>${esc(c.hypothesis||'–')}</td><td class="num">${c.objective!=null?c.objective:'–'}</td><td class="num">${c.trades!=null?n0(c.trades):'–'}</td><td style="color:${c.passes_selection?'var(--green)':'var(--muted)'};font-weight:600">${c.passes_selection?'BESTANDEN':'VERWORFEN'}</td><td class="mut">${esc(c.reason||'')}</td></tr>`).join('');
- const candTable=candRows?`<div class="trd-scroll"><table class="trd-table"><thead><tr><th>Hypothese</th><th class="num">Sharpe</th><th class="num">Trades</th><th>Auswahl</th><th>Urteil</th></tr></thead><tbody>${candRows}</tbody></table></div>${lr.holdout?`<small class="trd-hint">Holdout (nie zur Auswahl benutzt): <b style="color:${lr.holdout.passes?'var(--green)':'var(--red)'}">${lr.holdout.passes?'bestanden':'durchgefallen'}</b> — ${esc(lr.holdout.reason||'')}</small>`:''}`
+  `<tr><td>${esc(c.hypothesis||'–')}</td><td class="num">${c.objective!=null?c.objective:'–'}</td><td class="num">${c.trades!=null?n0(c.trades):'–'}</td><td style="color:${c.passes_selection?'var(--green)':'var(--muted)'};font-weight:600">${c.passes_selection?'BESTANDEN':'VERWORFEN'}</td><td class="mut">${esc(c.reason||'')}</td></tr>`);
+ const candTable=candRows.length?pagedTable(candRows,'<tr><th>Hypothese</th><th class="num">Sharpe</th><th class="num">Trades</th><th>Auswahl</th><th>Urteil</th></tr>',{key:'cand',size:25,hint:lr.holdout?`Holdout (nie zur Auswahl benutzt): <b style="color:${lr.holdout.passes?'var(--green)':'var(--red)'}">${lr.holdout.passes?'bestanden':'durchgefallen'}</b> — ${esc(lr.holdout.reason||'')}`:''})
   :'<div class="chart-empty">Noch kein Forschungslauf. Token-frei anstossen: <code>python research_cycle.py evaluate</code>.</div>';
  const learnCells=[
   {l:'Gelernte Parameter',v:L.override_count||0,s:(L.tunable||[]).length+' aenderbar',hi:1},
@@ -1762,9 +1762,9 @@ function renderTrading(){
    +`<td class="num">${n0(i.trades||0)}</td><td class="num" style="color:${loss?'var(--red)':'var(--green)'}">${wr}</td>`
    +`<td class="num">${i.lift!=null?(i.lift>0?'+':'')+Math.round(i.lift*100)+' pp':'–'}</td>`
    +`<td class="num" style="color:${(i.total_pnl||0)<0?'var(--red)':'var(--green)'};font-weight:600">${i.total_pnl!=null?(i.total_pnl>0?'+':'')+'$'+n0(Math.round(i.total_pnl)):'–'}</td></tr>`;
- }).join('');
- const connTable=connRows
-  ?`<div class="trd-scroll"><table class="trd-table"><thead><tr><th>Art</th><th>Bedingungen</th><th class="num">Trades</th><th class="num">Trefferquote</th><th class="num">vs. Basis</th><th class="num">P&amp;L</th></tr></thead><tbody>${connRows}</tbody></table></div><small class="trd-hint">Basis-Trefferquote aller Round-Trips: <b>${bwr}</b> · ${n0(C.n_trades||0)} Trades analysiert. „Paar" = zwei gleichzeitig auftretende Bedingungen (die eigentliche Verknuepfung).</small>`
+ });
+ const connTable=connRows.length
+  ?pagedTable(connRows,'<tr><th>Art</th><th>Bedingungen</th><th class="num">Trades</th><th class="num">Trefferquote</th><th class="num">vs. Basis</th><th class="num">P&amp;L</th></tr>',{key:'conn',size:25,hint:`Basis-Trefferquote aller Round-Trips: <b>${bwr}</b> · ${n0(C.n_trades||0)} Trades analysiert. „Paar" = zwei gleichzeitig auftretende Bedingungen (die eigentliche Verknuepfung).`})
   :`<div class="chart-empty">Noch keine belastbaren Verknuepfungen — es braucht ein paar Dutzend Round-Trips, dann taucht hier auf, welche Bedingungen zusammen verlieren oder gewinnen.</div>`;
  const connSection=`
   <section class="panel trd-section">${sectionHead('VERKNÜPFUNGEN · 24/7','Welche Bedingungen zusammen verlieren oder gewinnen',(ci.length||0)+' Muster')}${connTable}
@@ -1792,6 +1792,7 @@ function renderTrading(){
 
  box.querySelectorAll('.trd-tf button').forEach(b=>b.addEventListener('click',()=>{TRADE_TF=b.dataset.tf;renderTrading();}));
  hydrateCharts(box);
+ hydratePagers(box);
 }
 // One delegated listener survives every re-render — order rows open their card,
 // signal rows open the asset view with chart + full decision history.
@@ -1868,9 +1869,11 @@ function svgPriceChart(bars,markers,o){
  o=o||{};const W=o.w||820,H=o.h||300,pl=52,pr=14,pt=14,pb=26;
  if(!bars||bars.length<2)return '<div class="chart-empty">Noch keine Kursdaten für dieses Symbol — der Bot schreibt sie ab dem nächsten Zyklus.</div>';
  const tms=bars.map(b=>new Date(b[0]).getTime());
- const closes=bars.map(b=>b[4]),his=bars.map(b=>b[2]),los=bars.map(b=>b[3]);
+ const his=bars.map(b=>b[2]),los=bars.map(b=>b[3]);
  const mp=(markers||[]).map(m=>m.price).filter(v=>v!=null&&!isNaN(v));
- let lo=Math.min(...los,...mp),hi=Math.max(...his,...mp);
+ const smp=(o.stopMarks||[]).map(m=>m.price).filter(v=>v!=null&&!isNaN(v));
+ const hasStop=o.stop!=null&&!isNaN(o.stop);
+ let lo=Math.min(...los,...mp,...smp,...(hasStop?[o.stop]:[])),hi=Math.max(...his,...mp,...smp,...(hasStop?[o.stop]:[]));
  if(!(hi>lo)){hi=lo+1;}
  const pad=(hi-lo)*0.06;lo-=pad;hi+=pad;
  const raw=(hi-lo)/3,mag=Math.pow(10,Math.floor(Math.log10(raw||1))),nrm=raw/mag,step=(nrm>=5?5:nrm>=2?2:1)*mag;
@@ -1887,6 +1890,13 @@ function svgPriceChart(bars,markers,o){
  const area=`<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#7e9cc2" stop-opacity=".26"/><stop offset="100%" stop-color="#7e9cc2" stop-opacity="0"/></linearGradient></defs>
   <path d="${d}L${X(tms[tms.length-1]).toFixed(1)} ${H-pb} L${X(t0).toFixed(1)} ${H-pb} Z" fill="url(#${gid})" stroke="none"/>`;
  const line=`<path d="${d}" fill="none" stroke="#7e9cc2" stroke-width="1.6" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
+ /* Stop-Loss-LINIE: das Niveau, auf dem der (vola-skalierte) Stop der offenen Position
+    gerade sitzt. Immer sichtbar (wie in TradingView), nicht nur beim Hovern. */
+ let stopEl='';
+ if(hasStop&&o.stop>lo&&o.stop<hi){const sy=Y(o.stop);
+  stopEl=`<line class="stopline" x1="${pl}" y1="${sy.toFixed(1)}" x2="${W-pr}" y2="${sy.toFixed(1)}"/>`
+   +`<rect class="stoptag" x="${(W-pr-56).toFixed(1)}" y="${(sy-9).toFixed(1)}" width="54" height="14" rx="3"/>`
+   +`<text class="stoplbl" x="${(W-pr-3).toFixed(1)}" y="${(sy+1).toFixed(1)}" text-anchor="end">SL ${esc(kAxis(o.stop,step))}</text>`;}
  /* Marker: Dreieck nach oben = Kauf, nach unten = Verkauf. Ausserhalb des Zeitfensters
     liegende Fills werden weggelassen statt an den Rand geklebt. */
  const marks=(markers||[]).filter(m=>{const t=new Date(m.ts).getTime();return t>=t0&&t<=t1&&m.price!=null;})
@@ -1894,7 +1904,12 @@ function svgPriceChart(bars,markers,o){
    const c=buy?'#5bd9a0':'#f4707f',s=5;
    const tri=buy?`${x},${y-s-3} ${x-s},${y+s-3} ${x+s},${y+s-3}`:`${x},${y+s+3} ${x-s},${y-s+3} ${x+s},${y-s+3}`;
    return `<polygon class="pmark" data-mi="${i}" points="${tri}" fill="${c}" stroke="rgba(0,0,0,.45)" stroke-width=".5"/>`;}).join('');
- return `<div class="chartwrap pricewrap"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.aria||'Kursverlauf mit Trades')}">${area}${grid}${xax}${line}${marks}</svg></div>`;
+ /* Stop-Loss-AUSLÖSER: wo tatsaechlich ein Stop/Trailing die Position geschlossen hat (rotes ✕). */
+ const smarks=(o.stopMarks||[]).filter(m=>{const t=new Date(m.ts).getTime();return t>=t0&&t<=t1&&m.price!=null;})
+  .map(m=>{const x=X(new Date(m.ts).getTime()),y=Y(m.price),s=4.5;
+   return `<g class="smark" data-tip="${esc(m.reason||'Stop-Loss ausgelöst')}"><line x1="${(x-s).toFixed(1)}" y1="${(y-s).toFixed(1)}" x2="${(x+s).toFixed(1)}" y2="${(y+s).toFixed(1)}"/><line x1="${(x-s).toFixed(1)}" y1="${(y+s).toFixed(1)}" x2="${(x+s).toFixed(1)}" y2="${(y-s).toFixed(1)}"/></g>`;}).join('');
+ const id=regChart({type:'price',bars,tms,W,H,pl,pr,pt,pb,lo,hi,t0,t1,stop:hasStop?o.stop:null});
+ return `<div class="chartwrap pricewrap" data-chart="${id}"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.aria||'Kursverlauf mit Trades und Stop-Loss')}">${area}${grid}${xax}${line}${stopEl}${marks}${smarks}</svg><div class="cguide"></div><div class="cguide-h"></div><div class="ctip"></div></div>`;
 }
 
 /* Faktoren als einzelne Chips statt eines zusammengeklebten Satzes — genau das macht
@@ -1941,6 +1956,12 @@ async function openSymbol(sym){
  const decisions=(t.decisions_by_symbol||{})[sym]||(t.decisions_by_symbol||{})[key]||[];
  const trades=(t.trades||[]).filter(x=>String(x.symbol).replace('/','').toUpperCase()===key);
  const pos=((t.account||{}).open_positions||[]).find(p=>String(p.symbol).replace('/','').toUpperCase()===key);
+ PAGERS.delete('symdec');PAGERS.delete('symord');   // neues Symbol -> Tabellen auf Seite 1
+ // Stop-Loss auf dem Chart: die LINIE = aktuelles (vola-skaliertes) Stop-Niveau der offenen
+ // Position, die MARKER = wo ein Stop/Trailing tatsaechlich geschlossen hat.
+ const stopLevel=(pos&&sig.stop_price!=null)?sig.stop_price:null;
+ const stopMarks=decisions.filter(d=>d.decision==='EXIT'&&d.price!=null)
+  .map(d=>({ts:d.ts,price:d.price,reason:(d.factors||[]).join(' · ')||'Stop-Loss'}));
 
  const head=[
   {l:'Aktuelles Regime',v:(sig.regime||'–'),s:sig.confidence!=null?'Konfidenz '+Math.round(sig.confidence*100)+'%':''},
@@ -1958,24 +1979,28 @@ async function openSymbol(sym){
   <td class="num">${d.raw_exposure!=null?((d.raw_exposure>0?'+':'')+Math.round(d.raw_exposure*100)+'%'):'–'}</td>
   <td class="num"><b>${d.exposure!=null?((d.exposure>0?'+':'')+Math.round(d.exposure*100)+'%'):'–'}</b></td>
   <td class="num">${d.price!=null?money2(d.price):'–'}</td>
-  <td style="font-weight:600;color:${d.decision==='TRADE'?'var(--green)':(d.decision==='FLAT'?'var(--red)':'var(--muted)')}">${esc(d.decision||'–')}</td>
-  <td>${factorChips(d.factors)}</td></tr>`).join('');
- const decTable=decisions.length?`<div class="trd-scroll"><table class="trd-table trd-clickable"><thead><tr><th>Zeit</th><th>Regime</th><th>Konf</th><th class="num">Signal</th><th class="num">Final</th><th class="num">Kurs</th><th>Entscheidung</th><th>Faktoren</th></tr></thead><tbody>${decRows}</tbody></table></div><small class="trd-hint"><b>Signal</b> = was das Symbol allein wollte. <b>Final</b> = was nach Radar, Risiko-Multiplikator und Korrelationsschutz übrig blieb. Weichen sie ab, steht der Grund in den Faktoren.</small>`:'<div class="chart-empty">Noch keine Entscheidungen für dieses Symbol im aufbewahrten Verlauf.</div>';
+  <td style="font-weight:600;color:${d.decision==='TRADE'?'var(--green)':(d.decision==='FLAT'?'var(--red)':(d.decision==='EXIT'?'#f4707f':'var(--muted)'))}">${esc(d.decision||'–')}</td>
+  <td>${factorChips(d.factors)}</td></tr>`);
+ const decTable=decisions.length?pagedTable(decRows,'<tr><th>Zeit</th><th>Regime</th><th>Konf</th><th class="num">Signal</th><th class="num">Final</th><th class="num">Kurs</th><th>Entscheidung</th><th>Faktoren</th></tr>',{key:'symdec',size:20,cls:'trd-table trd-clickable',hint:'<b>Signal</b> = was das Symbol allein wollte. <b>Final</b> = was nach Radar, Risiko-Multiplikator und Korrelationsschutz übrig blieb. Weichen sie ab, steht der Grund in den Faktoren.'}):'<div class="chart-empty">Noch keine Entscheidungen für dieses Symbol im aufbewahrten Verlauf.</div>';
 
- const ordRows=orders.slice(0,40).map(o=>`<tr><td>${o.filled_at?fmtStamp(o.filled_at):(o.submitted_at?fmtStamp(o.submitted_at):'–')}</td>
+ const ordRows=orders.map(o=>`<tr><td>${o.filled_at?fmtStamp(o.filled_at):(o.submitted_at?fmtStamp(o.submitted_at):'–')}</td>
   <td style="color:${o.side==='buy'?'var(--green)':'var(--red)'};text-transform:uppercase;font-weight:600">${esc(o.side||'')}</td>
   <td class="num">${qty(o.qty)}</td><td class="num">${o.fill_price!=null?money2(o.fill_price):'–'}</td>
   <td class="num">${o.notional!=null?money2(o.notional):'–'}</td>
   <td><span class="tag ${(o.status||'').toLowerCase()==='filled'?'ok':'mutedtag'}">${esc(o.status||'')}</span></td>
-  <td class="mut">${esc((o.why&&o.why.reason)||'–')}</td></tr>`).join('');
- const ordTable=orders.length?`<div class="trd-scroll"><table class="trd-table"><thead><tr><th>Zeit</th><th>Seite</th><th class="num">Menge</th><th class="num">Kurs</th><th class="num">Gesamt</th><th>Status</th><th>Grund</th></tr></thead><tbody>${ordRows}</tbody></table></div>`:'<div class="chart-empty">Keine Orders für dieses Symbol.</div>';
+  <td class="mut">${esc((o.why&&o.why.reason)||'–')}</td></tr>`);
+ const ordTable=orders.length?pagedTable(ordRows,'<tr><th>Zeit</th><th>Seite</th><th class="num">Menge</th><th class="num">Kurs</th><th class="num">Gesamt</th><th>Status</th><th>Grund</th></tr>',{key:'symord',size:20}):'<div class="chart-empty">Keine Orders für dieses Symbol.</div>';
 
- $('#symModal .sym-body').innerHTML=`
+ const symBody=$('#symModal .sym-body');
+ symBody.innerHTML=`
   ${kpiGrid(head)}
-  <div class="sym-sec"><div class="sym-sec-head">Kursverlauf mit Trades <small>${bars.length} Bars · ${buys} Käufe ▲ · ${sells} Verkäufe ▼</small></div>
-   ${svgPriceChart(bars,fills,{aria:'Kursverlauf von '+sym+' mit Kauf- und Verkaufsmarkern'})}</div>
+  <div class="sym-sec"><div class="sym-sec-head">Kursverlauf mit Trades <small>${bars.length} Bars · ${buys} Käufe ▲ · ${sells} Verkäufe ▼${stopMarks.length?' · '+stopMarks.length+' Stop-Loss ✕':''}${stopLevel!=null?' · SL '+money2(stopLevel):''}</small></div>
+   ${svgPriceChart(bars,fills,{aria:'Kursverlauf von '+sym+' mit Trades und Stop-Loss',stop:stopLevel,stopMarks:stopMarks})}
+   <div class="chart-legend"><span class="lg lg-buy">▲ Kauf</span><span class="lg lg-sell">▼ Verkauf</span><span class="lg lg-sl">✕ Stop-Loss ausgelöst</span><span class="lg lg-line">╌ Stop-Niveau</span></div></div>
   <div class="sym-sec"><div class="sym-sec-head">Jede Entscheidung, mit Begründung</div>${decTable}</div>
   <div class="sym-sec"><div class="sym-sec-head">Orders</div>${ordTable}</div>`;
+ hydrateCharts(symBody);
+ hydratePagers(symBody);
 }
 function closeSymbol(){const bd=$('#symModal');if(bd){bd.classList.remove('open');bd.setAttribute('aria-hidden','true');}}
 
@@ -2094,6 +2119,53 @@ function svgBars(rows,o){
  const id=regChart({type:'bars',rows,W,H,rowH,top,thr});
  return `<div class="chartwrap" data-chart="${id}"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.aria||'Bars')}"><line class="thr" x1="${thrX.toFixed(1)}" y1="${top+16}" x2="${thrX.toFixed(1)}" y2="${H-2}"/><text class="thrt" x="${(thrX+4).toFixed(1)}" y="${top+8}">Threshold ${thr}</text>${body}</svg><div class="ctip"></div></div>`;
 }
+/* ================================================================
+   PAGINATION — jede Tabelle bekommt Seiten, statt hunderte Zeilen auf einmal.
+   Zeilen kommen als ARRAY rein; der Seitenstand haelt pro Tabellen-Key auch ueber
+   die Live-Polls hinweg (sonst springt man bei jedem Refresh auf Seite 1). Die
+   Zeilen-Klicks laufen ueber EINEN delegierten Listener auf document -> tbody
+   austauschen bricht sie nicht.
+   ================================================================ */
+const PAGERS=new Map();
+function pagedTable(rows,thead,o){
+ o=o||{};rows=rows||[];const key=o.key||('pg'+(++chartSeq)),size=o.size||25;
+ const cls=o.cls||'trd-table',hint=o.hint?`<small class="trd-hint">${o.hint}</small>`:'';
+ const total=rows.length,pages=Math.max(1,Math.ceil(total/size));
+ let st=PAGERS.get(key);if(!st){st={page:0};PAGERS.set(key,st);}
+ st.size=size;st.rows=rows;st.page=clamp(st.page,0,pages-1);
+ const body=rows.slice(st.page*size,(st.page+1)*size).join('');
+ const pager=total>size?pagerBar(key,st.page,pages,total,size):'';
+ return `<div class="trd-scroll"><table class="${cls}"><thead>${thead}</thead><tbody data-pgbody="${key}">${body}</tbody></table></div>${pager}${hint}`;
+}
+function pagerBar(key,page,pages,total,size){
+ const from=total?page*size+1:0,to=Math.min(total,(page+1)*size);
+ return `<div class="trd-pager" data-pgbar="${key}">
+  <button class="pg-btn" data-pgfirst ${page<=0?'disabled':''} aria-label="Erste Seite">«</button>
+  <button class="pg-btn" data-pgprev ${page<=0?'disabled':''}>‹ Zurück</button>
+  <span class="pg-info">${from}–${to} von ${total} · Seite ${page+1}/${pages}</span>
+  <button class="pg-btn" data-pgnext ${page>=pages-1?'disabled':''}>Weiter ›</button>
+  <button class="pg-btn" data-pglast ${page>=pages-1?'disabled':''} aria-label="Letzte Seite">»</button></div>`;
+}
+function hydratePagers(root){
+ if(!root||!root.querySelectorAll)return;
+ root.querySelectorAll('.trd-pager[data-pgbar]').forEach(bar=>{
+  if(bar.__wired)return;bar.__wired=true;const key=bar.dataset.pgbar;
+  bar.addEventListener('click',e=>{
+   const b=e.target.closest('button');if(!b)return;const st=PAGERS.get(key);if(!st)return;
+   const rows=st.rows||[],pages=Math.max(1,Math.ceil(rows.length/st.size));
+   if(b.hasAttribute('data-pgfirst'))st.page=0;
+   else if(b.hasAttribute('data-pgprev'))st.page=Math.max(0,st.page-1);
+   else if(b.hasAttribute('data-pgnext'))st.page=Math.min(pages-1,st.page+1);
+   else if(b.hasAttribute('data-pglast'))st.page=pages-1;else return;
+   const tb=document.querySelector('[data-pgbody="'+key+'"]');
+   if(tb)tb.innerHTML=rows.slice(st.page*st.size,(st.page+1)*st.size).join('');
+   const total=rows.length,from=total?st.page*st.size+1:0,to=Math.min(total,(st.page+1)*st.size);
+   const info=bar.querySelector('.pg-info');if(info)info.textContent=`${from}–${to} von ${total} · Seite ${st.page+1}/${pages}`;
+   bar.querySelectorAll('[data-pgprev],[data-pgfirst]').forEach(x=>x.disabled=st.page<=0);
+   bar.querySelectorAll('[data-pgnext],[data-pglast]').forEach(x=>x.disabled=st.page>=pages-1);
+  });
+ });
+}
 function hydrateCharts(root){
  if(!root||!root.querySelectorAll)return;
  root.querySelectorAll('.chartwrap[data-chart]').forEach(w=>{
@@ -2110,6 +2182,24 @@ function hydrateCharts(root){
     if(guide)guide.style.left=px.toFixed(1)+'px';
     const trs=m.series.map(s=>{const v=s.pts[i];return `<div class="tr"><span class="nm"><i style="background:${s.color}"></i>${esc(s.name)}</span><b>${v==null||isNaN(v)?m.nullLabel:m.vfmt(v)}</b></div>`;}).join('');
     tip.innerHTML=`<div class="tt">${esc(m.times[i]?fmtStamp(m.times[i]):'Messpunkt '+(i+1))}</div>${trs}`;
+    const tw=tip.offsetWidth||150;tip.style.left=clamp(px-tw/2,4,wr.width-tw-4).toFixed(1)+'px';tip.style.top='4px';
+   }else if(m.type==='price'){
+    /* TradingView-artiges Crosshair: vertikale Linie am naechsten Bar, horizontale Linie
+       an der Maus-Y, Tooltip mit Zeit + O/H/L/C + aktuellem Stop-Loss-Niveau. */
+    const plotW=m.W-m.pl-m.pr,vx=(ev.clientX-r.left)/r.width*m.W;
+    const ms=m.t0+clamp((vx-m.pl)/plotW,0,1)*(m.t1-m.t0);
+    let i=0,bd=Infinity;for(let k=0;k<m.tms.length;k++){const dd=Math.abs(m.tms[k]-ms);if(dd<bd){bd=dd;i=k;}}
+    const b=m.bars[i],Xi=m.pl+(m.t1>m.t0?(m.tms[i]-m.t0)/(m.t1-m.t0):0)*plotW;
+    const px=(Xi/m.W)*r.width+(r.left-wr.left),cy=ev.clientY-wr.top;
+    if(guide)guide.style.left=px.toFixed(1)+'px';
+    const gh=w.querySelector('.cguide-h');if(gh)gh.style.top=clamp(cy,0,wr.height).toFixed(1)+'px';
+    const f=v=>v==null||isNaN(v)?'–':money2(v);
+    tip.innerHTML=`<div class="tt">${esc(fmtStamp(new Date(m.tms[i]).toISOString()))}</div>`
+     +`<div class="tr"><span class="nm">O</span><b>${f(b[1])}</b></div>`
+     +`<div class="tr"><span class="nm">H</span><b>${f(b[2])}</b></div>`
+     +`<div class="tr"><span class="nm">L</span><b>${f(b[3])}</b></div>`
+     +`<div class="tr"><span class="nm">C</span><b>${f(b[4])}</b></div>`
+     +(m.stop!=null?`<div class="tr"><span class="nm"><i style="background:#f4707f"></i>Stop-Loss</span><b style="color:#f4707f">${f(m.stop)}</b></div>`:'');
     const tw=tip.offsetWidth||150;tip.style.left=clamp(px-tw/2,4,wr.width-tw-4).toFixed(1)+'px';tip.style.top='4px';
    }else{
     const vy=(ev.clientY-r.top)/r.height*m.H;let i=Math.floor((vy-m.top)/m.rowH);i=clamp(i,0,m.rows.length-1);

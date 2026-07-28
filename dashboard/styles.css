@@ -152,6 +152,25 @@ button{color:inherit}
 .ctip .tr .nm{display:flex;align-items:center;gap:6px;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ctip .tr .nm i{width:8px;height:8px;border-radius:2px;flex:0 0 auto}
 .ctip .tr b{font-family:ui-monospace,monospace;color:var(--text)}
+/* Preis-Chart: horizontales Crosshair, Stop-Loss-Linie/Marker, Legende (TradingView-artig) */
+.pricewrap .cguide{top:14px;bottom:26px}
+.chartwrap .cguide-h{position:absolute;left:52px;right:14px;height:1px;background:rgba(255,255,255,.28);pointer-events:none;opacity:0;transition:.12s}
+.chartwrap.hot .cguide-h{opacity:1}
+.pricewrap .stopline{stroke:#f4707f;stroke-width:1.2;stroke-dasharray:5 4;opacity:.9}
+.pricewrap .stoptag{fill:#f4707f;opacity:.16}
+.pricewrap .stoplbl{fill:#f4707f;font-size:10px;font-family:ui-monospace,monospace;font-weight:600}
+.pricewrap .smark line{stroke:#f4707f;stroke-width:1.8;stroke-linecap:round}
+.pricewrap .smark{cursor:help}
+.chart-legend{display:flex;gap:16px;flex-wrap:wrap;margin:8px 4px 2px;font-size:11px}
+.chart-legend .lg{color:var(--muted)}
+.chart-legend .lg-buy{color:#5bd9a0}
+.chart-legend .lg-sell,.chart-legend .lg-sl,.chart-legend .lg-line{color:#f4707f}
+/* Pagination */
+.trd-pager{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin:2px 20px 10px;flex-wrap:wrap}
+.pg-info{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;margin:0 4px}
+.pg-btn{background:rgba(255,255,255,.05);border:1px solid var(--panel-border);color:var(--text);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;transition:.12s;line-height:1}
+.pg-btn:hover:not(:disabled){background:rgba(255,255,255,.12)}
+.pg-btn:disabled{opacity:.35;cursor:default}
 
 /* Drawer: echte Zusatzinhalte */
 .drawer-log{background:#081627;border:1px solid var(--panel-border);border-radius:10px;padding:9px;font:11px/1.5 ui-monospace,monospace;color:#9fd0c0;white-space:pre-wrap;word-break:break-word;max-height:160px;overflow:auto}
