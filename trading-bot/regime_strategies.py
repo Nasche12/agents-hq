@@ -51,11 +51,17 @@ def target_allocation(regime, confidence, vol, vol_ref, trend_ok=True, flickerin
     return {"alloc": round(alloc, 4), "leverage": round(lev, 3), "reason": reason, "bucket": bucket}
 
 
-def directional_exposure(regime_rank, n_regimes, confidence, vol, vol_ref, flickering=False):
-    """Signed target exposure in [-1, 1] straight from the HMM regime ranking:
-    weakest regime (crash) -> short, strongest (euphoria) -> long, middle -> flat.
-    Magnitude scaled by max allocation, cut in high vol / low confidence / flicker.
-    Returns (exposure, reason). This is what lets the live bot long AND short."""
+def directional_exposure(regime_rank, n_regimes, confidence, vol, vol_ref, flickering=False, trend=None):
+    """Signed target exposure in [-1, 1].
+
+    The HMM proposes a DIRECTION from its regime ranking (weakest -> short, strongest ->
+    long). But an HMM on intraday returns detects VOL regimes, not direction -- the mean-
+    return sort it is ranked by is mostly noise on 5-min bars. So the HMM's direction is
+    only ACTED ON when a price-trend filter agrees with it (trend confirmation). When the
+    trend disagrees or is flat, we go flat rather than fight the tape on a noisy read. This
+    is the fix for 'HMM used as a direction oracle': the HMM now sizes/gates, the trend
+    decides the side. `trend` is a signed trend measure (e.g. MA slope); None or trend_filter
+    off restores the old regime-only behaviour. Returns (exposure, reason)."""
     cfg = load_config_alloc()
     if n_regimes <= 1:
         base = 0.0
@@ -72,13 +78,23 @@ def directional_exposure(regime_rank, n_regimes, confidence, vol, vol_ref, flick
         expo *= 0.8
     if flickering:
         expo *= 0.5
+
+    trend_note = ""
+    if cfg.get("trend_filter", True) and trend is not None and expo != 0:
+        # confirmation: take the HMM's side only if the trend points the same way.
+        if trend == 0 or (expo > 0) != (trend > 0):
+            expo = 0.0
+            trend_note = " · Trend widerspricht -> flat"
+        else:
+            trend_note = " · Trend bestätigt"
+
     if abs(expo) < cfg["min_change_threshold"]:            # deadband near neutral -> flat
         expo = 0.0
 
     expo = round(max(-1.0, min(1.0, expo)), 4)
     direction = "long" if expo > 0 else ("short" if expo < 0 else "flat")
     reason = (f"{direction} {abs(expo):.0%} · rank {regime_rank + 1}/{n_regimes} · "
-              f"{bucket}-vol · conf {int(confidence * 100)}%")
+              f"{bucket}-vol · conf {int(confidence * 100)}%{trend_note}")
     return expo, reason
 
 
@@ -103,4 +119,10 @@ if __name__ == "__main__":
     assert not needs_rebalance(0.90, 0.90 + thr * 0.5), "below the deadband must not rebalance"
     assert needs_rebalance(0.90, 0.90 + thr * 1.5), "above the deadband must rebalance"
     assert needs_rebalance(0.20, 0.95), "large change must rebalance"
+    # trend confirmation: strongest regime wants long -> trend up keeps it, trend down flattens
+    up, _ = directional_exposure(2, 3, 0.9, 0.010, ref, trend=1.0)
+    dn, _ = directional_exposure(2, 3, 0.9, 0.010, ref, trend=-1.0)
+    none, _ = directional_exposure(2, 3, 0.9, 0.010, ref, trend=None)
+    assert up > 0 and none > 0, (up, none)
+    assert dn == 0.0, f"trend against a long must go flat, got {dn}"
     print("strategies self-check ok:", bull, crash)

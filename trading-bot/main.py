@@ -15,6 +15,7 @@ a heartbeat and the dashboard export.
 Run one cycle:   python main.py --once
 Run continuously: python main.py"""
 import json
+import math
 import sys
 import time
 from datetime import datetime, timezone, timedelta
@@ -30,6 +31,7 @@ import insights
 import exit_manager
 import dashboard_export
 import order_executor
+import chart_features
 from feature_engineering import build_features
 from regime_strategies import directional_exposure
 from risk_manager import RiskManager
@@ -144,10 +146,22 @@ def _signal_for(symbol, model, ref_vol, df):
     Returns (info, exposure, reason, price)."""
     info = model.latest(df)
     vol = float(build_features(df)["realized_vol"].iloc[-1])
+    trend = _trend_of(df)
     expo, reason = directional_exposure(info["regime_rank"], info["n_regimes"],
-                                        info["confidence"], vol, ref_vol, info["flickering"])
+                                        info["confidence"], vol, ref_vol, info["flickering"],
+                                        trend=trend)
     price = float(df["close"].iloc[-1])
     return info, expo, reason, price, vol
+
+
+def _trend_of(df):
+    """Signed price-trend measure (MA slope) for the trend-confirmation filter. None when it
+    cannot be computed yet (too little history) -> the filter then does not block."""
+    try:
+        s = float(chart_features.ma_slope(df).iloc[-1])
+        return s if math.isfinite(s) else None
+    except Exception:
+        return None
 
 
 def cycle(models, risk, broker):
