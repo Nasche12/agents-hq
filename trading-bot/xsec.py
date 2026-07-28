@@ -78,6 +78,42 @@ def backtest(px, lookback=63, skip=5, k=4, reb=5, slip_bps=5, allow_short=True):
             "symbols": px.shape[1]}
 
 
+def trend_long(px, sma=100, reb=5, slip_bps=5):
+    """Systematic risk-managed LONG portfolio -- no direction prediction. Hold each asset
+    equal-weight ONLY while it is above its long moving average (an uptrend); drop to cash
+    otherwise. This owns the up-trends and sits out the drawdowns. Robust and hard to
+    overfit: one parameter (the trend window), a rule that has worked across decades and
+    markets. Compared to equal-weight buy&hold of the same universe."""
+    if len(px) < sma + 20:
+        return None
+    rets = px.pct_change().fillna(0.0)
+    ma = px.rolling(sma).mean()
+    dates = px.index
+    eq, held, sret, invested = 1.0, {}, [], []
+    for i in range(sma, len(dates)):
+        if (i - sma) % reb == 0:
+            above = [s for s in px.columns if px.iloc[i][s] > ma.iloc[i][s]]
+            n = len(above) or 1
+            w = {s: 1.0 / n for s in above}           # equal weight among up-trending; none -> cash
+            turn = sum(abs(w.get(s, 0) - held.get(s, 0)) for s in set(w) | set(held))
+            eq -= turn * (slip_bps / 1e4) * eq
+            held = w
+        sret.append(sum(held.get(s, 0.0) * rets.iloc[i].get(s, 0.0) for s in held))
+        invested.append(sum(abs(v) for v in held.values()))
+        eq *= (1 + sret[-1])
+    sr = np.array(sret)
+    ann = np.sqrt(252)
+    sharpe = round(float(ann * sr.mean() / (sr.std() + 1e-12)), 2)
+    curve = np.cumprod(1 + sr)
+    dd = float((curve / np.maximum.accumulate(curve) - 1).min())
+    bh = (1 + rets.iloc[sma:].mean(axis=1)).cumprod()
+    bh_curve = bh.values
+    bh_dd = float((bh_curve / np.maximum.accumulate(bh_curve) - 1).min())
+    return {"total": round(eq - 1, 4), "sharpe": sharpe, "maxdd": round(dd, 4),
+            "buy_hold": round(float(bh.iloc[-1] - 1), 4), "bh_maxdd": round(bh_dd, 4),
+            "avg_invested": round(float(np.mean(invested)), 2), "days": len(sr)}
+
+
 if __name__ == "__main__":
     import settings
     syms = settings.load_config()["watchlist"]
