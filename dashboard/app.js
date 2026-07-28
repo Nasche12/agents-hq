@@ -1679,13 +1679,13 @@ function renderTrading(){
 
  /* ---------- 7. Offene Positionen ---------- */
  const posRows=pos.map(p=>{const q=+p.qty,dir=q>=0?'long':'short',dc=q>=0?'var(--green)':'var(--red)';
-  return `<tr><td><b>${esc(dsym(p.symbol))}</b></td><td style="color:${dc};text-transform:uppercase;font-weight:600">${dir}</td>
+  return `<tr class="sym-row" data-sym="${esc(dsym(p.symbol))}" tabindex="0" role="button" data-tip="Chart öffnen & Position schließen — ${esc(dsym(p.symbol))}"><td><b>${esc(dsym(p.symbol))}</b></td><td style="color:${dc};text-transform:uppercase;font-weight:600">${dir}</td>
    <td class="num">${qty(Math.abs(q))}</td><td class="num">${money2(p.avg_entry)}</td>
    <td class="num">${p.current_price!=null?money2(p.current_price):'–'}</td>
    <td class="num">${money2(Math.abs(p.market_value))}</td>
    <td class="num" style="color:${tone(p.unrealized_pl)}">${moneyS(p.unrealized_pl)}</td>
    <td class="num" style="color:${tone(p.unrealized_pl)}">${p.unrealized_plpc!=null?pctS(p.unrealized_plpc,2):'–'}</td></tr>`;});
- const posTable=pos.length?pagedTable(posRows,'<tr><th>Symbol</th><th>Side</th><th class="num">Qty</th><th class="num">Entry</th><th class="num">Last</th><th class="num">Value</th><th class="num">Unreal. P&amp;L</th><th class="num">%</th></tr>',{key:'pos',size:25}):'<div class="chart-empty">No open positions — account is flat.</div>';
+ const posTable=pos.length?pagedTable(posRows,'<tr><th>Symbol</th><th>Side</th><th class="num">Qty</th><th class="num">Entry</th><th class="num">Last</th><th class="num">Value</th><th class="num">Unreal. P&amp;L</th><th class="num">%</th></tr>',{key:'pos',cls:'trd-table trd-clickable',hint:'<b>Zeile anklicken</b> öffnet Chart & Entscheidungen — und den Button zum manuellen Schließen der Position.'}):'<div class="chart-empty">No open positions — account is flat.</div>';
 
  /* ---------- 8. Geschlossene Round-Trips (FIFO aus echten Fills) ---------- */
  const trRows=trades.map(x=>`<tr><td>${x.closed?fmtStamp(x.closed):'–'}</td><td><b>${esc(dsym(x.symbol))}</b></td>
@@ -1994,6 +1994,8 @@ async function openSymbol(sym){
  const symBody=$('#symModal .sym-body');
  symBody.innerHTML=`
   ${kpiGrid(head)}
+  ${pos?`<div class="sym-actions"><button class="closepos-btn" data-closepos="${esc(sym)}">Position schließen</button>
+   <span class="sym-actions-note">Schließt die offene Position (${dir2(pos)} ${qty(Math.abs(pos.qty))}, ${moneyS(pos.unrealized_pl)} unrealisiert) am Markt. Der Bot führt es im nächsten Zyklus (≤60 s) aus und hält das Symbol danach kurz flach, damit es nicht sofort wieder aufgemacht wird.</span></div>`:''}
   <div class="sym-sec"><div class="sym-sec-head">Kursverlauf mit Trades <small>${bars.length} Bars · ${buys} Käufe ▲ · ${sells} Verkäufe ▼${stopMarks.length?' · '+stopMarks.length+' Stop-Loss ✕':''}${stopLevel!=null?' · SL '+money2(stopLevel):''}</small></div>
    ${svgPriceChart(bars,fills,{aria:'Kursverlauf von '+sym+' mit Trades und Stop-Loss',stop:stopLevel,stopMarks:stopMarks})}
    <div class="chart-legend"><span class="lg lg-buy">▲ Kauf</span><span class="lg lg-sell">▼ Verkauf</span><span class="lg lg-sl">✕ Stop-Loss ausgelöst</span><span class="lg lg-line">╌ Stop-Niveau</span></div></div>
@@ -2001,6 +2003,26 @@ async function openSymbol(sym){
   <div class="sym-sec"><div class="sym-sec-head">Orders</div>${ordTable}</div>`;
  hydrateCharts(symBody);
  hydratePagers(symBody);
+ const cb=symBody.querySelector('.closepos-btn');
+ if(cb)cb.addEventListener('click',()=>closePosition(cb.dataset.closepos,cb));
+}
+const dir2=p=>((+p.qty)>=0?'long':'short');
+/* Manuelles Schliessen: zwei Klicks (Sicherung), dann POST -> der Bot fuehrt es aus.
+   Wir platzieren KEINE Order direkt aus dem Browser; wir beauftragen nur den Bot. */
+async function closePosition(sym,btn){
+ if(!btn)return;
+ if(btn.dataset.armed!=='1'){
+  btn.dataset.armed='1';btn.classList.add('arm');btn.textContent='Wirklich schließen? Nochmal klicken';
+  clearTimeout(btn.__t);btn.__t=setTimeout(()=>{if(btn){btn.dataset.armed='';btn.classList.remove('arm');btn.textContent='Position schließen';}},4000);
+  return;
+ }
+ clearTimeout(btn.__t);btn.disabled=true;btn.classList.remove('arm');btn.textContent='Wird beauftragt…';
+ try{
+  const r=await fetch('/api/trading/close',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:sym})});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok&&j.ok){btn.classList.add('done');btn.textContent='✓ Schließen beauftragt — Bot führt es im nächsten Zyklus aus';}
+  else{btn.disabled=false;btn.dataset.armed='';btn.classList.add('err');btn.textContent='Fehler: '+esc(j.error||('HTTP '+r.status))+' — nochmal';}
+ }catch(e){btn.disabled=false;btn.dataset.armed='';btn.classList.add('err');btn.textContent='Netzwerkfehler — nochmal';}
 }
 function closeSymbol(){const bd=$('#symModal');if(bd){bd.classList.remove('open');bd.setAttribute('aria-hidden','true');}}
 

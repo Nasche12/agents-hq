@@ -165,6 +165,16 @@ button{color:inherit}
 .chart-legend .lg{color:var(--muted)}
 .chart-legend .lg-buy{color:#5bd9a0}
 .chart-legend .lg-sell,.chart-legend .lg-sl,.chart-legend .lg-line{color:#f4707f}
+/* Manuelles Schliessen einer Position (Asset-Detail) */
+.sym-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:4px 2px 10px;padding:12px 14px;border:1px solid var(--panel-border);border-radius:12px;background:rgba(244,112,127,.06)}
+.closepos-btn{background:rgba(244,112,127,.14);border:1px solid rgba(244,112,127,.5);color:#f4707f;font-weight:700;border-radius:10px;padding:9px 16px;font-size:13px;cursor:pointer;transition:.14s;white-space:nowrap}
+.closepos-btn:hover:not(:disabled){background:rgba(244,112,127,.24)}
+.closepos-btn.arm{background:#f4707f;color:#0b1422;border-color:#f4707f;animation:closepulse 1s ease-in-out infinite}
+.closepos-btn.done{background:rgba(91,217,160,.16);border-color:rgba(91,217,160,.5);color:#5bd9a0;cursor:default}
+.closepos-btn.err{background:rgba(244,112,127,.2)}
+.closepos-btn:disabled{cursor:default}
+.sym-actions-note{font-size:11.5px;color:var(--muted);line-height:1.5;flex:1;min-width:220px}
+@keyframes closepulse{0%,100%{box-shadow:0 0 0 0 rgba(244,112,127,.5)}50%{box-shadow:0 0 0 6px rgba(244,112,127,0)}}
 /* Pagination */
 .trd-pager{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 20px 10px;flex-wrap:wrap}
 .pg-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}

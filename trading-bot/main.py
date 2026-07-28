@@ -17,7 +17,7 @@ Run continuously: python main.py"""
 import json
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import settings
 import market_data
@@ -65,6 +65,50 @@ def _journal(entry):
     entry["ts"] = datetime.now(timezone.utc).isoformat()
     with open(settings.JOURNAL, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
+
+
+# ---------------------------------------------------------------- manual commands
+def _process_commands(broker, exit_state, cfg):
+    """Execute pending manual commands the dashboard dropped as files (the dashboard owns
+    no broker connection -- the bot is the single writer to the account). A 'close' flattens
+    the position at market AND sets an exit cooldown, so the same/next cycle does not just
+    re-open it against the user's intent. Returns the set of pos_symbol keys closed, so the
+    caller can drop them from this cycle's snapshot. Each command file is deleted after it
+    runs (directory-as-queue: race-free, the dashboard only ever creates files here)."""
+    cmd_dir = settings.STATE_DIR / "commands"
+    if not cmd_dir.exists():
+        return set()
+    cooldown_min = float(cfg.get("exits", {}).get("cooldown_minutes", 30))
+    closed = set()
+    for f in sorted(cmd_dir.glob("*.json")):
+        try:
+            cmd = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            cmd = None
+        try:
+            if cmd and cmd.get("action") == "close" and cmd.get("symbol"):
+                sym = str(cmd["symbol"])
+                if broker.connected:
+                    try:
+                        broker.close_position(sym)
+                    except Exception as e:
+                        alerts.log_event("order_error", f"manual close {sym}: {str(e)[:150]}")
+                key = market_data.pos_symbol(sym)
+                exit_state[key] = {"peak": 0.0,
+                                   "cooldown_until": (datetime.now(timezone.utc)
+                                                      + timedelta(minutes=cooldown_min)).isoformat()}
+                closed.add(key)
+                _journal({"type": "cycle", "symbol": sym, "decision": "MANUAL_CLOSE",
+                          "reason": f"manuell geschlossen (Dashboard) + {int(cooldown_min)} min Cooldown",
+                          "factors": ["manueller Klick im Dashboard",
+                                      f"Cooldown {int(cooldown_min)} min gegen sofortiges Re-Buy"]})
+                alerts.log_event("manual_close", sym)
+        finally:
+            try:
+                f.unlink()
+            except Exception:
+                pass
+    return closed
 
 
 # ---------------------------------------------------------------- bot counters
@@ -139,6 +183,18 @@ def cycle(models, risk, broker):
     # row, and re-fetching per symbol would cost 20 extra API calls every single minute.
     held_now = broker.positions() if broker.connected else []
 
+    # Manual commands from the dashboard (close a position on user click). Processed here,
+    # before anything else acts, so a just-closed symbol is out of this cycle's snapshot and
+    # the cooldown blocks an immediate re-buy. exit_state is loaded ONCE here and threaded
+    # through PASS 2b (re-loading it later would drop the cooldown we just set).
+    try:
+        exit_state = json.loads(settings.EXITS_STATE.read_text(encoding="utf-8"))
+    except Exception:
+        exit_state = {}
+    closed_keys = _process_commands(broker, exit_state, cfg)
+    if closed_keys:
+        held_now = [p for p in held_now if market_data.pos_symbol(p["symbol"]) not in closed_keys]
+
     # ONE bar fetch per symbol, shared by the HMM signal AND the portfolio radar.
     bars = _fetch_bars(symbols, cfg["hmm"])
 
@@ -206,11 +262,8 @@ def cycle(models, risk, broker):
     # PASS 2b: per-position exits (tight stop / trailing / scale-out). Scale-out trims the
     # target here (the normal reconcile then sells the delta); hard stops and trailing exits
     # are executed IMPERATIVELY in the loop below, because main's deadband gate would swallow
-    # a "target 0" and leave a loser open. State (peak + cooldown) persists across cycles.
-    try:
-        exit_state = json.loads(settings.EXITS_STATE.read_text(encoding="utf-8"))
-    except Exception:
-        exit_state = {}
+    # a "target 0" and leave a loser open. exit_state was loaded at the top of the cycle
+    # (with any manual-close cooldowns already applied) and persists across cycles.
     # current vol vs. each symbol's own normal -> lets the stop widen in wild vol, tighten in calm
     vol_ratios = {}
     for s, mm in meta.items():

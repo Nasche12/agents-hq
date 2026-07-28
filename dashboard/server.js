@@ -388,6 +388,24 @@ const server = http.createServer((req, res) => {
     });
   }
 
+  /* Position manuell schliessen: der Klick legt nur ein Kommando-File ab -- der Trading-Bot
+     (der als EINZIGER die Alpaca-Verbindung haelt) fuehrt es im naechsten Zyklus aus und
+     setzt einen Cooldown, damit er die Position nicht sofort wieder aufmacht. */
+  if (p === '/api/trading/close' && req.method === 'POST') {
+    return readJson(req, body => {
+      const sym = body && typeof body.symbol === 'string' ? body.symbol.trim().toUpperCase() : '';
+      if (!/^[A-Z]{1,10}(\/[A-Z]{2,6})?$/.test(sym)) return send(res, 400, { error: 'ungültiges Symbol' });
+      try {
+        const dir = path.join(BASE, 'trading-bot', 'state', 'commands');
+        fs.mkdirSync(dir, { recursive: true });
+        const id = Date.now() + '-' + sym.replace(/[^A-Z0-9]/g, '');
+        writeJsonAtomic(path.join(dir, 'close-' + id + '.json'),
+          { action: 'close', symbol: sym, ts: new Date().toISOString(), source: 'dashboard' }, 0);
+        return send(res, 200, { ok: true, queued: sym });
+      } catch (e) { return send(res, 500, { error: String(e.message || e) }); }
+    });
+  }
+
   /* Zeitplan lesen / speichern (config/schedule.json) */
   if (p === '/api/schedule') {
     if (req.method === 'GET') return send(res, 200, readSchedule());
