@@ -261,26 +261,47 @@ def wave_position(df):
 
 
 # ---------------------------------------------------------------- combined decision vote
+def _chart_votes(df):
+    """The five component votes behind chart_bias, each signed [-1, +1]. The column NAMES are
+    the human labels shown per trade, so 'which chart property drove this side' is answerable
+    down to the single indicator. Non-repainting (every input is). NaN = no vote."""
+    v = pd.DataFrame(index=df.index)
+    v["Trend"] = np.tanh(ema_slope(df))                       # EMA-Slope: Richtung des Trends
+    v["MACD"] = np.tanh(macd(df))                             # Momentum
+    v["Muster"] = chart_patterns.pattern_score(df).clip(-1, 1)   # H&S / Doppeltop / Dreieck / Flagge / Bruch
+    v["RSI-Div"] = chart_patterns.rsi_divergence(df)          # Divergenz Kurs vs. RSI
+    v["Range"] = range_pos(df)                                # Position im Donchian-Kanal (S/R)
+    return v
+
+
 def chart_bias_series(df):
     """The whole toolkit distilled into ONE signed [-1, +1] directional vote per bar -- the
-    module's answer to 'let the chart analysis DECIDE the side'. Trend (EMA slope), momentum
-    (MACD), completed patterns (pattern_score), RSI divergence and range position each cast a
-    bounded vote; the mean is the bias. Deliberately equal-weighted: the research loop tunes
-    how hard this STEERS size (allocation.chart_min), not fifty coefficients hidden here.
-    Non-repainting (every input is). NaN inputs contribute no vote."""
-    votes = pd.DataFrame(index=df.index)
-    votes["trend"] = np.tanh(ema_slope(df))
-    votes["macd"] = np.tanh(macd(df))
-    votes["pattern"] = chart_patterns.pattern_score(df).clip(-1, 1)
-    votes["divergence"] = chart_patterns.rsi_divergence(df)
-    votes["range"] = range_pos(df)
-    return votes.mean(axis=1, skipna=True).fillna(0.0).clip(-1, 1)
+    module's answer to 'let the chart analysis DECIDE the side'. The five component votes
+    (_chart_votes) are equal-weighted; the mean is the bias. The research loop tunes how hard
+    this STEERS size (allocation.chart_min), not fifty coefficients hidden here."""
+    return _chart_votes(df).mean(axis=1, skipna=True).fillna(0.0).clip(-1, 1)
 
 
 def chart_bias(df):
     """Scalar chart-analysis vote for the latest bar (see chart_bias_series)."""
     s = chart_bias_series(df)
     return float(s.iloc[-1]) if len(s) else 0.0
+
+
+def chart_decision(df):
+    """(bias, parts) in ONE pass: the combined [-1,+1] vote AND its per-component breakdown for
+    the latest bar -- so every trade can document WHICH chart property decided it and how
+    strongly (e.g. {'Muster': -0.58, 'Range': -0.40, ...}). parts is sorted by |contribution|,
+    strongest first. This is what turns the chart 'reason' from one opaque number into an
+    auditable per-indicator record. Computed once so the live loop pays the pattern detectors
+    only a single time per symbol."""
+    votes = _chart_votes(df)
+    if not len(votes):
+        return 0.0, {}
+    last = votes.iloc[-1]
+    bias = float(np.clip(last.mean(), -1, 1)) if last.notna().any() else 0.0
+    parts = {k: round(float(x), 3) for k, x in last.items() if pd.notna(x)}
+    return bias, dict(sorted(parts.items(), key=lambda kv: -abs(kv[1])))
 
 
 # ---------------------------------------------------------------- registry
@@ -377,5 +398,10 @@ if __name__ == "__main__":
     cb = chart_bias_series(df).dropna()
     assert cb.between(-1, 1).all(), "chart_bias out of [-1,1]"
     assert (cb != 0).any(), "chart_bias never fires -- vote is dead"
+    # the per-trade breakdown must name every component and its bias must match chart_bias
+    bias, parts = chart_decision(df)
+    assert -1 <= bias <= 1 and set(parts) <= set(_chart_votes(df).columns), (bias, parts)
+    assert abs(bias - float(chart_bias_series(df).iloc[-1])) < 1e-9, "decision bias != chart_bias"
+    print(f"chart_decision ok: bias {bias:+.2f} · Teile {parts}")
     print(f"chart_features ok: {len(BUILDERS)} Features, {len(FEATURE_SETS)} Sets, "
           f"kein Look-Ahead")

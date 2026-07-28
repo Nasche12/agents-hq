@@ -155,10 +155,12 @@ def _signal_for(symbol, model, ref_vol, df):
     info = model.latest(df)
     vol = float(build_features(df)["realized_vol"].iloc[-1])
     trend = _trend_of(df)
-    chart = _chart_of(df)
+    chart, chart_parts = _chart_of(df)
     expo, reason = directional_exposure(info["regime_rank"], info["n_regimes"],
                                         info["confidence"], vol, ref_vol, info["flickering"],
                                         trend=trend, chart=chart)
+    # carry the chart breakdown on `info` so the cycle can journal WHICH property decided it
+    info = {**info, "chart_bias": chart, "chart_parts": chart_parts}
     price = float(df["close"].iloc[-1])
     return info, expo, reason, price, vol
 
@@ -174,14 +176,15 @@ def _trend_of(df):
 
 
 def _chart_of(df):
-    """Combined chart-analysis vote [-1,+1] (chart_features.chart_bias) -- the side-decider
-    in chart_decides mode. None on too little history -> directional_exposure falls back to
-    the trend filter. Same function the backtester reads, so live == backtest."""
+    """(bias, parts): the combined chart-analysis vote [-1,+1] AND its per-indicator breakdown
+    (chart_features.chart_decision) -- the side-decider in chart_decides mode plus the record
+    of WHICH chart property drove it. bias None on too little history -> directional_exposure
+    falls back to the trend filter. Same vote the backtester reads, so live == backtest."""
     try:
-        c = chart_features.chart_bias(df)
-        return c if math.isfinite(c) else None
+        bias, parts = chart_features.chart_decision(df)
+        return (bias if math.isfinite(bias) else None), parts
     except Exception:
-        return None
+        return None, {}
 
 
 # ---------------------------------------------------------------- trend-following strategy
@@ -396,6 +399,11 @@ def cycle(models, risk, broker):
 
         info, price = mm["info"], mm["price"]
         target, parts = raw[sym], list(mm["notes"])
+        # per-trade chart documentation: which chart property drove the side, and how strongly.
+        # Shown in the decision/order 'Warum' so clicking a trade always reveals the breakdown.
+        cparts = info.get("chart_parts") or {}
+        if cparts:
+            parts.append("Chart-Detail · " + " · ".join(f"{k} {v:+.2f}" for k, v in cparts.items()))
         if radar.get("multiplier", 1.0) < 1.0:
             parts.append(f"Radar {radar['level']} x{radar['multiplier']}")
 
@@ -489,6 +497,7 @@ def cycle(models, risk, broker):
                   "n_regimes": info["n_regimes"], "tradable": tradable, "extended": extended,
                   "risk_multiplier": mult, "breakers": rstate["breakers"],
                   "radar_level": radar.get("level"), "radar_multiplier": radar.get("multiplier"),
+                  "chart_bias": info.get("chart_bias"), "chart_parts": cparts,
                   "deadband": deadband})
         signals.append({"symbol": sym, "asset_class": "crypto" if crypto else "us_equity",
                         "session": session, "session_label": sessions.SESSION_LABEL.get(session, session),
@@ -498,6 +507,7 @@ def cycle(models, risk, broker):
                         "price": round(price, 2), "target_notional": round(abs(target) * per_budget, 2),
                         "direction": "long" if target > 0 else ("short" if target < 0 else "flat"),
                         "decision": decision, "stable": info["stable"], "reason": reason_full,
+                        "chart_bias": info.get("chart_bias"), "chart_parts": cparts,
                         "stop_price": (exit_dec.get(market_data.pos_symbol(sym)) or {}).get("stop_price"),
                         "stop_pct": (exit_dec.get(market_data.pos_symbol(sym)) or {}).get("stop_pct"),
                         "targets": (exit_dec.get(market_data.pos_symbol(sym)) or {}).get("targets")})
