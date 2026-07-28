@@ -52,6 +52,9 @@ const AGENTS = {
   'backup-auditor': 'Nutze den Subagent backup-auditor und prüfe die Backups aus config/backups.json (read-only, kein Restore ohne Go).',
   'rechnungssteller': 'Nutze den Subagent rechnungssteller. Falls keine Positionen genannt sind, frage nach, statt zu raten.',
   'server-waechter': 'Nutze den Subagent server-waechter und prüfe jetzt READ-ONLY die Server-Gesundheit (config/server.json). Nichts ändern, nur melden.',
+  'markt-waechter': 'Nutze den Subagent markt-waechter und stufe die aktuelle Marktlage auf 0-3 ein. Schreibe AUSSCHLIESSLICH nach trading-bot/state/news_risk.json im Format {"ts","level","summary","reasons","sources"} (ts = aktuelle UTC-Zeit mit Z, level = Ganzzahl 0-3). Keine Order, kein Symbol, keine Richtung.',
+  'trading-forscher': 'Nutze den Subagent trading-forscher und mach die wöchentliche Selbstverbesserung des Trading-Bots (Evidenz + Forensik lesen, 1-5 Hypothesen, token-frei bewerten lassen). Nur Vorschläge; über die Allowlist urteilt der Optimizer.',
+  'trading-lernlauf': 'token-freier Lernlauf (engine=script) -- dieser Prompt wird nicht genutzt.',
   'mail-assistent': 'Nutze den Subagent mail-assistent und triagiere den Gmail-Posteingang: sortieren, zusammenfassen, Antwort-Entwürfe anlegen. Nichts versenden.',
   'video-producent': 'Nutze den Subagent video-producent und erzeuge EIN Kurzvideo (9:16) aus der obersten offenen Content-Idee und liefere es mit Caption nach #content. Nicht selbst auf Social posten.',
   'ki-influencer': 'Nutze den Subagent ki-influencer und erzeuge EINEN on-brand Tages-Post (Bild + 9:16-Clip + Caption) aus config/influencer.json und liefere ihn nach #content. Nicht selbst auf Social posten.'

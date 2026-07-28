@@ -103,7 +103,14 @@ def read_news(now=None, ncfg=None):
     if not isinstance(raw, dict):
         return {"level": 0, "usable": False, "why": "keine Einschaetzung vorhanden"}
 
-    ts = _parse(raw.get("ts"))
+    # Freshness from the FILE mtime, not the LLM's timestamp field. The file is rewritten on
+    # every run, so its mtime is when the assessment was actually produced -- whereas the
+    # model has been seen writing a placeholder timestamp (00:00:00Z). mtime cannot be faked
+    # by the model, so it is the safe freshness signal.
+    try:
+        ts = datetime.fromtimestamp(settings.NEWS_RISK.stat().st_mtime, tz=timezone.utc)
+    except Exception:
+        ts = _parse(raw.get("ts") or raw.get("timestamp"))
     if not ts:
         return {"level": 0, "usable": False, "why": "kein Zeitstempel"}
     age = (_now(now) - ts).total_seconds() / 60.0
@@ -114,19 +121,30 @@ def read_news(now=None, ncfg=None):
         return {"level": 0, "usable": False, "age_minutes": round(age, 1),
                 "why": f"veraltet ({round(age)} min > {max_age} min)"}
 
+    # Tolerate schema drift from the LLM: accept the common aliases it produces. The safety
+    # property is unchanged -- only 0..3 is accepted, and the level can only REDUCE size.
     level = raw.get("level")
-    if not isinstance(level, int) or isinstance(level, bool) or not 0 <= level <= 3:
-        return {"level": 0, "usable": False, "why": f"ungueltige Stufe {level!r}"}
+    if level is None:
+        level = raw.get("rating")
+    try:
+        level = int(level)
+    except (TypeError, ValueError):
+        level = None
+    if level is None or not 0 <= level <= 3:
+        return {"level": 0, "usable": False,
+                "why": f"ungueltige Stufe {raw.get('level', raw.get('rating'))!r}"}
 
+    summary = raw.get("summary") or raw.get("rationale") or ""
+    reasons = raw.get("reasons") or raw.get("key_factors") or []
     return {
         "level": level,
         "label": LEVELS.get(level, "?"),
         "usable": True,
         "age_minutes": round(age, 1),
-        "summary": str(raw.get("summary", ""))[:400],
-        "reasons": [str(r)[:200] for r in (raw.get("reasons") or [])][:6],
+        "summary": str(summary)[:400],
+        "reasons": [str(r)[:200] for r in reasons][:6],
         "sources": [str(s)[:200] for s in (raw.get("sources") or [])][:8],
-        "ts": raw.get("ts"),
+        "ts": ts.isoformat(),
     }
 
 
@@ -173,22 +191,25 @@ if __name__ == "__main__":
 
     ncfg = {"enabled": True, "max_age_minutes": 90,
             "multipliers": {"1": 0.8, "2": 0.55, "3": 0.3}}
-    now = datetime(2026, 7, 29, 12, 0, tzinfo=timezone.utc)
     import tempfile
     from pathlib import Path
     settings.NEWS_RISK = Path(tempfile.mkdtemp()) / "news_risk.json"
 
-    assert news_multiplier(now, ncfg)[0] == 1.0, "keine Datei -> kein Effekt"
+    def _mt():
+        return datetime.fromtimestamp(settings.NEWS_RISK.stat().st_mtime, tz=timezone.utc)
+
+    assert news_multiplier(None, ncfg)[0] == 1.0, "keine Datei -> kein Effekt"
+    # LLM-DRIFT: der Agent schrieb echt 'rating/rationale/key_factors' + Platzhalter-Timestamp.
+    # Muss trotzdem als Krise (3) nutzbar sein -- Alias-Felder + Frische aus der Datei-mtime.
     settings.NEWS_RISK.write_text(json.dumps(
-        {"ts": (now - timedelta(minutes=5)).isoformat(), "level": 3,
-         "summary": "Zoelle angekuendigt"}), encoding="utf-8")
-    m, n = news_multiplier(now, ncfg)
+        {"timestamp": "2026-07-28T00:00:00Z", "rating": 3,
+         "rationale": "Zoelle angekuendigt", "key_factors": ["x"]}), encoding="utf-8")
+    m, n = news_multiplier(_mt() + timedelta(minutes=5), ncfg)
     assert m == 0.3 and n["usable"] and n["label"] == "krise", (m, n)
-    # veraltet -> zurueck auf normal, statt ewig defensiv zu bleiben
-    assert news_multiplier(now + timedelta(hours=4), ncfg)[0] == 1.0
-    # boesartige Eingaben duerfen nie erhoehen
-    for bad in ({"ts": now.isoformat(), "level": -5}, {"ts": now.isoformat(), "level": 99},
-                {"ts": now.isoformat(), "level": "hoch"}, {"level": 3}, {"junk": True}):
+    # veraltet nach mtime -> zurueck auf normal, statt ewig defensiv zu bleiben
+    assert news_multiplier(_mt() + timedelta(hours=4), ncfg)[0] == 1.0
+    # boesartige/ungueltige Stufen duerfen nie erhoehen
+    for bad in ({"rating": -5}, {"level": 99}, {"level": "hoch"}, {"junk": True}):
         settings.NEWS_RISK.write_text(json.dumps(bad), encoding="utf-8")
-        assert news_multiplier(now, ncfg)[0] == 1.0, bad
-    print("external_risk self-check ok (Kalender + Nachrichten, nur senkend)")
+        assert news_multiplier(_mt() + timedelta(minutes=1), ncfg)[0] == 1.0, bad
+    print("external_risk self-check ok (Kalender + Nachrichten, Alias-tolerant, nur senkend)")
