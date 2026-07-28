@@ -33,6 +33,24 @@ def _read(path, fallback):
         return fallback
 
 
+def _read_jsonl(path, limit=20000):
+    """Read a JSONL file (the per-cycle decision journal), newest `limit` lines. Stays
+    stdlib-only so the evidence step never needs the numeric stack."""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()[-limit:]
+    except Exception:
+        return []
+    out = []
+    for line in lines:
+        line = line.strip()
+        if line:
+            try:
+                out.append(json.loads(line))
+            except Exception:
+                continue
+    return out
+
+
 def _lcfg():
     return settings.load_config().get("learning", {})
 
@@ -57,20 +75,46 @@ def load_backlog():
 def build_evidence():
     """Everything the agent is allowed to reason over: its own measured results, what it
     already tried, and the exact sandbox it may move in. No market news, no opinions."""
+    import trade_forensics    # stdlib-only (trade_stats + news_log); safe in the token-free step
+    import insights
     cfg = settings.load_config()
     lcfg = cfg.get("learning", {})
     dash = _read(settings.DASHBOARD_EXPORT, {})
     tunable = sorted(lcfg.get("bounds", {}))
+
+    # The "look at every detail" layer: per-trade forensics from the real fills, the decision
+    # journal and the recorded news timeline. This is what turns aggregate stats ("profit
+    # factor 0.07") into leads ("the loss sits in <15-min scalps, all during calm news").
+    forensics = trade_forensics.analyze(
+        _read(settings.ORDERS, []),
+        journal=_read_jsonl(settings.JOURNAL),
+        timeline=_read_jsonl(settings.NEWS_HISTORY),
+    )
+    # The connections the 24/7 observation layer keeps mining -- co-occurring conditions
+    # (regime x news x hold x symbol) whose win-rate departs hardest from the baseline. These
+    # are hypothesis SEEDS: a recurring structural loss connection is the strongest reason to
+    # test a change. News-driven ones (stufe 2-3) are NOT to be tuned away.
+    connections = insights.current()
 
     pack = {
         "generated": datetime.now(timezone.utc).isoformat(),
         "instructions": (
             "Schlage 1-5 Parameteraenderungen vor, die die risikoadjustierte Rendite "
             "verbessern koennten. Nur Schluessel aus 'tunable_parameters'. Jede Hypothese "
-            "muss auf einer Beobachtung in 'live_performance' oder 'memory' beruhen. "
+            "muss auf einer Beobachtung in 'live_performance', 'trade_forensics', "
+            "'connections' oder 'memory' beruhen. 'connections' sind rund um die Uhr "
+            "geminte Verknuepfungen (z.B. 'hold=scalp & regime=bull verliert, 40 Trades'): "
+            "die staerkste, wiederkehrende STRUKTURelle Verlust-Verknuepfung ist der beste "
+            "Hypothesen-Kandidat. VERGLEICHE JEDE BEOBACHTUNG MIT 'trade_forensics.news_attribution': "
+            "Verluste, die in Stress-/Krise-Fenstern (Stufe 2-3) entstanden, sind exogene "
+            "Schocks - die tunt man NICHT weg (das waere Ueberanpassung an unwiederholbare "
+            "Ereignisse), dagegen schuetzt bereits der News-Multiplikator. Nur STRUKTURELLE "
+            "Muster, die auch bei ruhiger Lage (Stufe 0) auftreten, sind fair zu optimieren. "
             "Aendere pro Kandidat moeglichst wenige Parameter - je mehr, desto "
             "wahrscheinlicher ist Ueberanpassung. Wiederhole nichts aus 'already_rejected'."
         ),
+        "trade_forensics": forensics,
+        "connections": connections,   # 24/7-gemined: staerkste Verknuepfungen (Verlust/Gewinn), Hypothesen-Saat
         "current_values": {k: settings.flat_get(cfg, k) for k in tunable},
         "tunable_parameters": {k: lcfg["bounds"][k] for k in tunable},
         "locked_parameters": lcfg.get("locked_prefixes", []),

@@ -1751,11 +1751,31 @@ function renderTrading(){
   {l:'Letzter Lauf',v:lr.generated?fmtDay(lr.generated):'–',s:lr.tested!=null?lr.tested+' getestet':'nie gelaufen'},
   {l:'Status',v:L.enabled?'aktiv':'aus',s:L.enabled?'learning.enabled':'in config.json',c:L.enabled?'var(--green)':'var(--muted)'},
  ];
+ /* ---------- 12b. Verknuepfungen: rund um die Uhr gemined (Beobachtung, kein Auto-Tuning) ---------- */
+ const C=t.connections||{},ci=C.insights||[];
+ const bwr=C.baseline_win_rate!=null?Math.round(C.baseline_win_rate*100)+'%':'–';
+ const connRows=ci.map(i=>{
+  const loss=i.signal==='verliert';
+  const wr=i.win_rate!=null?Math.round(i.win_rate*100)+'%':'–';
+  const kind=i.kind==='verknuepfung'?'🔗 Paar':'einzeln';
+  return `<tr><td>${kind}</td><td><code>${esc(i.key||'')}</code></td>`
+   +`<td class="num">${n0(i.trades||0)}</td><td class="num" style="color:${loss?'var(--red)':'var(--green)'}">${wr}</td>`
+   +`<td class="num">${i.lift!=null?(i.lift>0?'+':'')+Math.round(i.lift*100)+' pp':'–'}</td>`
+   +`<td class="num" style="color:${(i.total_pnl||0)<0?'var(--red)':'var(--green)'};font-weight:600">${i.total_pnl!=null?(i.total_pnl>0?'+':'')+'$'+n0(Math.round(i.total_pnl)):'–'}</td></tr>`;
+ }).join('');
+ const connTable=connRows
+  ?`<div class="trd-scroll"><table class="trd-table"><thead><tr><th>Art</th><th>Bedingungen</th><th class="num">Trades</th><th class="num">Trefferquote</th><th class="num">vs. Basis</th><th class="num">P&amp;L</th></tr></thead><tbody>${connRows}</tbody></table></div><small class="trd-hint">Basis-Trefferquote aller Round-Trips: <b>${bwr}</b> · ${n0(C.n_trades||0)} Trades analysiert. „Paar" = zwei gleichzeitig auftretende Bedingungen (die eigentliche Verknuepfung).</small>`
+  :`<div class="chart-empty">Noch keine belastbaren Verknuepfungen — es braucht ein paar Dutzend Round-Trips, dann taucht hier auf, welche Bedingungen zusammen verlieren oder gewinnen.</div>`;
+ const connSection=`
+  <section class="panel trd-section">${sectionHead('VERKNÜPFUNGEN · 24/7','Welche Bedingungen zusammen verlieren oder gewinnen',(ci.length||0)+' Muster')}${connTable}
+   <div class="trd-note">🔎 Rund um die Uhr aus echten Trades gemined (Symbol × Richtung × Regime × Nachrichtenstufe × Haltedauer). Das ist <b>Beobachtung</b>, keine automatische Änderung: die stärkste <i>strukturelle</i> Verlust-Verknüpfung wird dem Forscher als Hypothese vorgelegt und erst nach Walk-Forward + Holdout wirksam. An Stress/Krise gebundene Muster (Nachrichten) bleiben unangetastet.</div></section>`;
+
  const learnSection=`
   <section class="panel trd-section">${sectionHead('SELBSTVERBESSERUNG','Was der Bot gelernt hat',(L.override_count||0)+' aktiv')}${kpiGrid(learnCells)}
    <div class="trd-note">🔒 Der Forscher-Agent darf <b>nur</b> die freigegebenen Parameter aendern. Risikoschwellen, Ordergroessen, <code>trading_enabled</code> und die Watchlist sind gesperrt — und er schreibt nie in <code>config.json</code>.</div>
    ${ovTable}</section>
-  <section class="panel trd-section">${sectionHead('LETZTER FORSCHUNGSLAUF','Hypothesen und Urteile',lr.generated?fmtStamp(lr.generated):'–')}${candTable}</section>`;
+  <section class="panel trd-section">${sectionHead('LETZTER FORSCHUNGSLAUF','Hypothesen und Urteile',lr.generated?fmtStamp(lr.generated):'–')}${candTable}</section>
+  ${connSection}`;
 
  box.innerHTML=`${hero}
   <section class="panel trd-section">${sectionHead('YOUR PAPER ACCOUNT · LIVE','Alpaca — '+(uni.equity_count||0)+' tickers + '+(uni.crypto_count||0)+' crypto pairs','connected','good')}${kpiGrid(accCells)}</section>

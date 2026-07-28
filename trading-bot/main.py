@@ -25,6 +25,9 @@ import hmm_engine
 import alerts
 import sessions
 import risk_radar
+import news_log
+import insights
+import exit_manager
 import dashboard_export
 import order_executor
 from feature_engineering import build_features
@@ -178,6 +181,13 @@ def cycle(models, risk, broker):
             and mm["info"]["regime_rank"] <= (mm["info"]["n_regimes"] - 1) / 3]
     weak_share = len(weak) / max(1, len([m for m in meta.values() if m.get("info")]))
     radar = risk_radar.assess(bars, weak_share=weak_share)
+    # Persist the external picture (news level + calendar events) as a step-function log, so
+    # the research loop can later attribute trade outcomes to the world they happened in.
+    # Deterministic, written here and nowhere near an LLM; a failed append never breaks the cycle.
+    try:
+        news_log.append_if_changed(radar.get("external") or {})
+    except Exception:
+        pass
     if radar.get("multiplier", 1.0) < 1.0:
         raw = {s: round(t * radar["multiplier"], 4) for s, t in raw.items()}
     for sym in list(raw):
@@ -191,6 +201,25 @@ def cycle(models, risk, broker):
         meta[sym]["notes"].append(note)
     if radar.get("reasons"):
         alerts.log_event("radar", f"{radar['level']}: {'; '.join(radar['reasons'])}")
+
+    # PASS 2b: per-position exits (tight stop / trailing / scale-out). Scale-out trims the
+    # target here (the normal reconcile then sells the delta); hard stops and trailing exits
+    # are executed IMPERATIVELY in the loop below, because main's deadband gate would swallow
+    # a "target 0" and leave a loser open. State (peak + cooldown) persists across cycles.
+    try:
+        exit_state = json.loads(settings.EXITS_STATE.read_text(encoding="utf-8"))
+    except Exception:
+        exit_state = {}
+    exit_dec, exit_state = exit_manager.evaluate(held_now, cfg.get("exits", {}), exit_state)
+    for sym in list(raw):
+        d = exit_dec.get(market_data.pos_symbol(sym))
+        if d and d.get("cap") is not None and d["cap"] < 1.0 and not d.get("close") and not d.get("block"):
+            raw[sym] = round(raw[sym] * d["cap"], 4)
+            meta[sym]["notes"].append(d["reason"])
+    try:
+        settings.EXITS_STATE.write_text(json.dumps(exit_state, indent=2), encoding="utf-8")
+    except Exception:
+        pass
 
     signals, orders_this_cycle = [], 0
     for sym in symbols:
@@ -232,8 +261,30 @@ def cycle(models, risk, broker):
         if not trading_enabled:
             parts.append("observe only")
 
+        # Per-position exit takes priority over the model's target: a hard stop / trailing
+        # exit flattens now, a cooldown keeps it flat -- overriding "the HMM still wants this".
+        exd = exit_dec.get(market_data.pos_symbol(sym))
         order_info = None
-        if (will_trade or (rstate["killed"] and broker.connected and tradable)) and tradable:
+        did_exit = False
+        if exd and (exd.get("close") or exd.get("block")) and tradable:
+            parts.append(exd["reason"])
+            did_exit = True
+            if exd.get("close") and broker.connected and trading_enabled:
+                try:
+                    broker.close_position(sym)
+                    order_info = {"action": "exit", "reason": exd["reason"], "order_id": "exit",
+                                  "plpc": exd.get("plpc"), "peak": exd.get("peak")}
+                    orders_this_cycle += 1
+                    bot["orders_sent"] += 1
+                    bot["last_order"] = datetime.now(timezone.utc).isoformat()
+                except Exception as e:
+                    bot["errors"] += 1
+                    bot["last_error"] = f"{sym}: {str(e)[:120]}"
+                    parts.append(f"exit error: {str(e)[:60]}")
+                    alerts.log_event("order_error", f"{sym} exit: {str(e)[:180]}")
+            decision = "EXIT" if exd.get("close") else "COOLDOWN"
+
+        if not did_exit and (will_trade or (rstate["killed"] and broker.connected and tradable)) and tradable:
             try:
                 order_info = order_executor.reconcile_to_target(broker=broker, symbol=sym,
                                                                target_exposure=target,
@@ -283,6 +334,13 @@ def cycle(models, risk, broker):
     raw_orders = broker.list_orders(status="all", limit=500) if broker.connected else []
     acct = broker.account() if broker.connected else acct
     settings.ORDERS.write_text(json.dumps([_order_row(o) for o in raw_orders], indent=2), encoding="utf-8")
+    # 24/7 observation layer: re-mine the loss/win CONNECTIONS from the fresh order book.
+    # Self-skips when nothing new closed, never raises -- the memory keeps learning between
+    # the (gated) parameter runs, without ever touching the trading decision.
+    try:
+        insights.refresh()
+    except Exception:
+        pass
     settings.POSITIONS.write_text(json.dumps({"open": positions_live, "pending": []}, indent=2), encoding="utf-8")
     settings.SIGNALS.write_text(json.dumps(signals, indent=2), encoding="utf-8")
     if broker.connected and acct.get("equity") is not None:

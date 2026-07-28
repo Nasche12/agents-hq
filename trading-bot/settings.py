@@ -51,6 +51,10 @@ CANDIDATES = STATE_DIR / "candidates.json"   # what the LLM proposed this round 
 EVIDENCE = STATE_DIR / "evidence.json"       # the pack the LLM reads (own results, past verdicts)
 LEARNING_REPORT = STATE_DIR / "learning_report.json"  # last research run, for the dashboard
 NEWS_RISK = STATE_DIR / "news_risk.json"     # market-watch agent verdict: ONE integer 0-3
+NEWS_HISTORY = STATE_DIR / "news_history.jsonl"  # step-function log of the external picture (news level + events) over time
+INSIGHTS = STATE_DIR / "insights.json"       # current strongest loss/win CONNECTIONS mined from closed trades (24/7)
+INSIGHTS_LOG = STATE_DIR / "insights.jsonl"  # dated trail: when each connection first became significant
+EXITS_STATE = STATE_DIR / "exits.json"       # per-position peak + cooldown for stop-loss / trailing / scale-out
 CONFIG_HISTORY = STATE_DIR / "config_history.jsonl"   # every promotion, with the previous values
 
 _REGIME_NAMES = {

@@ -49,6 +49,15 @@
     "low_vol_pct": 0.8,
     "high_vol_pct": 1.3
   },
+  "exits": {
+    "_note": "Positions-Exits, die der Ziel-Rebalancer strukturell nicht kann. GESPERRT (locked_prefixes) - der Lern-Agent darf einen Stop nie lockern. stop_loss_pct GERING halten schneidet Verlierer frueh, erzeugt aber auf 5-Min-Krypto Whipsaw (jeder Stop zahlt Spread); erst nach Messung enger stellen. Trailing + Scale-Out sichern Gewinn 'stetig', wenn viel Profit da ist.",
+    "enabled": true,
+    "stop_loss_pct": 0.012,
+    "cooldown_minutes": 20,
+    "arm_profit_pct": 0.02,
+    "trail_giveback_pct": 0.008,
+    "scale_out": [[0.03, 0.7], [0.05, 0.5], [0.08, 0.3]]
+  },
   "risk": {
     "day_halve_pct": 0.02,
     "day_flat_pct": 0.03,
@@ -124,6 +133,7 @@
     "recheck_days": 90,
     "locked_prefixes": [
       "risk.",
+      "exits.",
       "radar.",
       "watchlist",
       "starting_equity",

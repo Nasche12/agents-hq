@@ -129,6 +129,7 @@ def build(symbol=None):
         "trade_stats": dict(stats, **_activity_counts(orders, closed)),
         "per_symbol": per_sym_pnl,
         "learning": _learning(cfg),             # what the research agent changed, and why
+        "connections": _connections(),          # 24/7-gemined loss/win connections (verknüpfungen)
         "journal_tail": _journal_tail(120, journal),   # real bot decisions incl. skips
         "decisions_by_symbol": _decisions_by_symbol(journal),  # per-asset audit trail
         "equity_history": fine,                 # [[iso, equity, cash], ...] fine resolution
@@ -155,6 +156,19 @@ def _external_risk():
                                     "events", "news", "reasons")}
     except Exception as e:
         return {"multiplier": 1.0, "error": str(e)[:120]}
+
+
+def _connections():
+    """The strongest loss/win connections the 24/7 observation layer keeps mining. Reading
+    only -- computed by the trading loop, shown here so the pattern is visible without
+    opening a JSONL file."""
+    c = _read(settings.INSIGHTS, {})
+    return {
+        "generated": c.get("generated"),
+        "baseline_win_rate": c.get("baseline_win_rate"),
+        "n_trades": c.get("n_trades", 0),
+        "insights": (c.get("insights") or [])[:12],
+    }
 
 
 def _learning(cfg):

@@ -6,19 +6,28 @@
   "agents": {
     "markt-waechter": {
       "cadence": "alle 15 min",
-      "enabled": false,
+      "enabled": true,
       "schwer": false,
       "channel": "agent-logs",
       "quiet": true,
-      "_hinweis": "Liest Wirtschaftsnachrichten und schreibt EINE Zahl 0-3 nach trading-bot/state/news_risk.json. Kostet Tokens (haiku, kurzer Lauf alle 15 min = 96/Tag). Die Zahl kann die Positionsgroessen des Bots NUR senken, nie erhoehen; faellt der Agent aus, ignoriert der Bot die Datei nach 90 Minuten und handelt normal weiter. enabled=true setzen, wenn du den Nachrichten-Schutz willst."
+      "_hinweis": "Liest Wirtschaftsnachrichten und schreibt EINE Zahl 0-3 nach trading-bot/state/news_risk.json. Kostet Tokens (haiku, kurzer Lauf alle 15 min = 96/Tag). Die Zahl kann die Positionsgroessen des Bots NUR senken, nie erhoehen; faellt der Agent aus, ignoriert der Bot die Datei nach 90 Minuten und handelt normal weiter. AKTIV: der Bot zeichnet die Stufe zusaetzlich als Verlauf (state/news_history.jsonl) auf, damit der Lernlauf Trades gegen die Nachrichtenlage vergleichen kann. Ohne diesen Agent landet in der Forensik alles in 'ruhig'."
     },
     "trading-forscher": {
       "cadence": "So 04:00",
-      "enabled": false,
+      "enabled": true,
       "schwer": true,
       "channel": "reports",
       "quiet": false,
-      "_hinweis": "Woechentliche Selbstverbesserung des Trading-Bots. Kostet Tokens (LLM schlaegt Parameter vor); die Bewertung selbst ist token-frei. enabled=true setzen, wenn der Bot genug echte Round-Trips gesammelt hat - vorher hat der Agent keine Datengrundlage. Token-freie Alternative ohne Agent: research_cycle.py evaluate (Gitter-Fallback)."
+      "_hinweis": "Woechentliche SMARTE Selbstverbesserung: liest das Forensik-Paket (Churn, Verlust-Cluster, Regime- und Nachrichten-Zuordnung) und schlaegt daraus 1-5 Hypothesen vor. Kostet Tokens (LLM); die Bewertung selbst ist token-frei. schwer=true -> Start erst nach /ja in #freigaben. Die taegliche, token-freie Fleissarbeit macht 'trading-lernlauf'."
+    },
+    "trading-lernlauf": {
+      "cadence": "täglich 05:00",
+      "engine": "script",
+      "enabled": true,
+      "schwer": false,
+      "channel": "reports",
+      "quiet": true,
+      "_hinweis": "TOKEN-FREI (engine=script -> bin/agents/trading-lernlauf.js). Taeglich: baut Evidenz + Forensik und laesst den Optimizer Backlog/Gitter-Kandidaten durch Walk-Forward + Holdout bewerten. Was besteht, wird promotet; jedes Urteil landet im Gedaechtnis -> die Memory baut sich Tag fuer Tag von selbst auf. Sicherungen bleiben unantastbar (Allowlist in promote.py). Ist der Backlog abgearbeitet und nichts Neues zu testen, meldet der Lauf das und aendert nichts - das ist ein normales Ergebnis, kein Fehler."
     },
     "wochenreport": {
       "cadence": "Fr 08:00",
