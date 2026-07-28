@@ -95,7 +95,7 @@ class Broker:
                             headers=self._headers(), timeout=20)
         if r.status_code == 404:
             return None                                 # nothing to close
-        r.raise_for_status()
+        _raise_for(r, symbol)
         return r.json()
 
     def submit_order(self, symbol, qty, side, extended=False, price_ref=None):
@@ -131,8 +131,21 @@ class Broker:
                          "type": "market", "time_in_force": "day"})
 
         r = requests.post(f"{self.base}/v2/orders", headers=self._headers(), json=body, timeout=20)
-        r.raise_for_status()
+        _raise_for(r, f"{side} {symbol}")
         return r.json()
+
+
+def _raise_for(r, ctx=""):
+    """Raise with Alpaca's ACTUAL reason (the JSON body), not just '403 Forbidden'. The body
+    is where the cause lives -- e.g. 'potential wash trade', 'insufficient buying power'."""
+    if r.status_code < 400:
+        return
+    try:
+        body = r.json()
+        msg = body.get("message") or body
+    except Exception:
+        msg = (r.text or "")[:220]
+    raise RuntimeError(f"{r.status_code} {ctx}: {msg}")
 
 
 def _f(v):
