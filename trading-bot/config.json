@@ -24,6 +24,11 @@
     "DOGE/USD",
     "BCH/USD"
   ],
+  "_strategy_note": "strategy = 'trend_long' (validiert, OOS-getestet) oder 'hmm' (alte Richtungslogik, <50% Accuracy). trend_long: halte jedes Symbol nur ueber seinem SMA-Filter (long), sonst Cash - keine Richtungsprognose, nur Trend-Reaktion. Pro-Symbol target 1.0/0.0 ergibt automatisch breiten-skaliertes Gleichgewicht. Risiko-Breaker, News-Multiplikator und Korrelationsschutz bleiben aktiv; die engen Positions-Stops sind im trend_long-Modus AUS (der SMA-Filter IST der Exit).",
+  "strategy": "trend_long",
+  "trend_long": {
+    "sma_days": 200
+  },
   "hmm": {
     "min_regimes": 3,
     "max_regimes": 7,

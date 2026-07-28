@@ -172,6 +172,46 @@ def _trend_of(df):
         return None
 
 
+# ---------------------------------------------------------------- trend-following strategy
+_DAILY_CACHE = {"ts": 0.0, "bars": {}}
+
+
+def _daily_bars(symbols, cfg):
+    """Daily bars for the trend filter, memoised for an hour -- a 200-day SMA barely moves
+    intraday, so re-fetching it every cycle is wasteful."""
+    if _DAILY_CACHE["bars"] and (time.time() - _DAILY_CACHE["ts"]) < 3600:
+        return _DAILY_CACHE["bars"]
+    need = int(cfg.get("trend_long", {}).get("sma_days", 200)) + 40
+    out = {}
+    for s in symbols:
+        try:
+            out[s] = market_data.get_daily_bars(s, days=need)
+        except Exception as e:
+            alerts.log_event("data_error", f"daily {s}: {str(e)[:150]}")
+    if out:
+        _DAILY_CACHE["ts"], _DAILY_CACHE["bars"] = time.time(), out
+    return out
+
+
+def _trend_signal_for(sym, ddf, cfg):
+    """Trend-following on DAILY bars: hold (target 1.0) while the close is above its long
+    moving average, else flat/cash (0.0). No direction prediction -- it reacts to the trend.
+    Per-symbol 1.0/0.0 gives breadth-scaled equal weight through the existing budget logic.
+    Returns (info, exposure, reason, price, vol) shaped like the HMM signal."""
+    sma_days = int(cfg.get("trend_long", {}).get("sma_days", 200))
+    if ddf is None or len(ddf) < sma_days + 1:
+        raise ValueError(f"zu wenig Tagesdaten (<{sma_days + 1})")
+    close = float(ddf["close"].iloc[-1])
+    sma = float(ddf["close"].astype(float).rolling(sma_days).mean().iloc[-1])
+    above = close > sma
+    expo = 1.0 if above else 0.0
+    info = {"regime": "aufwärts" if above else "abwärts", "regime_rank": 1 if above else 0,
+            "n_regimes": 2, "confidence": 1.0, "stable": True, "flickering": False}
+    reason = (f"Trendfolge · Kurs {close:.2f} {'>' if above else '<'} SMA{sma_days} {sma:.2f} "
+              f"-> {'long' if above else 'flat (cash)'}")
+    return info, expo, reason, close, 0.02
+
+
 def cycle(models, risk, broker):
     """One pass over the whole watchlist. Per symbol: session gate -> HMM signal ->
     signed target -> risk gate -> reconcile (long/short) -> journal. Then one real
@@ -217,8 +257,11 @@ def cycle(models, risk, broker):
     if closed_keys:
         held_now = [p for p in held_now if market_data.pos_symbol(p["symbol"]) not in closed_keys]
 
-    # ONE bar fetch per symbol, shared by the HMM signal AND the portfolio radar.
+    # ONE 5-min bar fetch per symbol, shared by the signal (hmm mode) AND the portfolio radar
+    # (both modes -- the radar's vol-shock / correlation / news overlay stays on in trend_long).
     bars = _fetch_bars(symbols, cfg["hmm"])
+    strategy = cfg.get("strategy", "hmm")
+    daily = _daily_bars(symbols, cfg) if strategy == "trend_long" else {}
 
     # PASS 1: what does each symbol want on its own?
     raw, meta = {}, {}
@@ -226,12 +269,16 @@ def cycle(models, risk, broker):
         crypto = market_data.is_crypto(sym)
         session, tradable, extended = sessions.symbol_session(sym, clock, allow_extended)
         m = models[sym]
-        if sym not in bars:
+        srcbars = daily.get(sym) if strategy == "trend_long" else bars.get(sym)
+        if srcbars is None or (strategy != "trend_long" and sym not in bars):
             meta[sym] = {"error": "keine Kursdaten", "session": session,
                          "tradable": tradable, "extended": extended, "crypto": crypto}
             continue
         try:
-            info, expo, reason, price, vol = _signal_for(sym, m["model"], m["ref_vol"], bars[sym])
+            if strategy == "trend_long":
+                info, expo, reason, price, vol = _trend_signal_for(sym, srcbars, cfg)
+            else:
+                info, expo, reason, price, vol = _signal_for(sym, m["model"], m["ref_vol"], srcbars)
         except Exception as e:
             bot["errors"] += 1
             bot["last_error"] = f"{sym}: {str(e)[:120]}"
@@ -247,7 +294,7 @@ def cycle(models, risk, broker):
         raw[sym] = target
         meta[sym] = {"info": info, "price": price, "notes": notes, "session": session,
                      "tradable": tradable, "extended": extended, "crypto": crypto,
-                     "vol": vol, "ref_vol": m["ref_vol"]}
+                     "vol": vol, "ref_vol": m.get("ref_vol", 0.02)}
 
     # keep the per-symbol target BEFORE the portfolio adjustments, so the journal can show
     # "the symbol wanted +0.95, the radar and the correlation cap left +0.24"
@@ -281,24 +328,24 @@ def cycle(models, risk, broker):
     if radar.get("reasons"):
         alerts.log_event("radar", f"{radar['level']}: {'; '.join(radar['reasons'])}")
 
-    # PASS 2b: per-position exits (tight stop / trailing / scale-out). Scale-out trims the
-    # target here (the normal reconcile then sells the delta); hard stops and trailing exits
-    # are executed IMPERATIVELY in the loop below, because main's deadband gate would swallow
-    # a "target 0" and leave a loser open. exit_state was loaded at the top of the cycle
-    # (with any manual-close cooldowns already applied) and persists across cycles.
-    # current vol vs. each symbol's own normal -> lets the stop widen in wild vol, tighten in calm
-    vol_ratios = {}
-    for s, mm in meta.items():
-        rv = mm.get("ref_vol") or 0
-        if mm.get("vol") is not None and rv > 0:
-            vol_ratios[market_data.pos_symbol(s)] = mm["vol"] / rv
-    exit_dec, exit_state = exit_manager.evaluate(held_now, cfg.get("exits", {}), exit_state,
-                                                 vol_ratios=vol_ratios)
-    for sym in list(raw):
-        d = exit_dec.get(market_data.pos_symbol(sym))
-        if d and d.get("cap") is not None and d["cap"] < 1.0 and not d.get("close") and not d.get("block"):
-            raw[sym] = round(raw[sym] * d["cap"], 4)
-            meta[sym]["notes"].append(d["reason"])
+    # PASS 2b: per-position exits (tight stop / trailing / scale-out) -- HMM mode ONLY. In
+    # trend_long the 200-day SMA filter IS the exit; adding tight vol-stops on top would just
+    # whipsaw the trend follower out of positions it should hold. Risk breakers + news +
+    # correlation cap still protect it. exit_state is still persisted (manual-close cooldowns).
+    exit_dec = {}
+    if strategy != "trend_long":
+        vol_ratios = {}
+        for s, mm in meta.items():
+            rv = mm.get("ref_vol") or 0
+            if mm.get("vol") is not None and rv > 0:
+                vol_ratios[market_data.pos_symbol(s)] = mm["vol"] / rv
+        exit_dec, exit_state = exit_manager.evaluate(held_now, cfg.get("exits", {}), exit_state,
+                                                     vol_ratios=vol_ratios)
+        for sym in list(raw):
+            d = exit_dec.get(market_data.pos_symbol(sym))
+            if d and d.get("cap") is not None and d["cap"] < 1.0 and not d.get("close") and not d.get("block"):
+                raw[sym] = round(raw[sym] * d["cap"], 4)
+                meta[sym]["notes"].append(d["reason"])
     try:
         settings.EXITS_STATE.write_text(json.dumps(exit_state, indent=2), encoding="utf-8")
     except Exception:
@@ -529,8 +576,11 @@ def startup():
     risk = RiskManager()
     risk.require_unlocked()                         # refuse to start if -10% lock present
     broker = Broker()
-    alerts.log_event("start", f"symbols={symbols} broker={'connected' if broker.connected else 'offline'}")
-    models = _train_models(symbols, cfg)
+    alerts.log_event("start", f"symbols={symbols} strategy={cfg.get('strategy', 'hmm')} "
+                              f"broker={'connected' if broker.connected else 'offline'}")
+    # trend_long needs no HMM -- skip the (slow) training and just carry the symbol list.
+    models = {s: {} for s in symbols} if cfg.get("strategy") == "trend_long" \
+        else _train_models(symbols, cfg)
     return models, risk, broker
 
 
@@ -568,7 +618,7 @@ def main():
         while True:
             cfg = settings.load_config()
             today = datetime.now(timezone.utc).date()
-            if today != trained_day:                     # fresh intraday HMMs once per day
+            if today != trained_day and cfg.get("strategy") != "trend_long":   # HMM retrain daily
                 models = _train_models(list(models), cfg)
                 trained_day = today
             sigs = cycle(models, risk, broker)            # runs 24/7 -- never skipped
