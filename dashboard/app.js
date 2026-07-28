@@ -1798,7 +1798,35 @@ function renderTrading(){
   <section class="panel trd-section">${sectionHead('LETZTER FORSCHUNGSLAUF','Hypothesen und Urteile',lr.generated?fmtStamp(lr.generated):'–')}${candTable}</section>
   ${connSection}`;
 
+ /* ---------- 0. WAS IST NEU — ein chronologischer Blick auf alles, was der Bot zuletzt getan hat.
+    Rein aus vorhandenen Daten gemerged (Fills, geschlossene Trades, Risiko-Breaker, Forscher-Laeufe,
+    Nachrichten), neueste zuerst. Damit man oben auf einen Blick am neuesten Stand ist. */
+ const nowMs=Date.now();
+ const relAgo=iso=>{const s=(nowMs-new Date(iso).getTime())/1000;return isNaN(s)?'–':(s<0?'gerade eben':ago(Math.round(s))+' her');};
+ const feed=[];
+ orders.forEach(o=>{const ts=o.filled_at||o.submitted_at;if(!ts)return;const buy=o.side==='buy';
+  feed.push({ts,ic:buy?'🟢':'🔴',c:buy?'var(--green)':'var(--red)',
+   t:`${dsym(o.symbol)} ${buy?'gekauft':'verkauft'}`,
+   s:`${qty(+o.qty)}${o.fill_price!=null?' @ '+money2(o.fill_price):''}${o.why&&o.why.reason?' · '+o.why.reason:''}`});});
+ trades.forEach(x=>{if(!x.closed)return;
+  feed.push({ts:x.closed,ic:'🏁',c:tone(x.pnl),
+   t:`${dsym(x.symbol)} ${x.side} geschlossen`,s:`${moneyS(x.pnl)} (${pctS(x.pnl_pct,2)})`});});
+ jt.forEach(e=>{if(e.decision==='FLAT'&&e.ts)feed.push({ts:e.ts,ic:'🛑',c:'var(--red)',
+   t:`${e.symbol||'Portfolio'} zwangsweise glattgestellt`,s:'Risiko-Breaker · '+(e.regime||'–')});});
+ if(lr.generated)feed.push({ts:lr.generated,ic:'🔬',c:'var(--muted)',t:'Forscher-Lauf abgeschlossen',
+   s:(lr.tested!=null?lr.tested+' Hypothesen getestet':'')+(L.override_count?' · '+L.override_count+' aktiv':'')||'—'});
+ (t.news_events||[]).forEach(nv=>{if(nv.ts)feed.push({ts:nv.ts,ic:'📰',c:'var(--yellow)',
+   t:nv.summary||nv.label||'Weltnachricht',s:'Risiko-Stufe '+(nv.level!=null?nv.level:'?')+(nv.label?' · '+nv.label:'')});});
+ feed.sort((a,b)=>new Date(b.ts)-new Date(a.ts));
+ const feedRows=feed.slice(0,14).map(e=>
+  `<li class="trd-feed-item"><span class="trd-feed-ic">${e.ic}</span>
+    <span class="trd-feed-main"><b style="color:${e.c}">${esc(e.t)}</b><small>${esc(e.s||'')}</small></span>
+    <time class="trd-feed-ago" title="${esc(fmtStamp(e.ts))}">${esc(relAgo(e.ts))}</time></li>`).join('');
+ const feedSection=`<section class="panel trd-section">${sectionHead('WAS IST NEU · LIVE','Chronologisch — die letzten Aktionen des Bots',feed.length?relAgo(feed[0].ts):(running?'wartet auf ersten Zyklus':'—'),running?'good':'')}
+  ${feed.length?`<ul class="trd-feed">${feedRows}</ul>`:'<div class="chart-empty">Noch keine Aktivität — sobald der Bot handelt, erscheint hier chronologisch, was er getan hat.</div>'}</section>`;
+
  box.innerHTML=`${hero}
+  ${feedSection}
   <section class="panel trd-section">${sectionHead('YOUR PAPER ACCOUNT · LIVE','Alpaca — '+(uni.equity_count||0)+' tickers + '+(uni.crypto_count||0)+' crypto pairs','connected','good')}${kpiGrid(accCells)}</section>
   <section class="panel trd-section">${sectionHead('PERFORMANCE · REALIZED','Closed round-trips',(ts.trades||0)+' trades')}${kpiGrid(perfCells)}</section>
   <section class="panel trd-section">${balanceSection}</section>

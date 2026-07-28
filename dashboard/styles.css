@@ -904,6 +904,16 @@ a.doc-row:hover{border-color:rgba(84,226,255,.45);background:rgba(84,226,255,.06
 .trd-note.ok{border-color:rgba(91,217,160,.3);background:rgba(91,217,160,.07)}
 .trd-hero .trd-note{margin:0}
 
+/* ---- WAS IST NEU: chronologischer Aktivitaets-Feed oben im Trading-Tab ---- */
+.trd-feed{list-style:none;margin:6px 20px 16px;padding:0;border:1px solid rgba(255,255,255,.07);border-radius:10px;overflow:hidden}
+.trd-feed-item{display:flex;align-items:center;gap:12px;padding:9px 14px;background:var(--panel-2,rgba(11,24,42,.9));border-top:1px solid rgba(255,255,255,.05)}
+.trd-feed-item:first-child{border-top:0}
+.trd-feed-ic{flex:0 0 auto;font-size:15px;line-height:1;width:20px;text-align:center}
+.trd-feed-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px}
+.trd-feed-main b{font-size:13.5px;font-weight:600}
+.trd-feed-main small{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trd-feed-ago{flex:0 0 auto;font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+
 /* ---- Zahlenleiste unter der Chart-Ueberschrift: immer sichtbar, kein Hover ---- */
 .trd-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:1px;margin:6px 20px 12px;
  background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.07);border-radius:10px;overflow:hidden}
