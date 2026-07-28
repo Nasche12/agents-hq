@@ -166,8 +166,12 @@ button{color:inherit}
 .chart-legend .lg-buy{color:#5bd9a0}
 .chart-legend .lg-sell,.chart-legend .lg-sl,.chart-legend .lg-line{color:#f4707f}
 /* Pagination */
-.trd-pager{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin:2px 20px 10px;flex-wrap:wrap}
+.trd-pager{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 20px 10px;flex-wrap:wrap}
+.pg-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .pg-info{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;margin:0 4px}
+.pg-per{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
+.pg-size{background:rgba(255,255,255,.05);border:1px solid var(--panel-border);color:var(--text);border-radius:8px;padding:4px 8px;font-size:12px;cursor:pointer;transition:.12s}
+.pg-size:hover{background:rgba(255,255,255,.12)}
 .pg-btn{background:rgba(255,255,255,.05);border:1px solid var(--panel-border);color:var(--text);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;transition:.12s;line-height:1}
 .pg-btn:hover:not(:disabled){background:rgba(255,255,255,.12)}
 .pg-btn:disabled{opacity:.35;cursor:default}

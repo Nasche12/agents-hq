@@ -2127,24 +2127,43 @@ function svgBars(rows,o){
    austauschen bricht sie nicht.
    ================================================================ */
 const PAGERS=new Map();
+const PG_OPTS=[10,25,50,100,'Alle'];
+/* Global einstellbare Seitengroesse — gilt fuer JEDE Tabelle und ueberlebt Reloads. */
+let PGSIZE=(()=>{try{const v=localStorage.getItem('pgSize');if(v==='all')return Infinity;const n=parseInt(v,10);return n>0?n:25;}catch(e){return 25;}})();
+function setPgSize(v){PGSIZE=(v==='all'||v==='Alle')?Infinity:(parseInt(v,10)||25);try{localStorage.setItem('pgSize',isFinite(PGSIZE)?String(PGSIZE):'all');}catch(e){}}
 function pagedTable(rows,thead,o){
- o=o||{};rows=rows||[];const key=o.key||('pg'+(++chartSeq)),size=o.size||25;
+ o=o||{};rows=rows||[];const key=o.key||('pg'+(++chartSeq)),size=PGSIZE;
  const cls=o.cls||'trd-table',hint=o.hint?`<small class="trd-hint">${o.hint}</small>`:'';
- const total=rows.length,pages=Math.max(1,Math.ceil(total/size));
+ const total=rows.length,per=isFinite(size)?size:Math.max(total,1),pages=Math.max(1,Math.ceil(total/per));
  let st=PAGERS.get(key);if(!st){st={page:0};PAGERS.set(key,st);}
  st.size=size;st.rows=rows;st.page=clamp(st.page,0,pages-1);
- const body=rows.slice(st.page*size,(st.page+1)*size).join('');
- const pager=total>size?pagerBar(key,st.page,pages,total,size):'';
+ const body=rows.slice(st.page*per,(st.page+1)*per).join('');
+ const pager=total>0?pagerBar(key,st.page,pages,total,size):'';
  return `<div class="trd-scroll"><table class="${cls}"><thead>${thead}</thead><tbody data-pgbody="${key}">${body}</tbody></table></div>${pager}${hint}`;
 }
 function pagerBar(key,page,pages,total,size){
- const from=total?page*size+1:0,to=Math.min(total,(page+1)*size);
+ const per=isFinite(size)?size:total,from=total?page*per+1:0,to=Math.min(total,(page+1)*per);
+ const opts=PG_OPTS.map(o=>{const cur=(o==='Alle')?!isFinite(size):(o===size);
+  return `<option value="${o==='Alle'?'all':o}"${cur?' selected':''}>${o}</option>`;}).join('');
  return `<div class="trd-pager" data-pgbar="${key}">
-  <button class="pg-btn" data-pgfirst ${page<=0?'disabled':''} aria-label="Erste Seite">«</button>
-  <button class="pg-btn" data-pgprev ${page<=0?'disabled':''}>‹ Zurück</button>
-  <span class="pg-info">${from}–${to} von ${total} · Seite ${page+1}/${pages}</span>
-  <button class="pg-btn" data-pgnext ${page>=pages-1?'disabled':''}>Weiter ›</button>
-  <button class="pg-btn" data-pglast ${page>=pages-1?'disabled':''} aria-label="Letzte Seite">»</button></div>`;
+  <label class="pg-per">Pro Seite <select class="pg-size" aria-label="Zeilen pro Seite">${opts}</select></label>
+  <div class="pg-nav">
+   <button class="pg-btn" data-pgfirst ${page<=0?'disabled':''} aria-label="Erste Seite">«</button>
+   <button class="pg-btn" data-pgprev ${page<=0?'disabled':''}>‹ Zurück</button>
+   <span class="pg-info">${from}–${to} von ${total} · Seite ${page+1}/${pages}</span>
+   <button class="pg-btn" data-pgnext ${page>=pages-1?'disabled':''}>Weiter ›</button>
+   <button class="pg-btn" data-pglast ${page>=pages-1?'disabled':''} aria-label="Letzte Seite">»</button></div></div>`;
+}
+function _pgPaint(bar,key){
+ const st=PAGERS.get(key);if(!st||!bar)return;
+ const rows=st.rows||[],total=rows.length,per=isFinite(st.size)?st.size:Math.max(total,1);
+ const pages=Math.max(1,Math.ceil(total/per));st.page=clamp(st.page,0,pages-1);
+ const tb=document.querySelector('[data-pgbody="'+key+'"]');
+ if(tb)tb.innerHTML=rows.slice(st.page*per,(st.page+1)*per).join('');
+ const from=total?st.page*per+1:0,to=Math.min(total,(st.page+1)*per);
+ const info=bar.querySelector('.pg-info');if(info)info.textContent=`${from}–${to} von ${total} · Seite ${st.page+1}/${pages}`;
+ bar.querySelectorAll('[data-pgprev],[data-pgfirst]').forEach(x=>x.disabled=st.page<=0);
+ bar.querySelectorAll('[data-pgnext],[data-pglast]').forEach(x=>x.disabled=st.page>=pages-1);
 }
 function hydratePagers(root){
  if(!root||!root.querySelectorAll)return;
@@ -2152,17 +2171,19 @@ function hydratePagers(root){
   if(bar.__wired)return;bar.__wired=true;const key=bar.dataset.pgbar;
   bar.addEventListener('click',e=>{
    const b=e.target.closest('button');if(!b)return;const st=PAGERS.get(key);if(!st)return;
-   const rows=st.rows||[],pages=Math.max(1,Math.ceil(rows.length/st.size));
+   const total=(st.rows||[]).length,per=isFinite(st.size)?st.size:Math.max(total,1),pages=Math.max(1,Math.ceil(total/per));
    if(b.hasAttribute('data-pgfirst'))st.page=0;
    else if(b.hasAttribute('data-pgprev'))st.page=Math.max(0,st.page-1);
    else if(b.hasAttribute('data-pgnext'))st.page=Math.min(pages-1,st.page+1);
    else if(b.hasAttribute('data-pglast'))st.page=pages-1;else return;
-   const tb=document.querySelector('[data-pgbody="'+key+'"]');
-   if(tb)tb.innerHTML=rows.slice(st.page*st.size,(st.page+1)*st.size).join('');
-   const total=rows.length,from=total?st.page*st.size+1:0,to=Math.min(total,(st.page+1)*st.size);
-   const info=bar.querySelector('.pg-info');if(info)info.textContent=`${from}–${to} von ${total} · Seite ${st.page+1}/${pages}`;
-   bar.querySelectorAll('[data-pgprev],[data-pgfirst]').forEach(x=>x.disabled=st.page<=0);
-   bar.querySelectorAll('[data-pgnext],[data-pglast]').forEach(x=>x.disabled=st.page>=pages-1);
+   _pgPaint(bar,key);
+  });
+  bar.addEventListener('change',e=>{
+   if(!e.target.closest('.pg-size'))return;
+   setPgSize(e.target.value);
+   PAGERS.forEach(st=>{st.size=PGSIZE;st.page=0;});          // global fuer JEDE Tabelle
+   document.querySelectorAll('.trd-pager[data-pgbar]').forEach(b2=>_pgPaint(b2,b2.dataset.pgbar));
+   document.querySelectorAll('.pg-size').forEach(s=>{s.value=isFinite(PGSIZE)?String(PGSIZE):'all';});
   });
  });
 }
