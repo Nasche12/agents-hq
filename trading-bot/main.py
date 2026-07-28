@@ -257,6 +257,21 @@ def cycle(models, risk, broker):
     if closed_keys:
         held_now = [p for p in held_now if market_data.pos_symbol(p["symbol"]) not in closed_keys]
 
+    # Flatten ORPHANS: positions in symbols the bot no longer trades (the watchlist changed).
+    # A systematic bot should hold ONLY its universe -- stale positions just tie up capital
+    # (e.g. old equity shorts binding all the cash so crypto can't be bought). Crypto closes
+    # now; equities close at market open (a pre-market market-close is rejected -> retried).
+    if broker.connected and trading_enabled and not rstate["killed"]:
+        wl = {market_data.pos_symbol(s) for s in symbols}
+        for p in list(held_now):
+            if market_data.pos_symbol(p["symbol"]) not in wl and abs(float(p.get("qty") or 0)) > 0:
+                try:
+                    broker.close_position(p["symbol"])
+                    alerts.log_event("orphan_close", f"{p['symbol']} nicht in Watchlist -> geschlossen")
+                    held_now.remove(p)
+                except Exception:
+                    pass                                     # equity pre-market -> retry next cycle
+
     # ONE 5-min bar fetch per symbol, shared by the signal (hmm mode) AND the portfolio radar
     # (both modes -- the radar's vol-shock / correlation / news overlay stays on in trend_long).
     bars = _fetch_bars(symbols, cfg["hmm"])
