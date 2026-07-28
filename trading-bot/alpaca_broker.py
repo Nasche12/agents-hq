@@ -8,6 +8,8 @@ Order rules this layer enforces, because Alpaca rejects anything else:
   * equity regular hours  -> market order, time_in_force=day, fractional qty OK
   * equity extended hours -> LIMIT order + extended_hours=true, WHOLE shares only
 """
+import math
+
 import settings
 from market_data import is_crypto, pos_symbol
 
@@ -113,7 +115,12 @@ class Broker:
         body = {"symbol": symbol, "side": side}
 
         if is_crypto(symbol):
-            # crypto never sleeps and never closes -> gtc, fractional allowed
+            # crypto never sleeps and never closes -> gtc, fractional allowed.
+            # FLOOR to 6 decimals: rounding UP would request more than is owned on a sell
+            # ("insufficient balance" 403). Truncating slightly under-fills instead -- safe.
+            q = math.floor(q * 1e6) / 1e6
+            if q <= 0:
+                raise ValueError("crypto qty rounds to 0")
             body.update({"qty": f"{q:.6f}".rstrip("0").rstrip("."),
                          "type": "market", "time_in_force": "gtc"})
         elif extended:

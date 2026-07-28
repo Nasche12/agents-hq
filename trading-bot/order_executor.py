@@ -61,6 +61,14 @@ def reconcile_to_target(broker, symbol, target_exposure, price, budget, extended
                 "qty": round(abs(cur), 6), "price_ref": round(price, 2),
                 "notional": round(abs(cur) * price, 2), "budget": budget, "order_id": "flatten"}
 
+    if want == 0 and cur != 0:                               # full exit -> close the EXACT position
+        if abs(cur) * price < 1.0:                           # dust -> not worth an order, leave it
+            return {"action": "hold", "qty": cur, "note": "dust (<$1) ignoriert"}
+        broker.close_position(symbol)                        # exact amount -> no over-sell 403
+        return {"action": "close", "from": round(cur, 6), "target": 0.0,
+                "qty": round(abs(cur), 6), "price_ref": round(price, 2),
+                "notional": round(abs(cur) * price, 2), "budget": budget, "order_id": "close"}
+
     delta = want - cur
     floor = max(1.0, _rebalance_min_pct() * budget)          # anti-churn deadband
     if abs(delta) * price < floor:
