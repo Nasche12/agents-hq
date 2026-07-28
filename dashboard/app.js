@@ -2193,7 +2193,7 @@ function svgBars(rows,o){
 const PAGERS=new Map();
 const PG_OPTS=[10,25,50,100,'Alle'];
 /* Global einstellbare Seitengroesse — gilt fuer JEDE Tabelle und ueberlebt Reloads. */
-let PGSIZE=(()=>{try{const v=localStorage.getItem('pgSize');if(v==='all')return Infinity;const n=parseInt(v,10);return n>0?n:25;}catch(e){return 25;}})();
+let PGSIZE=(()=>{try{const v=localStorage.getItem('pgSize');if(v==='all')return Infinity;const n=parseInt(v,10);return n>0?n:10;}catch(e){return 10;}})();
 function setPgSize(v){PGSIZE=(v==='all'||v==='Alle')?Infinity:(parseInt(v,10)||25);try{localStorage.setItem('pgSize',isFinite(PGSIZE)?String(PGSIZE):'all');}catch(e){}}
 function pagedTable(rows,thead,o){
  o=o||{};rows=rows||[];const key=o.key||('pg'+(++chartSeq)),size=PGSIZE;
