@@ -1563,6 +1563,9 @@ function sectionHead(eyebrow,title,chip,chipCls){return `<div class="panel-heade
 
 function renderTrading(){
  const box=$('#tradingBody');if(!box)return;
+ // Einstellungs-Tab offen und Formular schon da? Nicht neu rendern -> das Polling darf die
+ // gerade getippten Werte nicht ueberschreiben. Ein Tabwechsel setzt TRADE_TAB vorher um.
+ if(TRADE_TAB==='settings'&&box.querySelector('#cfgForm'))return;
  const t=TRADING;
  const pill=$('#tradingPill');
  const acc=(t&&t.account)||{};
@@ -1605,7 +1608,6 @@ function renderTrading(){
     <span class="status-chip ${running?'good':'warn'}">${running?'running':(t.status||'idle')}</span>
     <span class="status-chip">${bot.runs_247?'24/7':'session only'} · cycle ${bot.cycle_seconds||60}s</span>
     <span class="status-chip" title="${esc(live.last_cycle||'')}">last cycle ${ago(live.stale_seconds)} ago</span>
-    <button class="ghost-button trd-cfg-btn" data-botcfg="1" title="Bot-Einstellungen ändern">⚙ Einstellungen</button>
    </div></div>
   <div class="trd-markets">${rdPill}${extPill}${cryptoPill}${eqPill}<span class="mk-pill neutral"><i></i>Now · <b>${esc(mk.now_et||'–')}</b><small>${live.tradable_now||0} of ${signals.length} symbols actionable</small></span></div>
   <div class="trd-note ${acc.trading_enabled===false?'':'ok'}">${acc.trading_enabled===false
@@ -1842,8 +1844,9 @@ function renderTrading(){
    +P('BOT ACTIVITY · LIVE','Decisions (incl. skips)',jt.length+' entries',journalTable),
   safety:P('SAFETY','Risk status',risk.killed?'halted':'all clear',kpiGrid(riskCells),risk.killed?'warn':'good'),
   learning:learnSection,
+  settings:`<section class="panel trd-section">${sectionHead('BOT-EINSTELLUNGEN','Wie der Bot handelt — deine Werte schlagen den Auto-Tuner','')}<div id="cfgMount"><div class="chart-empty">lädt …</div></div></section>`,
  };
- const TABS=[['overview','Übersicht'],['signals','Signale'],['positions','Positionen'],['trades','Trades'],['activity','Aktivität'],['safety','Sicherheit'],['learning','Lernen']];
+ const TABS=[['overview','Übersicht'],['signals','Signale'],['positions','Positionen'],['trades','Trades'],['activity','Aktivität'],['safety','Sicherheit'],['learning','Lernen'],['settings','⚙ Einstellungen']];
  if(!TAB[TRADE_TAB])TRADE_TAB='overview';
  const badge={signals:signals.length,positions:pos.length,trades:ts.trades||0,learning:L.override_count||0};
  const subnav=`<div class="trd-subnav" role="tablist">${TABS.map(([id,label])=>`<button class="trd-subtab${TRADE_TAB===id?' active':''}" data-trdtab="${id}" role="tab" aria-selected="${TRADE_TAB===id}">${esc(label)}${badge[id]?`<span class="trd-subbadge">${n0(badge[id])}</span>`:''}</button>`).join('')}</div>`;
@@ -1851,6 +1854,7 @@ function renderTrading(){
 
  box.querySelectorAll('[data-trdtab]').forEach(b=>b.addEventListener('click',()=>{TRADE_TAB=b.dataset.trdtab;renderTrading();}));
  box.querySelectorAll('.trd-tf button').forEach(b=>b.addEventListener('click',()=>{TRADE_TF=b.dataset.tf;renderTrading();}));
+ if(TRADE_TAB==='settings')mountBotSettings(box.querySelector('#cfgMount'));
  hydrateCharts(box);
  hydratePagers(box);
 }
@@ -1859,7 +1863,6 @@ function renderTrading(){
 if(!window.__trdRowDelegated){window.__trdRowDelegated=true;
  const openRow=el=>{
   if(!el||!el.closest)return;
-  if(el.closest('[data-botcfg]')){openBotSettings();return;}
   const jump=el.closest('[data-symjump]');
   if(jump){closeTradeCard();closeDecision();openSymbol(jump.dataset.symjump);return;}
   const dec=el.closest('.dec-row');
@@ -1912,20 +1915,17 @@ function openTradeCard(o){
  bd.classList.add('open');bd.setAttribute('aria-hidden','false');
 }
 
-/* ===== BOT-EINSTELLUNGEN: der Nutzer aendert das Handelsverhalten direkt aus dem Dashboard.
-   Schreibt config.user.json (schlaegt config.json + Auto-Tuner). Als Modal, damit das
-   Polling des Trading-Tabs die Eingaben nicht mitten im Tippen ueberschreibt. ===== */
-function closeBotSettings(){const bd=$('#botCfgModal');if(bd){bd.classList.remove('open');bd.setAttribute('aria-hidden','true');}}
-async function openBotSettings(){
- let bd=$('#botCfgModal');
- if(!bd){bd=document.createElement('div');bd.id='botCfgModal';bd.className='modal-backdrop';bd.setAttribute('aria-hidden','true');document.body.appendChild(bd);
-  bd.addEventListener('click',e=>{if(e.target===bd||e.target.closest('[data-close]'))closeBotSettings();});}
- bd.innerHTML=`<div class="modal cfg-modal"><div class="modal-header"><div><span class="eyebrow">BOT-EINSTELLUNGEN</span><h3>Wie der Bot handelt</h3></div><button class="icon-button" data-close="1">×</button></div><div class="cfg-body"><div class="chart-empty">lädt …</div></div></div>`;
- bd.classList.add('open');bd.setAttribute('aria-hidden','false');
+/* ===== BOT-EINSTELLUNGEN: eigener Trading-Unter-Tab. Der Nutzer aendert das Handelsverhalten
+   direkt. Schreibt config.user.json (schlaegt config.json + Auto-Tuner). Inline gerendert;
+   renderTrading ueberspringt das Neu-Rendern, solange dieser Tab offen ist (Guard auf #cfgForm),
+   damit das Polling die Eingaben nicht mitten im Tippen ueberschreibt. ===== */
+async function mountBotSettings(el){
+ if(!el)return;
+ el.innerHTML='<div class="chart-empty">lädt …</div>';
  let data=null;
  try{const r=await fetch('/api/trading/config?ts='+Date.now(),{cache:'no-store'});data=r.ok?await r.json():null;}catch(e){data=null;}
- const bodyEl=bd.querySelector('.cfg-body');
- if(!data||!data.schema){bodyEl.innerHTML='<div class="chart-empty">Einstellungen nicht erreichbar.</div>';return;}
+ if(!el.isConnected)return;
+ if(!data||!data.schema){el.innerHTML='<div class="chart-empty">Einstellungen nicht erreichbar — läuft der Dashboard-Dienst mit dem neuen server.js?</div>';return;}
  const groups={};data.schema.forEach(f=>{(groups[f.group]=groups[f.group]||[]).push(f);});
  const fld=f=>{
   const v=data.values[f.key],id='cf_'+f.key.replace(/[^a-z0-9]/gi,'_');let input;
@@ -1935,21 +1935,21 @@ async function openBotSettings(){
   else input=`<input type="number" id="${id}" data-k="${esc(f.key)}" value="${v!=null?v:''}" ${f.min!=null?'min="'+f.min+'"':''} ${f.max!=null?'max="'+f.max+'"':''} ${f.step!=null?'step="'+f.step+'"':''}>`;
   return `<div class="cfg-row${f.danger?' is-danger':''}"><div class="cfg-lbl"><span>${esc(f.label)}</span>${f.restart?' <b class="cfg-tag">Neustart</b>':''}${f.danger?' <b class="cfg-tag danger">Risiko</b>':''}${f.help?`<small>${esc(f.help)}</small>`:''}</div><div class="cfg-in">${input}</div></div>`;
  };
- bodyEl.innerHTML=Object.keys(groups).map(g=>`<section class="cfg-group"><h4>${esc(g)}</h4>${groups[g].map(fld).join('')}</section>`).join('')
+ el.innerHTML=`<div id="cfgForm" class="cfg-form">`+Object.keys(groups).map(g=>`<section class="cfg-group"><h4>${esc(g)}</h4>${groups[g].map(fld).join('')}</section>`).join('')
   +`<div class="cfg-actions"><span id="cfgMsg" class="save-msg"></span><button class="ghost-button" id="cfgReset">Zurücksetzen</button><button class="ghost-button cfg-save" id="cfgSave">Speichern</button></div>`
-  +`<p class="cfg-foot">Greift im nächsten Zyklus. <b>Watchlist</b> und <b>Strategie</b> brauchen einen Bot-Neustart. Deine Werte schlagen den Auto-Tuner, bis du „Zurücksetzen" drückst.</p>`;
- bd.querySelector('#cfgSave').addEventListener('click',()=>saveBotSettings(bd,data));
- bd.querySelector('#cfgReset').addEventListener('click',()=>resetBotSettings());
+  +`<p class="cfg-foot">Greift im nächsten Zyklus. <b>Watchlist</b> und <b>Strategie</b> brauchen einen Bot-Neustart. Deine Werte schlagen den Auto-Tuner, bis du „Zurücksetzen" drückst.</p></div>`;
+ el.querySelector('#cfgSave').addEventListener('click',()=>saveBotSettings(el,data));
+ el.querySelector('#cfgReset').addEventListener('click',()=>resetBotSettings());
 }
-async function saveBotSettings(bd,data){
+async function saveBotSettings(scope,data){
  const patch={};
- bd.querySelectorAll('[data-k]').forEach(el=>{
+ scope.querySelectorAll('[data-k]').forEach(el=>{
   const f=data.schema.find(s=>s.key===el.dataset.k);if(!f)return;
   if(f.type==='bool')patch[f.key]=el.checked;
   else if(f.type==='number'){if(el.value!=='')patch[f.key]=Number(el.value);}
   else patch[f.key]=el.value;
  });
- const msg=bd.querySelector('#cfgMsg');
+ const msg=scope.querySelector('#cfgMsg');
  try{const j=await apiPost('/api/trading/config',patch);
   if(j&&j.ok){flash(msg,'Gespeichert ✓',true);toast('Bot-Einstellungen gespeichert',j.note||'');}
   else flash(msg,(j&&j.error)||'Fehler',false);
@@ -1957,7 +1957,7 @@ async function saveBotSettings(bd,data){
 }
 async function resetBotSettings(){
  if(!confirm('Alle Dashboard-Overrides löschen? Der Bot fällt auf config.json + Auto-Tuner zurück.'))return;
- try{await apiPost('/api/trading/config',{reset:true});toast('Zurückgesetzt','Bot nutzt wieder config.json');closeBotSettings();}catch(e){}
+ try{await apiPost('/api/trading/config',{reset:true});toast('Zurückgesetzt','Bot nutzt wieder config.json');const m=$('#cfgMount');if(m)mountBotSettings(m);}catch(e){}
 }
 
 /* ===== NACHVOLLZIEHBARKEIT: warum wurde gehandelt, und wo im Chart =====
