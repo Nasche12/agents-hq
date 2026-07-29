@@ -29,7 +29,16 @@ fi
 # Nur seed, falls noch nichts da ist -> Tab zeigt "not connected" statt 404.
 [ -f httpdocs/trading.json ] || printf '{"status":"idle","mode":"paper","account":{"connected":false}}\n' > httpdocs/trading.json
 
-# Sicherheitsnetz: kein Verzeichnis-Listing im Docroot
-printf 'Options -Indexes\n' > httpdocs/.htaccess
+# Sicherheitsnetz: kein Verzeichnis-Listing + Cache-Steuerung, damit neue ?v=-Asset-Versionen
+# sofort gezogen werden (HTML immer frisch validieren, JS/CSS duerfen kurz cachen).
+cat > httpdocs/.htaccess <<'HT'
+Options -Indexes
+<FilesMatch "\.html$">
+  Header set Cache-Control "no-cache, must-revalidate"
+</FilesMatch>
+<FilesMatch "\.(js|css)$">
+  Header set Cache-Control "public, max-age=300"
+</FilesMatch>
+HT
 
 echo "-- Dashboard veröffentlicht nach httpdocs/: $(ls -1 httpdocs | tr '\n' ' ')"
