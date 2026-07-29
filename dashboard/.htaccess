@@ -1,0 +1,8 @@
+# HTML immer frisch validieren, damit neue ?v=-Versionen der Assets sofort gezogen werden.
+<FilesMatch "\.html$">
+  Header set Cache-Control "no-cache, must-revalidate"
+</FilesMatch>
+# app.js / styles.css werden per ?v=... im HTML gebustet -> duerfen lange cachen.
+<FilesMatch "\.(js|css)$">
+  Header set Cache-Control "public, max-age=300"
+</FilesMatch>
