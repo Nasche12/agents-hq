@@ -3,7 +3,7 @@ of training, out_sample_days of blind out-of-sample evaluation, rolled forward. 
 the HMM on each in-sample window, then walks the out-sample block one bar at a time
 using FORWARD-ONLY filtering (no look-ahead), turns regime+confidence into a target
 allocation, validates it through the risk manager, and simulates fills with realistic
-slippage + commission.
+slippage + the real per-side trading fee (settings.fee_bps_per_side) so churn is billed.
 
 Honesty checks baked in:
   - out-of-sample only: the model never scores days it trained on
@@ -29,10 +29,12 @@ from risk_manager import RiskManager
 
 
 def _simulate(dates, asset_ret, target_alloc, target_lev, regimes, confs, start_equity,
-              slippage_bps, commission_ps):
+              slippage_bps, commission_ps, fee_bps=0.0):
     """Given per-day target exposure, simulate equity + per-segment trades.
-    Position at day t earns asset_ret[t] * exposure_held_from_t-1. Slippage/commission
-    charged on the change in exposure (a proxy for turnover cost)."""
+    Position at day t earns asset_ret[t] * exposure_held_from_t-1. Slippage, commission AND
+    the per-side trading fee are charged on the change in exposure (turnover). Charging the
+    real fee here is what stops the optimizer from selecting churny parameters that look
+    profitable only because a fee-free backtest never billed them for the round-trips."""
     equity = start_equity
     curve, held = [], 0.0
     seg = None                      # current open segment
@@ -41,7 +43,8 @@ def _simulate(dates, asset_ret, target_alloc, target_lev, regimes, confs, start_
         # cost of moving from previous exposure to today's target
         new_exposure = target_alloc[i] * target_lev[i]
         turnover = abs(new_exposure - held)
-        cost = turnover * (slippage_bps / 1e4) * equity + turnover * commission_ps
+        cost = (turnover * ((slippage_bps + fee_bps) / 1e4) * equity
+                + turnover * commission_ps)
         equity -= cost
         # pnl earned by the exposure we now hold, realised on the next bar's return
         pnl_day = held * asset_ret[i] * equity
@@ -94,6 +97,7 @@ def walk_forward(df, start_equity=None, crash_shock=False):
     crypto = is_crypto(sym_name)
     stab_n = int(cfg["hmm"].get("stability_min_bars", 1))
     slip_bps = bt["slippage_bps"] * (3.0 if crypto else 1.0)   # crypto market orders cost more
+    fee_bps = settings.fee_bps_per_side(sym_name, cfg)         # real per-side trading fee (crypto>0)
 
     i = ins
     while i + 1 < len(df):
@@ -147,7 +151,7 @@ def walk_forward(df, start_equity=None, crash_shock=False):
     aret = pd.Series(asset_ret, index=df.index).reindex(dates).fillna(0).values
     equity, trades = _simulate(dates, aret, np.array(all_alloc), np.array(all_lev),
                                all_reg, all_conf, start_equity,
-                               slip_bps, bt["commission_per_share"])
+                               slip_bps, bt["commission_per_share"], fee_bps=fee_bps)
     dir_acc, dir_n = _directional_accuracy(np.array(all_alloc), aret)
 
     benches = _benchmarks(df, dates, start_equity, bt)

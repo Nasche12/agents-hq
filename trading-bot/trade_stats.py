@@ -4,8 +4,16 @@ per symbol into closed round-trips so the dashboard can show real, non-invented 
 realized P&L, win rate, average win/loss, profit factor, best/worst trade.
 
 Everything here derives from actual filled orders. If nothing has round-tripped yet the
-result is empty -- never an estimate."""
+result is empty -- never an estimate.
+
+P&L is reported NET of trading fees. Both legs of a round-trip are charged the per-side fee
+(settings.fee_bps_per_side, the one source shared with the optimizer), so the numbers the
+dashboard shows are what the account actually keeps -- not a gross price difference that
+flatters a coin-flip strategy the fees are quietly bleeding. `gross_pnl` and `fees` are kept
+alongside so the churn tax is visible, not hidden."""
 from collections import defaultdict, deque
+
+import settings
 
 
 def _fills(orders):
@@ -38,13 +46,19 @@ def realized_trades(orders):
             lot = book[0]
             match = min(abs(lot["qty"]), abs(remaining))
             long_side = lot["qty"] > 0
-            pnl = (f["price"] - lot["price"]) * match * (1 if long_side else -1)
+            gross = (f["price"] - lot["price"]) * match * (1 if long_side else -1)
             basis = lot["price"] * match
+            # Fee on BOTH legs (entry lot + this exit fill), per-side bps on each leg's notional.
+            # This is what turns a +$1 gross scalp into the -$0.x it really was.
+            bps = settings.fee_bps_per_side(sym) / 1e4
+            fees = (basis + f["price"] * match) * bps
+            pnl = gross - fees
             closed.append({
                 "symbol": sym, "side": "long" if long_side else "short",
                 "qty": round(match, 6), "entry": round(lot["price"], 4),
                 "exit": round(f["price"], 4), "opened": lot["ts"], "closed": f["ts"],
-                "pnl": round(pnl, 2), "pnl_pct": round(pnl / basis, 4) if basis else None,
+                "pnl": round(pnl, 2), "gross_pnl": round(gross, 2), "fees": round(fees, 2),
+                "pnl_pct": round(pnl / basis, 4) if basis else None,
                 "notional": round(basis, 2),
             })
             lot["qty"] -= match if long_side else -match
@@ -60,6 +74,7 @@ def summarize(closed):
     """Headline numbers from the closed round-trips. All None/0 when nothing closed yet."""
     if not closed:
         return {"trades": 0, "wins": 0, "losses": 0, "win_rate": None, "realized_pnl": 0.0,
+                "fees_paid": 0.0, "gross_pnl": 0.0,
                 "avg_win": None, "avg_loss": None, "best": None, "worst": None,
                 "profit_factor": None, "avg_pnl": None}
     wins = [t["pnl"] for t in closed if t["pnl"] > 0]
@@ -69,6 +84,8 @@ def summarize(closed):
         "trades": len(closed), "wins": len(wins), "losses": len(losses),
         "win_rate": round(len(wins) / len(closed), 4),
         "realized_pnl": round(sum(t["pnl"] for t in closed), 2),
+        "fees_paid": round(sum(t.get("fees", 0.0) for t in closed), 2),
+        "gross_pnl": round(sum(t.get("gross_pnl", t["pnl"]) for t in closed), 2),
         "avg_pnl": round(sum(t["pnl"] for t in closed) / len(closed), 2),
         "avg_win": round(gross_win / len(wins), 2) if wins else None,
         "avg_loss": round(-gross_loss / len(losses), 2) if losses else None,
@@ -116,6 +133,12 @@ if __name__ == "__main__":
     tr = realized_trades(orders)
     s = summarize(tr)
     assert len(tr) == 2, tr
-    assert s["realized_pnl"] == 50.0 - 500.0, s
+    # SPY leg is commission-free (gross +50 == net +50); the BTC leg pays 25bps on BOTH
+    # notionals: (30000 + 29500) * 0.0025 = 148.75, turning gross -500 into net -648.75.
+    assert s["gross_pnl"] == 50.0 - 500.0, s
+    btc = next(t for t in tr if t["symbol"] == "BTC/USD")
+    assert btc["fees"] == 148.75, btc
+    assert s["fees_paid"] == 148.75, s
+    assert s["realized_pnl"] == round(50.0 - 500.0 - 148.75, 2), s
     assert s["wins"] == 1 and s["losses"] == 1 and s["win_rate"] == 0.5
     print("trade_stats self-check ok:", s)

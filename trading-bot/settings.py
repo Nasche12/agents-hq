@@ -203,6 +203,17 @@ def config_override(flat):
         _RUNTIME_OVERRIDES = previous
 
 
+def fee_bps_per_side(symbol, cfg=None):
+    """Trading cost in basis points PER SIDE for one symbol -- the SINGLE source every layer
+    reads so net P&L, the optimizer and the churn brake all price the same cost. Crypto pays a
+    real taker fee on Alpaca; US equities are commission-free. A round-trip pays this twice, so
+    at 25bps/side a crypto trade must move >0.5% just to break even. is_crypto is the trivial
+    slash test (BTC/USD), inlined so this low-level module needs no market_data import."""
+    f = (cfg or load_config()).get("fees", {})
+    crypto = "/" in str(symbol)
+    return float(f.get("crypto_bps_per_side", 25) if crypto else f.get("equity_bps_per_side", 0))
+
+
 def env(key, default=None):
     """Secret/setting from .env or the process environment. Never logged."""
     _load_dotenv()
@@ -239,6 +250,8 @@ if __name__ == "__main__":
         assert load_config()["allocation"]["min_change_threshold"] == 0.077, "override not visible"
     assert load_config()["allocation"]["min_change_threshold"] == thr, "override leaked"
     assert flat_get(cfg, "execution.cycle_seconds") == cfg["execution"]["cycle_seconds"]
+    assert fee_bps_per_side("BTC/USD", cfg) > 0, "crypto must carry a fee"
+    assert fee_bps_per_side("SPY", cfg) == 0, "commission-free equities"
     assert expand_flat({"a.b": 1}) == {"a": {"b": 1}}
     assert flatten({"a": {"b": 1}}) == {"a.b": 1}
     print(f"settings self-check ok · local overrides active: {bool(load_local_overrides())}")
