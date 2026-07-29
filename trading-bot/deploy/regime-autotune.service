@@ -1,0 +1,14 @@
+[Unit]
+Description=Regime Trading Bot -- stuendlicher Selbst-Tuner (Holdout-frei, auto-apply)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=PYTHONUNBUFFERED=1
+# --- adjust USER and the two paths to your server layout (same as regime-trader.service) ---
+User=CHANGE_ME
+WorkingDirectory=/CHANGE_ME/agents-hq/trading-bot
+ExecStart=/CHANGE_ME/agents-hq/trading-bot/.venv/bin/python research_cycle.py autotune
+StandardOutput=append:/CHANGE_ME/agents-hq/trading-bot/logs/autotune.log
+StandardError=append:/CHANGE_ME/agents-hq/trading-bot/logs/autotune.log

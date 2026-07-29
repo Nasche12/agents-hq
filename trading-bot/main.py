@@ -655,16 +655,21 @@ def main():
           f"| mode paper | {crypto_n} crypto symbols trade 24/7 | cycle {_cycle_seconds(cfg)}s",
           flush=True)
     trained_day = datetime.now(timezone.utc).date()
+    trained_fs = cfg["hmm"].get("feature_set")
     try:
         while True:
             cfg = settings.load_config()
             today = datetime.now(timezone.utc).date()
+            is_hmm = cfg.get("strategy") != "trend_long"
             # retrain: daily, OR right now if we just switched INTO hmm at runtime (the models
-            # were empty stubs from a trend_long start -> without this every cycle KeyErrors).
-            switched_into_hmm = cfg.get("strategy") != "trend_long" and not any(models.values())
-            if switched_into_hmm or (today != trained_day and cfg.get("strategy") != "trend_long"):
+            # were empty stubs from a trend_long start -> without this every cycle KeyErrors),
+            # OR the autotuner promoted a new feature_set -> retrain so 'immer anwenden' also
+            # holds for the HMM's own inputs, not just the numeric knobs the loop re-reads.
+            switched_into_hmm = is_hmm and not any(models.values())
+            fs_changed = is_hmm and cfg["hmm"].get("feature_set") != trained_fs
+            if switched_into_hmm or fs_changed or (today != trained_day and is_hmm):
                 models = _train_models(list(models), cfg)
-                trained_day = today
+                trained_day, trained_fs = today, cfg["hmm"].get("feature_set")
             sigs = cycle(models, risk, broker)            # runs 24/7 -- never skipped
             longs = sum(1 for s in sigs if s["direction"] == "long")
             shorts = sum(1 for s in sigs if s["direction"] == "short")

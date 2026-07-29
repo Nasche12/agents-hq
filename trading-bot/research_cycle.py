@@ -147,7 +147,7 @@ def grid_candidates():
     bounds = _lcfg().get("bounds", {})
     out = []
     for key in ("allocation.min_change_threshold", "execution.rebalance_min_pct",
-                "hmm.stability_min_bars", "hmm.live_timeframe"):
+                "allocation.chart_min", "hmm.stability_min_bars", "hmm.live_timeframe"):
         spec = bounds.get(key)
         cur = settings.flat_get(cfg, key)
         if not spec or cur is None:
@@ -165,6 +165,15 @@ def grid_candidates():
             if v != cur:
                 out.append({"hypothesis": f"{key} = {v}", "rationale": "Gitter-Fallback",
                             "changes": {key: v}})
+    # 'Lernen MIT Chartanalyse': bevorzugt die chart-lastigen Feature-Sets durchprobieren,
+    # damit die Suche wirklich ueber Chart-Konfigurationen laeuft und nicht auf 'core' zurueckfaellt.
+    fs_spec = bounds.get("hmm.feature_set")
+    cur_fs = settings.flat_get(cfg, "hmm.feature_set")
+    if fs_spec and "choices" in fs_spec:
+        for o in [c for c in ("classic", "full", "combo", "patterns")
+                  if c != cur_fs and c in fs_spec["choices"]][:2]:
+            out.append({"hypothesis": f"hmm.feature_set = {o}", "rationale": "Chart-Set-Suche",
+                        "changes": {"hmm.feature_set": o}})
     return out
 
 
@@ -261,6 +270,82 @@ def evaluate(candidates=None, auto_promote=True, quick=False):
     return _finish(results, skipped, promoted)
 
 
+def autotune(quick=False):
+    """Holdout-FREIER Selbst-Tuner fuer den stuendlichen Lauf -- auf ausdruecklichen Wunsch.
+    Sucht per Backlog+Gitter ueber die ERLAUBTEN Chart-/Feature-Parameter, bewertet nur auf
+    dem Auswahlfenster und WENDET den besten Kandidaten, der den Champion schlaegt, SOFORT an
+    -- ohne den unberuehrten Holdout, der sonst die Ueberanpassung abfaengt.
+
+    BEWUSST BEIBEHALTEN, weil sie keine Overfitting-Bremse sind sondern schlichte Vernunft
+    (und du sie nicht abschalten wolltest):
+      * die Allowlist (promote.validate) -- Risiko/Ordergroessen/Watchlist/Kill-Switch tabu,
+      * min_trades / beat-buy&hold / min_improvement -- sonst thrasht er endlos auf Rauschen,
+      * already_tested-Dedup -- kein ewiges Neu-Testen desselben Werts; konvergiert und ruht.
+    Was fehlt, ist NUR der Holdout. Das ist genau, was du abgeschaltet haben wolltest -- mit
+    dem Preis, den ich dir zweimal genannt habe: er kann dem Rauschen des Auswahlfensters
+    folgen. Jedes Urteil landet im Gedaechtnis, jede Aenderung nur in config.local.json."""
+    import optimizer
+    lcfg = _lcfg()
+    if quick:
+        lcfg = dict(lcfg, **QUICK)
+        lcfg["eval_symbols"] = (lcfg.get("eval_symbols") or ["SPY"])[:1]
+    if not lcfg.get("enabled", False):
+        return {"skipped": "learning.enabled ist false"}
+
+    usable, skipped = [], []
+    for c in (load_backlog() + grid_candidates()):
+        changes = c.get("changes") or {}
+        clean, problems = promote.validate(changes)
+        if problems:
+            skipped.append({**c, "reason": "; ".join(problems)})
+            continue
+        if memory.already_tested(clean):
+            continue                          # schon getestet -> nicht endlos wiederholen
+        usable.append({**c, "changes": clean})
+    # Deckel pro Lauf: sonst frisst der Stundentakt CPU. Die uebrigen kommen naechste Stunde.
+    usable = usable[: lcfg.get("max_candidates", 5)]
+    if not usable:
+        print("autotune: keine neuen Kandidaten (konvergiert oder Backlog leer) -> nichts geaendert")
+        return _finish({"champion": None, "candidates": [], "winner": None, "holdout": None},
+                       skipped, None)
+
+    symbols = lcfg.get("eval_symbols") or settings.load_config()["watchlist"][:4]
+    promoted = None
+    with optimizer.isolated_state():          # nie an den Live-Risk-State ruehren
+        champ = optimizer.evaluate({}, symbols, lcfg, "selection")
+        if champ.get("objective") is None:
+            print("autotune: Champion nicht bewertbar (zu wenig Daten) -> uebersprungen")
+            return _finish({"champion": champ, "candidates": [], "winner": None, "holdout": None},
+                           skipped, None)
+        scored, evaluated = [], []
+        for c in usable:
+            ev = optimizer.evaluate(c["changes"], symbols, lcfg, "selection")
+            ok, reason = optimizer.gate(ev, champ, lcfg)
+            ev.update(hypothesis=c.get("hypothesis"), rationale=c.get("rationale"),
+                      passes_selection=ok, reason=reason)
+            evaluated.append(ev)
+            if ok:
+                scored.append(ev)
+            else:
+                memory.record(c.get("hypothesis", "?"), c.get("rationale", ""), c["changes"],
+                              memory.REJECTED, _evidence_of(ev, champ))
+        if scored:
+            best = max(scored, key=lambda e: e["objective"])
+            ev = _evidence_of(best, champ)
+            ev["reason"] = "AUTOTUNE ohne Holdout: " + (best.get("reason") or "")
+            entry = memory.record(best.get("hypothesis", "?"), best.get("rationale", ""),
+                                  best["changes"], memory.ACCEPTED, ev,
+                                  recheck_days=lcfg.get("recheck_days", 90))
+            promoted = promote.apply(best["changes"],
+                                     reason="autotune " + (best.get("hypothesis") or ""),
+                                     memory_id=entry["id"])
+            print("AUTO-PROMOTED (kein Holdout):", json.dumps(promoted["changes"]))
+        else:
+            print("autotune: kein Kandidat schlaegt den Champion -> nichts uebernommen")
+    return _finish({"champion": champ, "candidates": evaluated, "winner": None, "holdout": None},
+                   skipped, promoted)
+
+
 def _evidence_of(ev, champ):
     return {
         "objective": ev.get("objective"),
@@ -318,6 +403,10 @@ if __name__ == "__main__":
         r = evaluate(auto_promote="--dry-run" not in sys.argv and not quick, quick=quick)
         print(json.dumps({k: r.get(k) for k in ("champion_objective", "tested", "holdout",
                                                 "promoted")}, indent=2, default=str))
+    elif cmd == "autotune":
+        r = autotune(quick="--quick" in sys.argv)
+        print(json.dumps({k: r.get(k) for k in ("champion_objective", "tested", "promoted")},
+                         indent=2, default=str))
     elif cmd == "grid":
         print(json.dumps(grid_candidates(), indent=2))
     else:

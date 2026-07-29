@@ -1,0 +1,12 @@
+[Unit]
+Description=Stundentakt fuer den Regime-Bot-Selbst-Tuner (research_cycle.py autotune)
+
+[Timer]
+# jede volle Stunde; Persistent holt einen verpassten Lauf nach einem Reboot nach.
+OnCalendar=hourly
+Persistent=true
+# leichte Streuung, damit der Tuner nicht exakt auf der vollen Minute mit anderem kollidiert.
+RandomizedDelaySec=90
+
+[Install]
+WantedBy=timers.target
