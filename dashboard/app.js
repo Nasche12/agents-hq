@@ -51,7 +51,7 @@ const META=id=>id==='master'?{icon:'🧠',role:'Mission orchestration',accent:MA
 let DATA=null,SEL=null,API=false,UPTIME=null,SCHEDULE=null,ANALYTICS=null,RUNCOUNT={},SERVER=null;
 let RUNS={},SRVHIST=null;                                  // Lauf-Datensätze (mit Tokens) + Server-Verlauf
 let VIEW='overview',booted=false,theatreOn=false,builtAuto=false,placeNavActive=()=>{},RANGE='7d';
-let TRADING=null,TRADE_TF='24H';
+let TRADING=null,TRADE_TF='24H',TRADE_TAB='overview';
 let ANTAB='website',TOKMODE='agent',ANSITE='all';         // Analytics-Tab + Token-Chart-Modus + gewählte Website ('all' = alle)
 
 /* ===== Mini-Helfer ===== */
@@ -1826,20 +1826,30 @@ function renderTrading(){
  const feedSection=`<section class="panel trd-section">${sectionHead('WAS IST NEU · LIVE','Chronologisch — die letzten Aktionen des Bots',feed.length?relAgo(feed[0].ts):(running?'wartet auf ersten Zyklus':'—'),running?'good':'')}
   ${feed.length?`<ul class="trd-feed">${feedRows}</ul>`:'<div class="chart-empty">Noch keine Aktivität — sobald der Bot handelt, erscheint hier chronologisch, was er getan hat.</div>'}</section>`;
 
- box.innerHTML=`${hero}
-  ${feedSection}
-  <section class="panel trd-section">${sectionHead('YOUR PAPER ACCOUNT · LIVE','Alpaca — '+(uni.equity_count||0)+' tickers + '+(uni.crypto_count||0)+' crypto pairs','connected','good')}${kpiGrid(accCells)}</section>
-  <section class="panel trd-section">${sectionHead('PERFORMANCE · REALIZED','Closed round-trips',(ts.trades||0)+' trades')}${kpiGrid(perfCells)}</section>
-  <section class="panel trd-section">${balanceSection}</section>
-  <section class="panel trd-section">${sectionHead('ACTIVITY · 24/7','How busy the bot is',(ts.orders_24h||0)+' orders / 24 h')}${kpiGrid(actCells)}</section>
-  <section class="panel trd-section">${sectionHead('HMM SIGNALS · LIVE','Per-symbol regime → long / short',signals.length+' symbols')}${signalsTable}</section>
-  <section class="panel trd-section">${sectionHead('POSITIONS','Open positions',pos.length+' held')}${posTable}</section>
-  <section class="panel trd-section">${sectionHead('CLOSED TRADES','Round-trip P&L',(ts.trades||0)+' closed')}${tradesTable}</section>
-  <section class="panel trd-section">${sectionHead('SAFETY','Risk status',risk.killed?'halted':'all clear',risk.killed?'warn':'good')}${kpiGrid(riskCells)}</section>
-  <section class="panel trd-section">${sectionHead('TRADES · LIVE','Order book',orders.length+' orders')}${ordersTable}</section>
-  <section class="panel trd-section">${sectionHead('BOT ACTIVITY · LIVE','Decisions (incl. skips)',jt.length+' entries')}${journalTable}</section>
-  ${learnSection}`;
+ /* ---------- Unter-Tabs: Start = Konto + Performance + Balance, alles andere je ein Tab.
+    hero bleibt als Kopf ueber allen Tabs (Bot-Status, Markt, ⚙ Einstellungen). ---------- */
+ const P=(t,s,m,b,tn)=>`<section class="panel trd-section">${sectionHead(t,s,m,tn)}${b}</section>`;
+ const TAB={
+  overview:P('YOUR PAPER ACCOUNT · LIVE','Alpaca — '+(uni.equity_count||0)+' tickers + '+(uni.crypto_count||0)+' crypto pairs','connected',kpiGrid(accCells),'good')
+   +P('PERFORMANCE · REALIZED','Closed round-trips',(ts.trades||0)+' trades',kpiGrid(perfCells))
+   +`<section class="panel trd-section">${balanceSection}</section>`,
+  signals:P('HMM SIGNALS · LIVE','Per-symbol regime → long / short',signals.length+' symbols',signalsTable),
+  positions:P('POSITIONS','Open positions',pos.length+' held',posTable),
+  trades:P('CLOSED TRADES','Round-trip P&L',(ts.trades||0)+' closed',tradesTable)
+   +P('TRADES · LIVE','Order book',orders.length+' orders',ordersTable),
+  activity:feedSection
+   +P('ACTIVITY · 24/7','How busy the bot is',(ts.orders_24h||0)+' orders / 24 h',kpiGrid(actCells))
+   +P('BOT ACTIVITY · LIVE','Decisions (incl. skips)',jt.length+' entries',journalTable),
+  safety:P('SAFETY','Risk status',risk.killed?'halted':'all clear',kpiGrid(riskCells),risk.killed?'warn':'good'),
+  learning:learnSection,
+ };
+ const TABS=[['overview','Übersicht'],['signals','Signale'],['positions','Positionen'],['trades','Trades'],['activity','Aktivität'],['safety','Sicherheit'],['learning','Lernen']];
+ if(!TAB[TRADE_TAB])TRADE_TAB='overview';
+ const badge={signals:signals.length,positions:pos.length,trades:ts.trades||0,learning:L.override_count||0};
+ const subnav=`<div class="trd-subnav" role="tablist">${TABS.map(([id,label])=>`<button class="trd-subtab${TRADE_TAB===id?' active':''}" data-trdtab="${id}" role="tab" aria-selected="${TRADE_TAB===id}">${esc(label)}${badge[id]?`<span class="trd-subbadge">${n0(badge[id])}</span>`:''}</button>`).join('')}</div>`;
+ box.innerHTML=`${hero}${subnav}<div class="trd-tabwrap">${TAB[TRADE_TAB]}</div>`;
 
+ box.querySelectorAll('[data-trdtab]').forEach(b=>b.addEventListener('click',()=>{TRADE_TAB=b.dataset.trdtab;renderTrading();}));
  box.querySelectorAll('.trd-tf button').forEach(b=>b.addEventListener('click',()=>{TRADE_TF=b.dataset.tf;renderTrading();}));
  hydrateCharts(box);
  hydratePagers(box);
