@@ -32,6 +32,7 @@ for d in (STATE_DIR, CACHE_DIR, LOG_DIR):
 
 CONFIG_FILE = BASE / "config.json"           # human baseline, in git
 CONFIG_LOCAL = BASE / "config.local.json"    # agent-promoted overrides, git-ignored
+CONFIG_USER = BASE / "config.user.json"      # dashboard/user overrides, git-ignored, HIGHEST wins
 
 JOURNAL = STATE_DIR / "journal.jsonl"        # one line per trade/skip (analytics)
 RISK_STATE = STATE_DIR / "risk_state.json"   # daily/weekly P&L + peak (survives restart)
@@ -135,8 +136,14 @@ def _deep_merge(base, over):
 
 
 def load_config():
-    """Effective config: baseline <- agent overrides <- in-process candidate override."""
+    """Effective config, lowest to highest precedence:
+        config.json        human baseline, in git
+        config.local.json  what the research agent learned and promoted
+        config.user.json   what YOU set in the dashboard -- beats the agent, so a manual
+                           choice is never silently overridden by the auto-tuner
+        _RUNTIME_OVERRIDES in-process only (backtester isolation), always on top"""
     cfg = _deep_merge(_read_json_cached(CONFIG_FILE), _read_json_cached(CONFIG_LOCAL))
+    cfg = _deep_merge(cfg, _read_json_cached(CONFIG_USER))
     return _deep_merge(cfg, _RUNTIME_OVERRIDES)
 
 

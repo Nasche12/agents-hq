@@ -1025,3 +1025,30 @@ select option,select optgroup{background:#0d0d12;color:var(--text)}
 .modal select{background-color:#0d0d12;
  background-image:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%238294ad' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
  background-repeat:no-repeat;background-position:right 11px center;padding-right:32px}
+
+/* ===== Bot-Einstellungen (Trading-Tab Modal) ===== */
+.trd-cfg-btn{cursor:pointer}
+.cfg-modal{max-width:640px;width:min(640px,94vw);max-height:88vh;display:flex;flex-direction:column}
+.cfg-body{overflow-y:auto;padding:4px 2px 2px}
+.cfg-group{margin:0 0 18px}
+.cfg-group h4{margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--panel-border);padding-bottom:6px}
+.cfg-row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:8px 4px;border-bottom:1px solid rgba(255,255,255,.04)}
+.cfg-row.is-danger{background:linear-gradient(90deg,rgba(224,90,90,.06),transparent)}
+.cfg-lbl{display:flex;flex-direction:column;gap:2px;font-size:13.5px;color:var(--text)}
+.cfg-lbl small{color:var(--muted);font-size:11.5px;line-height:1.35}
+.cfg-tag{font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;background:var(--panel-border);color:var(--muted);padding:1px 6px;border-radius:6px;font-weight:600;vertical-align:middle}
+.cfg-tag.danger{background:rgba(224,90,90,.18);color:#e88}
+.cfg-in{flex:0 0 auto;display:flex;align-items:center}
+.cfg-in input[type=number]{width:110px}
+.cfg-in input[type=text]{width:260px;max-width:46vw}
+.cfg-in input,.cfg-in select{background:#0d0d12;border:1px solid var(--panel-border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:13px}
+.cfg-switch{position:relative;display:inline-block;width:42px;height:24px}
+.cfg-switch input{opacity:0;width:0;height:0}
+.cfg-switch span{position:absolute;inset:0;cursor:pointer;background:var(--panel-border);border-radius:24px;transition:.2s}
+.cfg-switch span:before{content:"";position:absolute;height:18px;width:18px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
+.cfg-switch input:checked+span{background:var(--green,#3ec46d)}
+.cfg-switch input:checked+span:before{transform:translateX(18px)}
+.cfg-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:14px 4px 4px;border-top:1px solid var(--panel-border);margin-top:6px}
+.cfg-actions .save-msg{margin-right:auto;font-size:12.5px}
+.cfg-save{background:var(--accent,#4a7dff);color:#fff;border-color:transparent;font-weight:600}
+.cfg-foot{color:var(--muted);font-size:11.5px;line-height:1.5;margin:10px 4px 0}

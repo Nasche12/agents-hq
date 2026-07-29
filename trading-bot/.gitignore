@@ -7,3 +7,4 @@ data_cache/
 logs/
 EMERGENCY.lock
 config.local.json
+config.user.json

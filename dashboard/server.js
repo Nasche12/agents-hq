@@ -186,6 +186,72 @@ function readJson(req, cb) {
 
 const SCHEDULE_FILE = path.join(BASE, 'config', 'schedule.json');
 let _schedWarned = false;
+
+/* ---------- Trading-Bot-Einstellungen: das Dashboard schreibt config.user.json, die der
+   Bot mit HOECHSTER Prioritaet liest (schlaegt config.json UND den Auto-Tuner config.local.json).
+   Nur validierte, in TB_SETTINGS gelistete Schluessel -- kein freies Schreiben ins Config. */
+const TB_DIR = path.join(BASE, 'trading-bot');
+const TB_FILES = ['config.json', 'config.local.json', 'config.user.json'].map(f => path.join(TB_DIR, f));
+const TB_USER_FILE = path.join(TB_DIR, 'config.user.json');
+function _readJsonSafe(f) { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { return {}; } }
+function _deepMerge(a, b) {
+  const out = Object.assign({}, a);
+  for (const k of Object.keys(b || {})) {
+    if (b[k] && typeof b[k] === 'object' && !Array.isArray(b[k]) && out[k] && typeof out[k] === 'object' && !Array.isArray(out[k])) out[k] = _deepMerge(out[k], b[k]);
+    else out[k] = b[k];
+  }
+  return out;
+}
+function tbEffective() { return TB_FILES.reduce((acc, f) => _deepMerge(acc, _readJsonSafe(f)), {}); }
+function _flatGet(o, dotted) { return dotted.split('.').reduce((a, k) => (a == null ? undefined : a[k]), o); }
+function _flatSet(o, dotted, val) {
+  const parts = dotted.split('.'); let cur = o;
+  for (let i = 0; i < parts.length - 1; i++) { if (!cur[parts[i]] || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {}; cur = cur[parts[i]]; }
+  cur[parts[parts.length - 1]] = val;
+}
+const FS_CHOICES = ['core','trend','meanrev','volatility','shape','broad','patterns','patterns_wide','combo','indicators','classic','full'];
+const TB_SETTINGS = [
+  { key:'strategy', label:'Strategie', type:'enum', choices:['hmm','trend_long'], group:'Strategie', restart:true, help:'hmm = Regime/Chartanalyse entscheidet · trend_long = nur SMA200-Trendfolge' },
+  { key:'allocation.chart_decides', label:'Chartanalyse entscheidet die Seite', type:'bool', group:'Strategie' },
+  { key:'allocation.chart_min', label:'Chart-Mindestsignal', type:'number', min:0.05, max:0.5, step:0.01, group:'Strategie', help:'Wie klar die Chartlage sein muss, sonst flat' },
+  { key:'hmm.feature_set', label:'Feature-Set (Chart)', type:'enum', choices:FS_CHOICES, group:'Strategie', help:'Welche Chart-Werkzeuge der HMM sieht (Wechsel loest Retrain aus)' },
+  { key:'execution.max_notional_per_trade', label:'Max $ pro Trade', type:'number', min:100, max:50000, step:100, group:'Groesse & Aktivitaet' },
+  { key:'execution.cycle_seconds', label:'Zyklus (Sekunden)', type:'number', min:15, max:600, step:5, group:'Groesse & Aktivitaet' },
+  { key:'execution.rebalance_min_pct', label:'Rebalance ab Drift', type:'number', min:0.005, max:0.2, step:0.005, group:'Groesse & Aktivitaet', help:'Hoeher = weniger Churn' },
+  { key:'allocation.min_change_threshold', label:'Neutral-Deadband', type:'number', min:0.005, max:0.2, step:0.005, group:'Groesse & Aktivitaet' },
+  { key:'allocation.extreme_long_cap', label:'Euphorie-Cap', type:'number', min:0.1, max:1.0, step:0.05, group:'Groesse & Aktivitaet' },
+  { key:'exits.stop_loss_pct', label:'Stop-Loss %', type:'number', min:0.003, max:0.1, step:0.001, group:'Exits (Gewinn/Stop)' },
+  { key:'exits.arm_profit_pct', label:'Trailing scharf ab %', type:'number', min:0.005, max:0.2, step:0.005, group:'Exits (Gewinn/Stop)' },
+  { key:'exits.trail_giveback_pct', label:'Trailing-Rueckgabe %', type:'number', min:0.003, max:0.1, step:0.001, group:'Exits (Gewinn/Stop)' },
+  { key:'allocation.leverage', label:'Hebel', type:'number', min:0.5, max:1.25, step:0.05, group:'Risiko', danger:true },
+  { key:'risk.per_trade_pct', label:'Risiko je Trade %', type:'number', min:0.002, max:0.05, step:0.001, group:'Risiko', danger:true },
+  { key:'risk.day_flat_pct', label:'Tages-Stop (flat) %', type:'number', min:0.01, max:0.2, step:0.005, group:'Risiko', danger:true },
+  { key:'risk.kill_from_peak_pct', label:'Kill-Switch ab Peak %', type:'number', min:0.03, max:0.3, step:0.01, group:'Risiko', danger:true },
+  { key:'risk.max_correlation', label:'Max Korrelation', type:'number', min:0.3, max:1.0, step:0.05, group:'Risiko' },
+  { key:'execution.trading_enabled', label:'Trading aktiv (aus = nur beobachten)', type:'bool', group:'Betrieb', danger:true },
+  { key:'execution.extended_hours', label:'Vor-/Nachboerse handeln', type:'bool', group:'Betrieb' },
+  { key:'radar.enabled', label:'Radar-Risikobremse aktiv', type:'bool', group:'Betrieb' },
+  { key:'learning.enabled', label:'Selbst-Lernen (Auto-Tuner) aktiv', type:'bool', group:'Betrieb' },
+  { key:'watchlist', label:'Watchlist', type:'list', group:'Watchlist', restart:true, help:'Komma-getrennt. Krypto mit Slash: BTC/USD. Aenderung braucht Bot-Neustart.' },
+];
+function tbConfigApply(body) {
+  if (body && body.reset === true) { writeJsonAtomic(TB_USER_FILE, {}, 2); return { ok: true, reset: true }; }
+  const byKey = {}; TB_SETTINGS.forEach(f => { byKey[f.key] = f; });
+  const user = _readJsonSafe(TB_USER_FILE); const applied = {}, errors = [];
+  for (const [k, raw] of Object.entries(body || {})) {
+    const f = byKey[k]; if (!f) continue;
+    let v;
+    if (f.type === 'bool') v = !!raw;
+    else if (f.type === 'number') { v = Number(raw); if (!isFinite(v)) { errors.push(k + ': keine Zahl'); continue; } if (f.min != null) v = Math.max(f.min, v); if (f.max != null) v = Math.min(f.max, v); v = Math.round(v * 1e6) / 1e6; }
+    else if (f.type === 'enum') { if (!f.choices.includes(raw)) { errors.push(k + ': ungueltig'); continue; } v = raw; }
+    else if (f.type === 'list') { const arr = String(raw).split(',').map(s => s.trim().toUpperCase()).filter(Boolean).filter(s => /^[A-Z]{1,10}(\/[A-Z]{2,6})?$/.test(s)); if (!arr.length) { errors.push(k + ': leere/ungueltige Liste'); continue; } v = arr; }
+    else continue;
+    _flatSet(user, k, v); applied[k] = v;
+  }
+  if (!Object.keys(applied).length) return { ok: false, error: 'nichts Gueltiges', errors };
+  writeJsonAtomic(TB_USER_FILE, user, 2);
+  return { ok: true, applied, errors, note: 'greift im naechsten Zyklus; Watchlist/Strategie brauchen Bot-Neustart' };
+}
 function readSchedule() {
   try { const s = JSON.parse(fs.readFileSync(SCHEDULE_FILE, 'utf8')); _schedWarned = false; return s; }
   catch (e) {
@@ -432,6 +498,21 @@ const server = http.createServer((req, res) => {
         writeJsonAtomic(SCHEDULE_FILE, cur, 2);
         return send(res, 200, { ok: true, schedule: cur });
       } catch (e) { return send(res, 500, { error: String(e.message || e) }); }
+    });
+    return send(res, 405, { error: 'methode nicht erlaubt' });
+  }
+
+  /* Trading-Bot-Einstellungen lesen / speichern (config.user.json, schlaegt den Auto-Tuner) */
+  if (p === '/api/trading/config') {
+    if (req.method === 'GET') {
+      const eff = tbEffective(); const values = {};
+      TB_SETTINGS.forEach(f => { values[f.key] = _flatGet(eff, f.key); });
+      return send(res, 200, { schema: TB_SETTINGS, values });
+    }
+    if (req.method === 'POST') return readJson(req, body => {
+      if (!body || typeof body !== 'object') return send(res, 400, { error: 'body fehlt' });
+      try { const r = tbConfigApply(body); return send(res, r.ok ? 200 : 400, r); }
+      catch (e) { return send(res, 500, { error: String(e.message || e) }); }
     });
     return send(res, 405, { error: 'methode nicht erlaubt' });
   }
