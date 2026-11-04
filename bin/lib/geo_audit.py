@@ -1,5 +1,5 @@
 # Herkunft: Kopie von ~/.claude/skills/seo-geo-tools/scripts/geo_audit.py (Skill seo-geo-tools, Stand 2026-10-07, v1.1).
-# Unveraendert uebernommen, nur dieser Kopf ergaenzt. Aufruf aus bin/agents/seo-audit.js (python3 -I, stdlib, >= 3.9).
+# Lokale Haertung (agents-hq, Opus-Review H1): fetch() nur http/https; Sitemap-/Seiten-URLs nur Site-Host oder www-Variante (same_site). Sonst unveraendert. Aufruf aus bin/agents/seo-audit.js (python3 -I, stdlib, >= 3.9).
 #!/usr/bin/env python3
 """
 geo_audit.py - dependency-free SEO/AEO/GEO quick audit (Python stdlib only, 3.9+).
@@ -71,10 +71,19 @@ _ctx = ssl.create_default_context()
 _opener = urllib.request.build_opener(NoRedirect, urllib.request.HTTPSHandler(context=_ctx))
 
 
+def same_site(url: str, origin: str) -> bool:
+    """Only http(s) and the site host (or its www variant): sitemap entries are untrusted input."""
+    a, b = urllib.parse.urlparse(url), urllib.parse.urlparse(origin)
+    strip = lambda h: (h or "").lower().removeprefix("www.")
+    return a.scheme in ("http", "https") and a.scheme == b.scheme and a.port == b.port and strip(a.hostname) == strip(b.hostname)
+
+
 def fetch(url: str, ua: str = DEFAULT_UA, follow: bool = True, max_redirects: int = 5, timeout: int = 20):
     """Returns dict(status, url, headers, body, redirects, error, ms)."""
     chain = []
     cur = url
+    if urllib.parse.urlparse(url).scheme not in ("http", "https"):   # kein file://, ftp:// (urllib kennt sie)
+        return {"status": None, "url": url, "headers": {}, "body": b"", "redirects": [], "error": "blocked scheme", "ms": 0}
     t0 = time.time()
     for _ in range(max_redirects + 1):
         req = urllib.request.Request(cur, headers={"User-Agent": ua, "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
@@ -507,6 +516,8 @@ def check_sitemap(origin: str, sitemaps: list, rep: Report, limit_children: int 
     queue = list(sitemaps) or [origin + "/sitemap.xml"]
     while queue and len(checked) < limit_children + 1:
         sm = queue.pop(0)
+        if not same_site(sm, origin):
+            continue
         checked.append(sm)
         r = fetch(sm)
         if r["status"] != 200:
@@ -520,11 +531,11 @@ def check_sitemap(origin: str, sitemaps: list, rep: Report, limit_children: int 
             continue
         ns = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9"}
         if root.tag.endswith("sitemapindex"):
-            queue.extend(loc.text.strip() for loc in root.findall("s:sitemap/s:loc", ns) if loc.text)
+            queue.extend(loc.text.strip() for loc in root.findall("s:sitemap/s:loc", ns) if loc.text and same_site(loc.text.strip(), origin))
         for u in root.findall("s:url", ns):
             loc = u.find("s:loc", ns)
             lm = u.find("s:lastmod", ns)
-            if loc is not None and loc.text:
+            if loc is not None and loc.text and same_site(loc.text.strip(), origin):
                 urls.append(loc.text.strip())
                 lastmods.append(lm.text.strip() if lm is not None and lm.text else None)
     info = {"checked": checked, "url_count": len(urls)}

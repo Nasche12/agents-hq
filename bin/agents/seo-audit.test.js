@@ -5,7 +5,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const { auditSite, normUrl, isHtmlResource, ampel, renderReport } = require('./seo-audit');
+const { auditSite, normUrl, isHtmlResource, ampel, renderReport, sitemapUrls, orphanKey, sameSite } = require('./seo-audit');
+const L = require('./lib');
 const X = require('./seo-checks');
 
 /* curl laeuft synchron (spawnSync) -> Testserver muss in eigenem Prozess laufen. */
@@ -21,9 +22,23 @@ http.createServer((q, r) => {
   if (q.url === '/lade') { r.writeHead(200, { 'content-type': 'text/html' }); return r.end(LADE); }
   if (q.url === '/gone') { r.writeHead(404, { 'content-type': 'text/html' }); return r.end('<html><body>nicht gefunden</body></html>'); }
   if (q.url === '/hang') { q.socket.destroy(); return; }
+  if (q.url === '/robots.txt') {   // untrusted: Option-Injection, file://, fremder Host, fremder Port
+    r.writeHead(200, { 'content-type': 'text/plain' });
+    return r.end('User-agent: *\\nSitemap: -K' + process.env.SEO_TEST_CFG + '\\nSitemap: file:///etc/passwd\\nSitemap: http://' + q.headers.host + '/sitemap.xml\\n');
+  }
+  if (q.url === '/sitemap.xml') {
+    r.writeHead(200, { 'content-type': 'application/xml' });
+    return r.end('<urlset><url><loc>http://' + q.headers.host + '/ok</loc></url><url><loc>http://127.0.0.1:1/evil</loc></url>' +
+      '<url><loc>file:///etc/passwd</loc></url><url><loc>http://localhost:1/x</loc></url><url><loc>http://' + q.headers.host + '/amp?a=1&amp;b=2</loc></url></urlset>');
+  }
   if (q.url === '/') { r.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); return r.end(HOME); }
   r.writeHead(404); r.end();
 }).listen(0, '127.0.0.1', function () { console.log(this.address().port); });`;
+const TMPD = fs.mkdtempSync(path.join(os.tmpdir(), 'seo-test-'));
+const fwd = p => p.split(path.sep).join('/');
+const PWNED = fwd(path.join(TMPD, 'pwned.txt'));
+process.env.SEO_TEST_CFG = fwd(path.join(TMPD, 'evil.cfg'));   // der Testserver (eigener Prozess) liest ihn
+process.on('exit', () => { try { fs.rmSync(TMPD, { recursive: true, force: true }); } catch (e) {} });
 const E = () => ({ findings: [], measurements: [], notMeasured: [] });
 const MOCK = { geo: () => E(), psi: () => E(), gsc: () => E() };
 
@@ -134,6 +149,112 @@ test('httpJson: Body-Verzeichnis wird auch bei Fehler entfernt, Datei nur 0600',
       assert.strictEqual(fs.statSync(path.join(d, 'b')).mode & 0o077, 0);
     } finally { fs.rmSync(d, { recursive: true, force: true }); }
   }
+});
+
+async function withServer(fn) {
+  const child = spawn(process.execPath, ['-e', SERVER], { stdio: ['ignore', 'pipe', 'inherit'] });
+  try {
+    const port = await new Promise(res => child.stdout.once('data', d => res(String(d).trim())));
+    return await fn(port);
+  } finally { child.kill(); }
+}
+
+test('H1: robots/Sitemap als untrusted Input: -K-Option, file://, fremder Host/Port werden verworfen', async () => {
+  await withServer(async port => {
+    const origin = `http://127.0.0.1:${port}`;
+    // Config, die bei Option-Injection (-K) eine Datei schreiben wuerde
+    fs.writeFileSync(process.env.SEO_TEST_CFG, `url = "${origin}/"\noutput = "${PWNED}"\n`);
+    const robots = L.curlBody(origin + '/robots.txt').body;
+    assert.match(robots, /Sitemap: -K/);
+    const urls = sitemapUrls(origin, robots);
+    assert.deepStrictEqual(urls, [`${origin}/ok`, `${origin}/amp?a=1&b=2`]);
+    assert.ok(!fs.existsSync(PWNED), 'curl hat -K aus der URL als Option ausgefuehrt');
+    // Wrapper selbst: URL mit fuehrendem "-" ist keine Option, file:// ist gesperrt
+    assert.ok(!L.curlBody('-K' + process.env.SEO_TEST_CFG).ok);
+    assert.ok(!fs.existsSync(PWNED));
+    assert.strictEqual(L.curlStatus('file:///etc/hosts'), null);
+    assert.ok(!L.curlBody('file:///etc/hosts').ok);
+  });
+});
+
+test('M6/L4: sameSite nach Schema+Port+Host; orphanKey ignoriert www und Trailing Slash', () => {
+  assert.ok(sameSite('https://www.x.at/a', 'https://x.at/'));
+  assert.ok(!sameSite('http://x.at/', 'https://x.at/'));
+  assert.ok(!sameSite('https://x.at:8443/', 'https://x.at/'));
+  assert.ok(!sameSite('file:///etc/passwd', 'https://x.at/'));
+  assert.strictEqual(orphanKey('https://www.x.at/a/'), orphanKey('https://x.at/a'));
+});
+
+test('L3: geo-Rendering-Befund ersetzt unseren Duenn-Befund derselben URL', async () => {
+  await withServer(async port => {
+    const url = `http://127.0.0.1:${port}`;
+    const base = auditSite({ name: 't', url }, MOCK);
+    assert.ok(base.findings.some(f => /Dünner Inhalt/.test(f.was) && f.url === url + '/'));
+    const geo = () => ({ ...E(), findings: [{ sev: 'kritisch', was: 'Rendering: Only 6 word(s) in raw HTML', fix: 'f', url: url + '/', label: 'gemessen' }] });
+    const res = auditSite({ name: 't', url }, { ...MOCK, geo });
+    assert.ok(!res.findings.some(f => /Dünner Inhalt/.test(f.was) && f.url === url + '/'));
+    assert.ok(res.findings.some(f => /^Rendering/.test(f.was)));
+  });
+});
+
+test('geoFailed-Fallback: nicht gemessen statt bestanden', async () => {
+  await withServer(async port => {
+    const geo = () => ({ ...E(), geoFailed: true, notMeasured: ['geo_audit.py nicht gelaufen (x)'] });
+    const res = auditSite({ name: 't', url: `http://127.0.0.1:${port}` }, { ...MOCK, geo });
+    assert.ok(res.notMeasured.some(n => /nicht lauffähig/.test(n)));
+    assert.notStrictEqual(ampel([], res.notMeasured), '🟢 grün');
+  });
+  const old = process.env.PYTHON; process.env.PYTHON = 'definitiv-kein-python';
+  try {
+    const r = X.runGeo('http://127.0.0.1:1/', { baseDir: TMPD, slug: 'x', dry: true });
+    assert.ok(r.geoFailed);
+  } finally { if (old === undefined) delete process.env.PYTHON; else process.env.PYTHON = old; }
+});
+
+test('Drift: kritischer geo-Befund wird kritisch und Ampel rot', () => {
+  const r = X.mapGeoResult({ origin: 'https://x.at', findings: [{ severity: 'critical', area: 'Drift', issue: 'New noindex (meta_robots)', fix: 'f', url: 'https://x.at/' }] });
+  assert.strictEqual(r.findings[0].sev, 'kritisch');
+  assert.strictEqual(ampel(r.findings, []), '🔴 rot');
+});
+
+test('M1: kaputter GSC-Key liefert {error}, keinen Abbruch', () => {
+  const cred = path.join(TMPD, 'cred.json');
+  fs.writeFileSync(cred, JSON.stringify({ private_key: 'x', client_email: 'a@b' }));
+  const old = process.env.GSC_CREDENTIALS; process.env.GSC_CREDENTIALS = cred;
+  try {
+    const r = X.gscFetch({ name: 'a' }, 'https://x.at/');
+    assert.ok(r.error);
+    assert.match(X.gsc({ name: 'a' }, 'https://x.at/').notMeasured[0], /^GSC:/);
+  } finally { if (old === undefined) delete process.env.GSC_CREDENTIALS; else process.env.GSC_CREDENTIALS = old; }
+});
+
+test('writeBodyFile: Verzeichnis 0700, Datei 0600 (nicht unter Windows), Aufraeumen', { skip: process.platform === 'win32' }, () => {
+  const { dir, file } = X.writeBodyFile({ secret: 1 });
+  assert.strictEqual(fs.statSync(file).mode & 0o077, 0);
+  assert.strictEqual(fs.statSync(dir).mode & 0o077, 0);
+  X.cleanupTmp();
+  assert.ok(!fs.existsSync(dir));
+});
+
+test('M5: defekte Baseline -> .corrupt + neu; REFRESH ohne --compare; atomar (nur mit Python)', async t => {
+  const py = process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+  if (!L.run(py, ['--version']).ok) return t.skip('kein Python');
+  await withServer(async port => {
+    const url = `http://127.0.0.1:${port}/`;
+    const dir = path.join(TMPD, 'bl'); fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'k.json'), '{kaputt');
+    const r1 = X.runGeo(url, { baseDir: dir, slug: 'k', dry: false });
+    assert.ok(fs.existsSync(path.join(dir, 'k.json.corrupt')));
+    JSON.parse(fs.readFileSync(path.join(dir, 'k.json'), 'utf8'));
+    assert.ok(r1.measurements.some(m => /defekt/.test(m.text)));
+    assert.ok(!fs.existsSync(path.join(dir, 'k.json.tmp')));
+    process.env.SEO_BASELINE_REFRESH = '1';
+    try {
+      const r2 = X.runGeo(url, { baseDir: dir, slug: 'k', dry: false });
+      assert.ok(r2.measurements.some(m => /Baseline erneuert/.test(m.text)));
+      assert.ok(!r2.measurements.some(m => /Drift-Vergleich gegen/.test(m.text)));
+    } finally { delete process.env.SEO_BASELINE_REFRESH; }
+  });
 });
 
 test('thinInfo: Platzhalter und Wortzahl', () => {

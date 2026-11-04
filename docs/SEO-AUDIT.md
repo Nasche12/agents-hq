@@ -18,6 +18,15 @@
 - Grün: nur wenn alles Vorgesehene gemessen und ok ist.
 - Jeder Befund und jeder Messwert trägt `gemessen` oder `proxy`. Der Abschnitt „Nicht gemessen“ im Bericht listet alles Ungemessene; es zählt nie als bestanden. Discord-Kurzzeile: `Site: 🟡 gelb, N Befunde[, k hoch] [+ X nicht gemessen]`.
 
+- **Grün ist nur mit PSI-Felddaten (Key) + GSC + ohne Befunde möglich.** Ohne Key/GSC bleibt jede Site höchstens gelb. Das ist gewollt.
+- Bekannte Systemgrenzen (nur Roh-HTML, UA-Test nur Indiz, Stichprobe ≤ 9 Seiten, Lighthouse = Labor) stehen im Bericht im eigenen Abschnitt „Grenzen“, nicht unter „Nicht gemessen“.
+
+## Sicherheit und Laufzeit
+
+- robots.txt und Sitemap sind untrusted: jede URL daraus wird normalisiert, nur `http(s)` und der Site-Host (oder www-Variante, gleicher Port) sind erlaubt. Alle curl-Aufrufe nutzen `--proto =http,https --proto-redir =http,https` und `--` vor der URL. `bin/lib/geo_audit.py` ist lokal gehärtet (`fetch()` nur http/https, Sitemap-Einträge nur eigene Site).
+- Zeitbudget `SEO_BUDGET_MS` (Standard 1500000 = 1500 s, unter `HQ_RUN_TIMEOUT` 1800 s): danach werden restliche Checks/Sites als „nicht gemessen (Zeitbudget)“ markiert. Discord-Zeile und Abschlussstatus werden immer geschrieben. SIGTERM räumt Temp-Dateien auf, sobald der gerade laufende blockierende Aufruf (curl/python, bis 300 s) zurückkehrt.
+- Baseline: Dateiname aus dem Host, atomar geschrieben (Temp + rename). Defekte Baseline wird nach `.corrupt` verschoben und neu angelegt (Hinweis im Bericht). Mit `SEO_BASELINE_REFRESH=1` kein Drift-Vergleich in diesem Lauf.
+
 ## Server-Voraussetzungen
 
 | Was | Zweck | Ohne |

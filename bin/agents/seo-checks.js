@@ -12,7 +12,12 @@ const path = require('path');
 const crypto = require('crypto');
 const L = require('./lib');
 
-const PY = process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+const pyCmd = () => process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+/* Temp-Verzeichnisse, die bei Abbruch (SIGTERM) aufgeraeumt werden muessen. */
+const tmpDirs = new Set();
+function mkTmp(prefix) { const d = fs.mkdtempSync(path.join(os.tmpdir(), prefix)); tmpDirs.add(d); return d; }
+function rmTmp(d) { tmpDirs.delete(d); try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) {} }
+function cleanupTmp() { for (const d of [...tmpDirs]) rmTmp(d); }
 const GEO = path.join(L.BASE, 'bin', 'lib', 'geo_audit.py');
 const SEV_MAP = { critical: 'kritisch', high: 'hoch', medium: 'mittel', low: 'niedrig' };   // info entfaellt
 /* Bereiche, die seo-audit.js selbst (mit eigenem Fix-Katalog) abdeckt -> nicht doppelt melden. */
@@ -46,37 +51,61 @@ function mapGeoResult(res) {
   const pages = res.pages || [];
   const words = pages.filter(p => p.words != null).map(p => `${p.words}`);
   if (words.length) out.measurements.push({ text: `Wörter im Roh-HTML je Seite: ${words.join(' / ')} (ohne JavaScript)`, label: 'gemessen' });
-  out.notMeasured.push('Gerendertes HTML (Googlebot-Sicht) – nur Roh-HTML geprüft');
   return out;
 }
 
-/* Baseline je Site: <baseDir>/<slug>.json. Erster Lauf legt sie an, danach --compare (Drift).
-   SEO_BASELINE_REFRESH=1 schreibt sie nach einer gewollten Aenderung neu. dry = nichts schreiben. */
+/* Baseline je Site: <baseDir>/<slug>.json (slug = Host). Erster Lauf legt sie an, danach --compare (Drift).
+   SEO_BASELINE_REFRESH=1 schreibt sie nach einer gewollten Aenderung neu (dann OHNE --compare).
+   Defekte Baseline -> nach .corrupt umbenennen und neu anlegen. Geschrieben wird atomar (Temp-Datei + rename).
+   dry = nichts schreiben. */
 function runGeo(url, { baseDir, slug, dry }) {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'seo-geo-'));
+  const tmp = mkTmp('seo-geo-');
   const jsonOut = path.join(tmp, 'r.json');
   const baseline = path.join(baseDir, slug + '.json');
-  const hasBase = fs.existsSync(baseline);
-  const args = ['-I', GEO, url, '--pages', '5', '--ua-test', '--json', jsonOut, '--md', path.join(tmp, 'r.md')];
-  let saved = false;
-  if (hasBase) args.push('--compare', baseline);
-  if (!dry && (!hasBase || process.env.SEO_BASELINE_REFRESH === '1')) {
-    fs.mkdirSync(baseDir, { recursive: true });
-    args.push('--save-baseline', baseline); saved = true;
+  const refresh = process.env.SEO_BASELINE_REFRESH === '1';
+  const notes = [];
+  let hasBase = fs.existsSync(baseline);
+  if (hasBase) {
+    try { JSON.parse(fs.readFileSync(baseline, 'utf8')); } catch (e) {
+      hasBase = false;
+      if (!dry) { try { fs.renameSync(baseline, baseline + '.corrupt'); } catch (e2) {} }
+      notes.push('Baseline war defekt' + (dry ? ' (Dry-Run: nicht ersetzt)' : ' (nach .corrupt verschoben, neu angelegt)'));
+    }
   }
+  const compare = hasBase && !refresh;
+  const save = !dry && (!hasBase || refresh);
+  const tmpBase = path.join(tmp, 'baseline.json');
+  const args = ['-I', GEO, url, '--pages', '5', '--ua-test', '--json', jsonOut, '--md', path.join(tmp, 'r.md')];
+  if (compare) args.push('--compare', baseline);
+  if (save) args.push('--save-baseline', tmpBase);
   try {
-    const r = L.run(PY, args, { timeoutMs: 300000 });
+    const r = L.run(pyCmd(), args, { timeoutMs: 300000 });
     if (r.code !== 0 && r.code !== 2) {                // 2 = kritische Befunde (kein Fehler)
-      return { ...empty(), notMeasured: [`geo_audit.py nicht gelaufen (${PY}, Exit ${r.code}): ${(r.err || '').trim().split('\n').pop().slice(0, 160)}`], geoFailed: true };
+      return { ...empty(), notMeasured: [`geo_audit.py nicht gelaufen (${pyCmd()}, Exit ${r.code}): ${(r.err || '').trim().split('\n').pop().slice(0, 160)}`], geoFailed: true };
     }
     const res = JSON.parse(fs.readFileSync(jsonOut, 'utf8'));
     const out = mapGeoResult(res);
-    out.measurements.push({ text: hasBase ? 'Drift-Vergleich gegen Baseline' + (process.env.SEO_BASELINE_REFRESH === '1' && !dry ? ' (Baseline danach erneuert)' : '') : (saved ? 'Baseline neu angelegt (Drift ab nächstem Lauf)' : 'keine Baseline (Dry-Run)'), label: 'gemessen' });
-    if (!hasBase) out.notMeasured.push('Drift-Vergleich: noch keine Baseline');
+    if (save) {                                         // atomar ersetzen; JSON vorher pruefen
+      JSON.parse(fs.readFileSync(tmpBase, 'utf8'));
+      fs.mkdirSync(baseDir, { recursive: true });
+      fs.copyFileSync(tmpBase, baseline + '.tmp');
+      fs.renameSync(baseline + '.tmp', baseline);
+    }
+    const txt = compare ? 'Drift-Vergleich gegen Baseline' : refresh && !dry ? 'Baseline erneuert (SEO_BASELINE_REFRESH, kein Drift-Vergleich)' : save ? 'Baseline neu angelegt (Drift ab nächstem Lauf)' : 'keine Baseline (Dry-Run)';
+    out.measurements.push({ text: [txt, ...notes].join('; '), label: 'gemessen' });
+    if (!compare) out.notMeasured.push('Drift-Vergleich: in diesem Lauf nicht möglich (Baseline neu/erneuert/Dry-Run)');
     return out;
   } catch (e) {
     return { ...empty(), notMeasured: ['geo_audit.py Ausgabe nicht lesbar: ' + String(e.message || e).slice(0, 160)], geoFailed: true };
-  } finally { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) {} }
+  } finally { rmTmp(tmp); }
+}
+
+/* Body-Datei fuer curl: eigenes 0700-Verzeichnis, Datei 0600 (Tokens nicht fuer andere User lesbar). */
+function writeBodyFile(body) {
+  const dir = mkTmp('seo-body-');
+  const file = path.join(dir, 'b');
+  fs.writeFileSync(file, typeof body === 'string' ? body : JSON.stringify(body), { mode: 0o600, flag: 'wx' });
+  return { dir, file };
 }
 
 /* ---------- HTTP-JSON ueber curl (Key/Token nie in der Prozessliste: curl-Config per stdin) ---------- */
@@ -84,17 +113,12 @@ const cq = s => '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"
 function httpJson(url, { headers = [], body, timeout = 90 } = {}) {
   let cfg = `url = ${cq(url)}\nsilent\nshow-error\nmax-time = ${timeout}\n`;
   for (const h of headers) cfg += `header = ${cq(h)}\n`;
-  let tmpd = null;
-  if (body != null) {
-    tmpd = fs.mkdtempSync(path.join(os.tmpdir(), 'seo-body-'));         // Verzeichnis 0700, Datei 0600: Tokens nicht fuer andere User lesbar
-    const tmpf = path.join(tmpd, 'b');
-    fs.writeFileSync(tmpf, typeof body === 'string' ? body : JSON.stringify(body), { mode: 0o600, flag: 'wx' });
-    cfg += `data-binary = ${cq('@' + tmpf)}\n`;
-  }
+  let bf = null;
   try {
+    if (body != null) { bf = writeBodyFile(body); cfg += `data-binary = ${cq('@' + bf.file)}\n`; }
     const r = L.run('curl', ['-K', '-'], { timeoutMs: (timeout + 6) * 1000, input: cfg });
     try { return { json: JSON.parse(r.out) }; } catch (e) { return { error: (r.err || r.out || 'keine Antwort').trim().slice(0, 200) }; }
-  } finally { if (tmpd) try { fs.rmSync(tmpd, { recursive: true, force: true }); } catch (e) {} }
+  } finally { if (bf) rmTmp(bf.dir); }
 }
 
 /* ---------- Core Web Vitals (PageSpeed Insights v5, mobile) ---------- */
@@ -150,7 +174,9 @@ function psi(url, fetchFn = psiFetch) {
     o.notMeasured.push('CWV: nicht gemessen (kein API-Key, PAGESPEED_API_KEY nicht gesetzt)');
     return o;
   }
-  return cwvFindings(fetchFn(url), url);
+  let r;
+  try { r = fetchFn(url); } catch (e) { r = { error: String(e.message || e) }; }
+  return cwvFindings(r, url);
 }
 
 /* ---------- Search Console (optional) ---------- */
@@ -167,7 +193,8 @@ function gscToken(cred) {
 function gscFetch(site, homeUrl) {
   let cred;
   try { cred = JSON.parse(fs.readFileSync(process.env.GSC_CREDENTIALS, 'utf8')); } catch (e) { return { error: 'GSC_CREDENTIALS nicht lesbar' }; }
-  const token = gscToken(cred);
+  let token = null;
+  try { token = gscToken(cred); } catch (e) { return { error: 'Token-Signatur fehlgeschlagen (private_key/client_email prüfen)' }; }
   if (!token) return { error: 'Token-Abruf fehlgeschlagen (Service-Account prüfen)' };
   const host = new URL(homeUrl).hostname.replace(/^www\./, '');
   const prop = site.gsc || 'sc-domain:' + host;
@@ -193,7 +220,8 @@ function gsc(site, homeUrl, fetchFn = gscFetch) {
     out.notMeasured.push('GSC: nicht angebunden (GSC_CREDENTIALS nicht gesetzt)');
     return out;
   }
-  const r = fetchFn(site, homeUrl);
+  let r;
+  try { r = fetchFn(site, homeUrl); } catch (e) { r = { error: String(e.message || e).slice(0, 140) }; }
   if (!r || r.error) { out.notMeasured.push('GSC: ' + ((r && r.error) || 'keine Antwort')); return out; }
   const { cur, prev } = r, n = x => (x == null ? 0 : x);
   const pct = (a, b) => (b ? Math.round((a - b) / b * 100) : null);
@@ -250,4 +278,4 @@ function homeSchemaFindings(html, url, spa) {
   return out;
 }
 
-module.exports = { httpJson, thinInfo, mapGeoResult, runGeo, cwvFindings, psi, psiFetch, gsc, gscFetch, ogMissing, jsonLdTypes, homeSchemaFindings, CWV };
+module.exports = { cleanupTmp, writeBodyFile, httpJson, thinInfo, mapGeoResult, runGeo, cwvFindings, psi, psiFetch, gsc, gscFetch, ogMissing, jsonLdTypes, homeSchemaFindings, CWV };

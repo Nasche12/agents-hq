@@ -65,9 +65,11 @@ function haveTool(cmd) {                                // existiert das Werkzeu
 
 /* ---------- curl-Messungen (nur GET/HEAD, jeder Wert echt) ---------- */
 const CURL = 'curl';
+/* Haertung gegen untrusted URLs (robots.txt/Sitemap): nur http(s), auch bei Redirects; '--' beendet die Optionen (kein -K/-o via URL). */
+const SAFE_CURL = ['--proto', '=http,https', '--proto-redir', '=http,https'];
 function curlMetric(url, timeout = 20) {               // http_code, time_total, effektive URL
   const r = run(CURL, ['-sS', '-o', process.platform === 'win32' ? 'NUL' : '/dev/null',
-    '-w', '%{http_code} %{time_total} %{url_effective}', '-L', '--max-time', String(timeout), url],
+    '-w', '%{http_code} %{time_total} %{url_effective}', '-L', '--max-time', String(timeout), ...SAFE_CURL, '--', url],
     { timeoutMs: (timeout + 6) * 1000 });
   const parts = r.out.trim().split(/\s+/);
   if (parts.length >= 2 && /^\d+$/.test(parts[0])) {
@@ -76,20 +78,20 @@ function curlMetric(url, timeout = 20) {               // http_code, time_total,
   return { http: null, ms: null, url_eff: url, ok: false, err: (r.err || r.out || 'curl fehlgeschlagen').trim().slice(0, 200) };
 }
 function curlBody(url, timeout = 20) {                  // HTML-Body (fuer expect/img/links/seo)
-  const r = run(CURL, ['-sS', '-L', '--max-time', String(timeout), url], { timeoutMs: (timeout + 6) * 1000 });
+  const r = run(CURL, ['-sS', '-L', '--max-time', String(timeout), ...SAFE_CURL, '--', url], { timeoutMs: (timeout + 6) * 1000 });
   return { body: r.out, ok: r.ok, err: r.err.trim().slice(0, 200) };
 }
 function curlStatus(url, { head = true, timeout = 20 } = {}) {  // reiner Statuscode (Link-Check/Health)
   const args = ['-sS', '-o', process.platform === 'win32' ? 'NUL' : '/dev/null', '-w', '%{http_code}', '-L', '--max-time', String(timeout)];
   if (head) args.push('-I');
-  args.push(url);
+  args.push(...SAFE_CURL, '--', url);
   const r = run(CURL, args, { timeoutMs: (timeout + 6) * 1000 });
   const code = parseInt(r.out.trim(), 10);
   return Number.isFinite(code) && code > 0 ? code : null;
 }
 function curlAsset(url, timeout = 20) {                 // Bildcheck: 200 + image/* + >0 Byte
   const r = run(CURL, ['-sS', '-o', process.platform === 'win32' ? 'NUL' : '/dev/null',
-    '-w', '%{http_code} %{content_type} %{size_download}', '-L', '--max-time', String(timeout), url],
+    '-w', '%{http_code} %{content_type} %{size_download}', '-L', '--max-time', String(timeout), ...SAFE_CURL, '--', url],
     { timeoutMs: (timeout + 6) * 1000 });
   const p = r.out.trim().split(/\s+/);
   const http = parseInt(p[0], 10), ct = (p[1] || '').toLowerCase(), size = parseInt(p[2], 10) || 0;
@@ -100,7 +102,7 @@ function sslDaysLeft(url, timeout = 20) {               // TLS-Restlaufzeit, por
   try { const u = new URL(url); host = u.hostname; port = u.port || '443'; } catch (e) { return null; }
   if (!/^[a-zA-Z0-9.-]+$/.test(host)) return null;      // Hostname sauber -> keine Shell-Injection im Fallback
   // 1) curl -v: Linux/OpenSSL-curl (Prod) druckt "* expire date: …"
-  const r = run(CURL, ['-sSv', '-o', process.platform === 'win32' ? 'NUL' : '/dev/null', '--max-time', String(timeout), url],
+  const r = run(CURL, ['-sSv', '-o', process.platform === 'win32' ? 'NUL' : '/dev/null', '--max-time', String(timeout), ...SAFE_CURL, '--', url],
     { timeoutMs: (timeout + 6) * 1000 });
   let m = (r.err + '\n' + r.out).match(/expire date:\s*(.+)/i);
   // 2) Fallback: Windows-curl nutzt Schannel (kein Datum) -> openssl s_client
@@ -164,6 +166,6 @@ function agent(name) {
 module.exports = {
   BASE, WEBDIR, STATUS,
   localIso, readJson, atomicWrite, nowKW, isoDate, slug,
-  run, haveTool, curlMetric, curlBody, curlStatus, curlAsset, sslDaysLeft,
+  SAFE_CURL, run, haveTool, curlMetric, curlBody, curlStatus, curlAsset, sslDaysLeft,
   schedCfg, channelOf, isQuiet, agent
 };

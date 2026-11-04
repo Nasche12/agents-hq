@@ -17,6 +17,10 @@ const OUTDIR = path.join(L.BASE, 'seo', L.nowKW());
 const MAX_PAGES = 9;                                    // Startseite + 8
 const MAX_LINKCHECK = 40;                               // Kundenseite nicht belasten
 const BASELINE_DIR = process.env.SEO_BASELINE_DIR || path.join(L.BASE, 'seo', 'baselines');
+/* Globales Zeitbudget (deutlich unter HQ_RUN_TIMEOUT 1800 s): danach werden Checks/Sites als "nicht gemessen" markiert. */
+const BUDGET_MS = parseInt(process.env.SEO_BUDGET_MS, 10) || 1500000;
+const DEADLINE = Date.now() + BUDGET_MS;
+const over = () => Date.now() > DEADLINE;
 const SEV = { kritisch: 4, hoch: 3, mittel: 2, niedrig: 1 };
 const SEV_NAME = { kritisch: 'Kritisch', hoch: 'Hoch', mittel: 'Mittel', niedrig: 'Niedrig' };
 
@@ -51,7 +55,7 @@ function links(html, baseUrl) {
   const re = /<a\b[^>]*\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"']+))/gi;
   let m;
   while ((m = re.exec(html))) {
-    const raw = (m[1] || m[2] || m[3] || '').trim();
+    const raw = (m[1] || m[2] || m[3] || '').replace(/&amp;/g, '&').trim();
     if (!raw || raw.startsWith('#') || /^(mailto:|tel:|javascript:|data:)/i.test(raw)) continue;
     const n = normUrl(raw, baseUrl); if (n) out.push(n);
   }
@@ -80,7 +84,7 @@ function sameSite(a, b) {
 }
 function probe(url) {                                // Statuscode + Content-Type der Endziel-URL
   const r = L.run('curl', ['-sS', '-o', process.platform === 'win32' ? 'NUL' : '/dev/null',
-    '-w', '%{http_code} %{content_type}', '-L', '--max-time', '20', url], { timeoutMs: 26000 });
+    '-w', '%{http_code} %{content_type}', '-L', '--max-time', '20', ...L.SAFE_CURL, '--', url], { timeoutMs: 26000 });
   const p = r.out.trim().split(/\s+/);
   const http = parseInt(p[0], 10);
   return { http: Number.isFinite(http) && http > 0 ? http : null, ct: (p[1] || '').toLowerCase().replace(/;$/, ''), err: r.err.trim().slice(0, 200) };
@@ -143,7 +147,7 @@ function auditPage(url, host, keepHtml) {
 
 /* HTTP->HTTPS, Redirect-Ketten, www/non-www: je Site ein paar curl-Aufrufe (GET, nur lesen). */
 function curlFinal(url) {
-  const r = L.run('curl', ['-sS', '-o', process.platform === 'win32' ? 'NUL' : '/dev/null', '-w', '%{http_code} %{num_redirects} %{url_effective}', '-L', '--max-time', '20', url], { timeoutMs: 26000 });
+  const r = L.run('curl', ['-sS', '-o', process.platform === 'win32' ? 'NUL' : '/dev/null', '-w', '%{http_code} %{num_redirects} %{url_effective}', '-L', '--max-time', '20', ...L.SAFE_CURL, '--', url], { timeoutMs: 26000 });
   const p = r.out.trim().split(/\s+/);
   const http = parseInt(p[0], 10);
   return Number.isFinite(http) && http > 0 ? { http, hops: parseInt(p[1], 10) || 0, eff: p[2] || url } : null;
@@ -175,18 +179,27 @@ function hostChecks(start) {
 }
 
 /* Sitemap-URLs (max. 200) fuer den Waisen-Verdacht; robots.txt nennt die Sitemap. */
+/* Untrusted Eingabe (robots.txt/Sitemap): nur http(s)-URLs der eigenen Site (Schema+Port+Host, www erlaubt). */
+function allowedUrl(raw, origin) {
+  const n = normUrl(String(raw).replace(/&amp;/g, '&').trim());
+  return n && /^https?:/i.test(n) && sameSite(n, origin) ? n : null;
+}
 function sitemapUrls(origin, robotsText) {
   const lines = (robotsText || '').match(/^\s*sitemap:\s*(\S+)/gim) || [];
-  const queue = lines.map(l => l.replace(/^\s*sitemap:\s*/i, '')).slice(0, 3);
+  const queue = lines.map(l => allowedUrl(l.replace(/^\s*sitemap:\s*/i, ''), origin)).filter(Boolean).slice(0, 3);
   if (!queue.length) queue.push(origin + '/sitemap.xml');
   const urls = []; let fetched = 0;
   while (queue.length && fetched < 4 && urls.length < 200) {
     const b = L.curlBody(queue.shift()); fetched++;
     if (!b.body || !/<(urlset|sitemapindex)/i.test(b.body)) continue;
-    const locs = [...b.body.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map(m => m[1]);
+    const locs = [...b.body.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map(m => allowedUrl(m[1], origin)).filter(Boolean);
     if (/<sitemapindex/i.test(b.body)) queue.push(...locs.slice(0, 3)); else urls.push(...locs);
   }
-  return urls.slice(0, 200).map(u => normUrl(u)).filter(Boolean);
+  return urls.slice(0, 200);
+}
+/* Vergleichsschluessel fuer den Waisen-Check: ohne www, ohne Trailing Slash, ohne Fragment. */
+function orphanKey(u) {
+  try { const x = new URL(u); return x.hostname.replace(/^www\./, '').toLowerCase() + x.pathname.replace(/\/+$/, '') + x.search; } catch (e) { return u; }
 }
 
 function auditSite(site, deps = {}) {
@@ -210,21 +223,27 @@ function auditSite(site, deps = {}) {
   const origin = new URL(start).origin;
   const robotsTxt = L.curlBody(origin + '/robots.txt').body || '';
   const sm = sitemapUrls(origin, robotsTxt);
-  const linkedFromPages = new Set(pages.flatMap(p => p.internalLinks || []).concat([start]));
-  for (const u of sm) {                                 // Sitemap-URLs mit auditieren (dünn/ohne canonical/h1)
-    if (pages.length >= MAX_PAGES) break;
-    if (seen.has(u)) continue;
-    try { if (new URL(u).hostname !== host) continue; } catch (e) { continue; }
-    seen.add(u);
-    pages.push(auditPage(u, host));
-  }
   const siteFindings = [];
   const measurements = [], notMeasured = [];
+  for (const u of sm) {                                 // Sitemap-URLs mit auditieren (dünn/ohne canonical/h1); URLs sind schon gefiltert
+    if (pages.length >= MAX_PAGES || over()) break;
+    if (seen.has(u)) continue;
+    seen.add(u);
+    const p = auditPage(u, host);
+    if (p.error) continue;
+    pages.push(p);
+  }
+  // Waisen-Vergleich erst NACH dem Audit der Sitemap-Seiten: deren Links zaehlen mit
+  const linkedKeys = new Set(pages.flatMap(p => p.internalLinks || []).concat([start]).map(orphanKey));
   const take = r => { siteFindings.push(...r.findings); measurements.push(...r.measurements); notMeasured.push(...r.notMeasured); };
 
   // 1) geo_audit.py: robots/KI-Bots, WAF, noindex, SPA, JSON-LD, Soft-404, Sitemap, Drift
-  const geo = d.geo(start, { baseDir: BASELINE_DIR, slug: L.slug(site.name), dry: DRY });
+  const geo = over() ? { findings: [], measurements: [], notMeasured: ['geo_audit.py (KI-Bots, WAF, noindex, Schema, Drift): nicht gemessen (Zeitbudget)'] }
+    : d.geo(start, { baseDir: BASELINE_DIR, slug: L.slug(host), dry: DRY });
   take(geo);
+  // Doppelmeldungen: hat geo_audit "Rendering" (zu wenig Roh-HTML) fuer eine URL gemeldet, entfaellt unser SPA-/Duenn-Befund dort
+  const geoThin = new Set((geo.findings || []).filter(f => /^Rendering/.test(f.was)).map(f => f.url));
+  if (geoThin.size) for (const p of pages) p.findings = (p.findings || []).filter(f => !(geoThin.has(f.url) && /SPA|Dünner Inhalt/.test(f.was)));
   if (geo.geoFailed) {                                  // Fallback ohne Python: einfache Erreichbarkeits-Checks
     const robots = L.curlStatus(origin + '/robots.txt', { head: true });
     const sitemap = L.curlStatus(origin + '/sitemap.xml', { head: true });
@@ -235,8 +254,8 @@ function auditSite(site, deps = {}) {
   }
 
   // 2) Core Web Vitals + 3) Search Console (beide optional/mockbar)
-  take(d.psi(start));
-  take(d.gsc(site, start));
+  if (over()) notMeasured.push('Core Web Vitals und GSC: nicht gemessen (Zeitbudget)');
+  else { take(d.psi(start)); take(d.gsc(site, start)); }
 
   // 4) On-Page der Startseite: Schema + Redirects/Hosts
   if (home.html) take(X.homeSchemaFindings(home.html, start, home.spa));
@@ -252,7 +271,7 @@ function auditSite(site, deps = {}) {
 
   // Waisen-Verdacht: Sitemap-URL, die von keiner geprüften Seite verlinkt wird
   if (sm.length) {
-    const orphans = sm.filter(u => !linkedFromPages.has(u));
+    const orphans = sm.filter(u => !linkedKeys.has(orphanKey(u)));
     if (orphans.length) siteFindings.push({ sev: 'niedrig', was: `Waisen-Verdacht: ${orphans.length} von ${sm.length} Sitemap-URLs von keiner der ${pages.length} geprüften Seiten verlinkt (z. B. ${orphans.slice(0, 3).join(', ')})`, fix: 'Seiten intern verlinken (Navigation, Fließtext, Footer); Verdacht, da nur ~9 Seiten gecrawlt werden.', url: orphans[0], label: 'proxy' });
     measurements.push({ text: `Sitemap: ${sm.length} URL(s), ${sm.length - orphans.length} intern verlinkt (Stichprobe ${pages.length} Seiten)`, label: 'proxy' });
   } else notMeasured.push('Waisen-Seiten: keine lesbare Sitemap');
@@ -261,6 +280,7 @@ function auditSite(site, deps = {}) {
   const allLinks = [...new Set(pages.flatMap(p => p.internalLinks || []))].slice(0, MAX_LINKCHECK);
   let checked = 0, unchecked = 0;
   for (const u of allLinks) {
+    if (over()) { unchecked++; continue; }              // Zeitbudget: Rest nicht pruefbar
     let code = L.curlStatus(u, { head: true });
     if (code === 405 || code === 501) code = L.curlStatus(u, { head: false });  // HEAD verboten -> GET
     if (code == null) { unchecked++; continue; }        // Timeout/DNS/TLS: nicht gemessen, nicht "ok"
@@ -311,7 +331,12 @@ function renderReport(res) {
   lines.push('## Nicht gemessen', '', '_Zählt nie als bestanden._', '');
   for (const n of nm) lines.push(`- ${n}`);
   if (!nm.length) lines.push('- (alles Vorgesehene wurde gemessen)');
-  lines.push('', '_Automatischer Audit (seo-audit, token-frei). Nur Lesezugriff, nichts verändert._', '');
+  lines.push('', '## Grenzen (bekannte Systemgrenzen, keine Lücke dieses Laufs)', '',
+    '- Nur Roh-HTML ohne JavaScript geprüft; gerendertes HTML (Googlebot-Sicht) → GSC URL-Inspektion / Rich-Results-Test.',
+    '- Bot-User-Agent-Test sendet gefälschte UAs von der eigenen IP: Indiz für WAF/CDN-Blocks, kein Beleg für echten Bot-Zugriff (Server-Logs).',
+    '- Stichprobe von höchstens ' + MAX_PAGES + ' Seiten je Site; Waisen-Befunde sind Verdacht.',
+    '- Lighthouse-Labordaten sind simuliert (proxy); maßgeblich sind Felddaten (CrUX).', '');
+  lines.push('_Automatischer Audit (seo-audit, token-frei). Nur Lesezugriff, nichts verändert._', '');
   return lines.join('\n');
 }
 
@@ -331,8 +356,21 @@ function main() {
 
   A.status('running', 'Audit', 10, `${sites.length} Sites…`);
   const outputs = [], details = [];
+  const finish = (msg) => {                              // Status + Discord-Zeile werden IMMER geschrieben
+    const summary = `SEO-Audit ${L.nowKW()}: ${details.length} Sites — ` + details.map(d => d.split(':')[0].trim()).join(', ') + (msg ? ` (${msg})` : '');
+    A.status(msg ? 'error' : 'ok', msg ? 'Abgebrochen' : 'Fertig', 100, summary, details, outputs);
+    A.routine(`🔎 **SEO-Audit ${L.nowKW()}** ${msg ? 'unvollständig (' + msg + ')' : 'fertig'}: ${details.join(' · ')}`);
+    return summary;
+  };
+  process.on('SIGTERM', () => {                          // greift, sobald ein blockierender Aufruf zurueckkehrt
+    X.cleanupTmp();
+    finish('SIGTERM');
+    process.exit(143);
+  });
   sites.forEach((site, i) => {
-    const res = auditSite(site);
+    if (over()) { details.push(`${site.name}: 🟡 gelb, nicht gemessen (Zeitbudget ${Math.round(BUDGET_MS / 1000)} s erschöpft)`); return; }
+    let res;
+    try { res = auditSite(site); } catch (e) { res = { error: 'Audit-Fehler: ' + String(e && e.message || e).slice(0, 120) }; }
     if (res.error) { details.push(`${site.name}: ${res.error}`); return; }
     const nm = res.notMeasured.length;
     if (DRY) process.stdout.write(renderReport(res) + '\n');
@@ -342,10 +380,8 @@ function main() {
     A.status('running', 'Audit', 10 + Math.round(80 * (i + 1) / sites.length), `${site.name} fertig`);
   });
 
-  const summary = `SEO-Audit ${L.nowKW()}: ${details.length} Sites — ` + details.map(d => d.split(':')[0].trim()).join(', ');
-  A.status('ok', 'Fertig', 100, summary, details, outputs);
-  // Routine-Zeile in den Themen-Kanal (reports) – wie der LLM-Agent (respektiert quiet).
-  A.routine(`🔎 **SEO-Audit ${L.nowKW()}** fertig: ${details.join(' · ')}`);
+  X.cleanupTmp();
+  const summary = finish('');                            // Routine-Zeile in den Themen-Kanal (reports), respektiert quiet
   if (DRY) process.stdout.write('DRY-RUN-ZUSAMMENFASSUNG\n' + details.join('\n') + '\n');
   process.stdout.write(JSON.stringify({ result: summary, engine: 'script' }) + '\n');
   process.exit(0);
@@ -354,5 +390,5 @@ function main() {
 if (require.main === module) {
   try { main(); } catch (e) { fail(String(e && e.stack || e)); }
 } else {
-  module.exports = { auditSite, normUrl, isHtmlResource, ampel, renderReport };
+  module.exports = { auditSite, normUrl, isHtmlResource, ampel, renderReport, sitemapUrls, orphanKey, sameSite };
 }
