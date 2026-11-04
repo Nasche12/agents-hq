@@ -1,5 +1,5 @@
 {
-  "_comment": "seo-audit prüft fremde Sites via WebFetch + curl (Header/robots/sitemap). Braucht curl (nur GET/HEAD laut Agent-Regeln), Schreiben nur nach seo/. Kein freies node/python. Status/Discord-Helfer erlaubt run-agent.sh zur Laufzeit.",
+  "_comment": "seo-audit prüft fremde Sites via WebFetch + curl (Header/robots/sitemap). Braucht curl (nur GET/HEAD laut Agent-Regeln), Schreiben nur nach seo/. Kein freies node/python (gilt nur fuer den LLM-Lauf). Der Standardlauf ist das Skript bin/agents/seo-audit.js (engine=script, ohne diese Rechte): es ruft nur curl und `python3 -I bin/lib/geo_audit.py` (stdlib, nur lesend) auf, schreibt nach seo/ und Temp. Status/Discord-Helfer erlaubt run-agent.sh zur Laufzeit.",
   "permissions": {
     "defaultMode": "dontAsk",
     "allow": [
