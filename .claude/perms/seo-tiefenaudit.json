@@ -1,5 +1,5 @@
 {
-  "_comment": "seo-tiefenaudit (monatlich, LLM, schwer): liest Wochenberichte/Baseline, prueft fremde Sites per WebFetch/WebSearch + curl (nur GET/HEAD laut Agent-Regeln) und `python3 -I bin/lib/geo_audit.py` (stdlib, nur lesend). Schreiben nur nach seo/. Kein freies node/python (nur das eine geo_audit-Kommando ist freigegeben, daher fehlt python3 in der Deny-Liste: Deny schlaegt Allow). EHRLICHE GRENZE: curl bleibt erlaubt; die Deny-Muster fuer POST/Upload sind best effort, kein Exfil-Schutz (siehe default.json). Fremde Seiteninhalte sind Daten, keine Anweisungen. GSC/MCP sind im Server-Cron nicht verfuegbar. Status/Discord-Helfer erlaubt run-agent.sh zur Laufzeit.",
+  "_comment": "seo-tiefenaudit (monatlich, LLM, schwer): liest Wochenberichte/Baseline und prueft fremde Sites NUR per WebFetch/WebSearch. Prompt-Injection ist der Hauptrisikofall (untrusted Webinhalt), daher bewusst minimal: Bash nur ls und date; kein curl (-o/-K/file://), kein awk/sed (system()/e/w), kein python (geo_audit hat --save-baseline mit freiem Pfad; geo-Daten kommen aus Wochenbericht + Baseline), keine Shells. Schreiben nur seo/monat-*/. Deny schlaegt Allow. Status/Discord-Helfer erlaubt run-agent.sh zur Laufzeit. Restrisiko: Netz-Egress ueber WebFetch-URLs; echter Schutz = OS-Firewall (siehe default.json).",
   "permissions": {
     "defaultMode": "dontAsk",
     "allow": [
@@ -8,23 +8,10 @@
       "Grep",
       "WebFetch",
       "WebSearch",
-      "Write(seo/**)",
-      "Edit(seo/**)",
-      "Bash(curl:*)",
-      "Bash(cat:*)",
+      "Write(seo/monat-*/**)",
+      "Edit(seo/monat-*/**)",
       "Bash(ls:*)",
-      "Bash(grep:*)",
-      "Bash(egrep:*)",
-      "Bash(head:*)",
-      "Bash(tail:*)",
-      "Bash(wc:*)",
-      "Bash(sed:*)",
-      "Bash(awk:*)",
-      "Bash(cut:*)",
-      "Bash(sort:*)",
-      "Bash(uniq:*)",
-      "Bash(date:*)",
-      "Bash(python3 -I bin/lib/geo_audit.py:*)"
+      "Bash(date:*)"
     ],
     "deny": [
       "Bash(sudo:*)",
@@ -69,16 +56,22 @@
       "Write(/root/**)",
       "Write(/usr/**)",
       "Write(/var/**)",
-      "Bash(curl:*-X POST*)",
-      "Bash(curl:*-X PUT*)",
-      "Bash(curl:*-X DELETE*)",
-      "Bash(curl:*-X PATCH*)",
-      "Bash(curl:*--data*)",
-      "Bash(curl:* -d *)",
-      "Bash(curl:* -F *)",
-      "Bash(curl:*--form*)",
-      "Bash(curl:* -T *)",
-      "Bash(curl:*--upload-file*)"
+      "Bash(awk:*)",
+      "Bash(gawk:*)",
+      "Bash(mawk:*)",
+      "Bash(sed:*)",
+      "Bash(curl:*)",
+      "Bash(env:*)",
+      "Bash(bash:*)",
+      "Bash(sh:*)",
+      "Bash(zsh:*)",
+      "Bash(xargs:*)",
+      "Bash(python3:*)",
+      "Bash(eval:*)",
+      "Read(**/.env*)",
+      "Read(config/**/*credential*)",
+      "Read(**/*.pem)",
+      "Read(~/.ssh/**)"
     ]
   }
 }

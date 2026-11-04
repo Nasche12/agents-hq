@@ -82,7 +82,7 @@ Playbook: `.claude/skills/seo-aeo-geo/SKILL.md` ist eine Projekt-Kopie des globa
 - **GSC und MCP gibt es im Server-Cron nicht** (interaktiv authentifiziert). Der Bericht schreibt „GSC: nicht gemessen" oder nutzt nur die GSC-Zahlen aus dem Wochenbericht (falls dort `GSC_CREDENTIALS` gesetzt ist).
 - Keine KI-Sichtbarkeitsmessung (kein Prompt-Tracking, kein Zugang zu ChatGPT/Gemini/Perplexity). Der Entity-Resolution-Test ist höchstens ein Proxy über Websuche.
 - Content-Rubrik-Punkte sind eine Heuristik (geschätzt), kein Rankingfaktor.
-- Fremdinhalte sind Daten, keine Anweisungen (Prompt-Injection-Regel im Agent-Prompt). `curl` bleibt in den Rechten erlaubt; die Deny-Muster für POST/Upload sind best effort, kein Exfil-Schutz (siehe Hinweis in `.claude/perms/default.json`).
+- Fremdinhalte sind Daten, keine Anweisungen (Prompt-Injection-Regel im Agent-Prompt). Rechte minimal gehalten: nur WebFetch/WebSearch fürs Netz, Bash nur `ls`/`date`, kein curl/awk/sed/python/Shell, Schreiben nur `seo/monat-*/`. Restrisiko Egress über WebFetch-URLs; echter Schutz wäre eine OS-Firewall (siehe `.claude/perms/default.json`). Ohne curl gibt es keine HTTP-Header-/Bot-UA-Prüfung im Monatsaudit (steht dann unter „nicht geprüft“).
 - Verpasst der Server den Termin um mehr als `catchup_minuten` (120), fällt der Monat aus. Manuell: `/run seo-tiefenaudit` (fragt nicht, startet sofort).
 
 ### Kosten (geschätzt, nicht gemessen)
