@@ -26,7 +26,7 @@ function fail(msg) {
 /* ---------- HTML-Parsing (regex, keine DOM-Deps) ---------- */
 const rxTitle = /<title[^>]*>([\s\S]*?)<\/title>/i;
 const rxCanon = /<link\b[^>]*rel=["']canonical["'][^>]*>/i;
-const rxHref = /href\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i;
+const rxHref = /href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"']+))/i;
 function metaDesc(html) {
   const m = html.match(/<meta\b[^>]*name=["']description["'][^>]*>/i);
   if (!m) return null;
@@ -44,18 +44,50 @@ function imgsMissingAlt(html) {
 }
 function links(html, baseUrl) {
   const out = [];
-  const re = /<a\b[^>]*\bhref\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/gi;
+  const re = /<a\b[^>]*\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"']+))/gi;
   let m;
   while ((m = re.exec(html))) {
     const raw = (m[1] || m[2] || m[3] || '').trim();
     if (!raw || raw.startsWith('#') || /^(mailto:|tel:|javascript:|data:)/i.test(raw)) continue;
-    try { out.push(new URL(raw, baseUrl).href.split('#')[0]); } catch (e) {}
+    const n = normUrl(raw, baseUrl); if (n) out.push(n);
   }
   return out;
+}
+/* URL-Normalisierung: Host lowercase + leerer Pfad = "/" (macht new URL), ohne #Fragment.
+   Trailing-Slash anderer Pfade bleibt unangetastet. */
+function normUrl(raw, base) {
+  try { const u = new URL(raw, base); u.hash = ''; return u.href; } catch (e) { return null; }
+}
+
+/* Nicht-HTML-Ressourcen (PDF, Bilder, ...) bekommen keine Seiten-Checks. Content-Type zaehlt,
+   die Dateiendung nur als Fallback, wenn der Server keinen Content-Type liefert. */
+const NON_HTML_EXT = /\.(pdf|jpe?g|png|gif|webp|avif|svg|ico|bmp|mp4|webm|mov|mp3|wav|zip|gz|rar|7z|docx?|xlsx?|pptx?|csv|json|xml|txt|css|js|mjs|woff2?|ttf|otf)$/i;
+function isHtmlResource(ct, url) {
+  if (ct) return /^(text\/html|application\/xhtml\+xml)\b/i.test(ct);
+  try { return !NON_HTML_EXT.test(new URL(url).pathname); } catch (e) { return true; }
+}
+/* Gleiche Site = Schema + Port + Host (www-Variante desselben Hosts erlaubt). */
+function sameSite(a, b) {
+  try {
+    const x = new URL(a), y = new URL(b);
+    const h = u => u.hostname.replace(/^www\./, '');
+    return x.protocol === y.protocol && x.port === y.port && h(x) === h(y);
+  } catch (e) { return false; }
+}
+function probe(url) {                                // Statuscode + Content-Type der Endziel-URL
+  const r = L.run('curl', ['-sS', '-o', process.platform === 'win32' ? 'NUL' : '/dev/null',
+    '-w', '%{http_code} %{content_type}', '-L', '--max-time', '20', url], { timeoutMs: 26000 });
+  const p = r.out.trim().split(/\s+/);
+  const http = parseInt(p[0], 10);
+  return { http: Number.isFinite(http) && http > 0 ? http : null, ct: (p[1] || '').toLowerCase().replace(/;$/, ''), err: r.err.trim().slice(0, 200) };
 }
 
 /* Eine Seite abrufen + prüfen; gibt {url, bytes, findings[], title, internalLinks[]} */
 function auditPage(url, host) {
+  const pr = probe(url);
+  if (pr.http == null) return { url, error: pr.err || 'nicht abrufbar', findings: [], internalLinks: [], title: null };
+  if (pr.http >= 400) return { url, error: 'HTTP ' + pr.http, findings: [], internalLinks: [], title: null };   // keine Seiten-Checks an Fehlerseiten
+  if (!isHtmlResource(pr.ct, url)) return { url, bytes: 0, findings: [], title: null, internalLinks: [], nonHtml: pr.ct || 'unbekannt' };
   const b = L.curlBody(url);
   if (!b.ok && !b.body) return { url, error: b.err || 'nicht abrufbar', findings: [], internalLinks: [], title: null };
   const html = b.body || '';
@@ -75,7 +107,7 @@ function auditPage(url, host) {
   else if (md.length > 160) add('niedrig', `Meta-Description zu lang (${md.length})`, 'Auf ~160 Zeichen kürzen (sonst abgeschnitten).');
 
   const h1 = h1Count(html);
-  const internalLinks = links(html, url).filter(u => { try { return new URL(u).hostname === host; } catch (e) { return false; } });
+  const internalLinks = links(html, url).filter(u => sameSite(u, url));
   // Client-gerenderte SPA? Dann sieht curl nur die leere Shell -> DOM-Checks (h1/Bilder/
   // interne Links) sind statisch NICHT belegbar. Ehrlich melden statt Fehlbefunde erfinden.
   const mount = /<div\s+id=["'](root|app|__next|__nuxt|q-app|svelte)["']/i.test(html);
@@ -100,18 +132,20 @@ function auditPage(url, host) {
 }
 
 function auditSite(site) {
-  const start = site.url;
+  const start = normUrl(site.url);
   let host; try { host = new URL(start).hostname; } catch (e) { return { site, error: 'ungültige URL' }; }
   A.log(`audit ${site.name} …`);
 
   const home = auditPage(start, host);
   const pages = [home];
-  const seen = new Set([start.split('#')[0]]);
+  const seen = new Set([start]);
   for (const u of (home.internalLinks || [])) {
     if (pages.length >= MAX_PAGES) break;
     if (seen.has(u)) continue;
     seen.add(u);
-    pages.push(auditPage(u, host));
+    const p = auditPage(u, host);
+    if (p.error) continue;                              // Fehlerseiten belegen keinen Platz; der Link-Check meldet sie
+    pages.push(p);
   }
 
   // robots.txt + sitemap.xml (Site-Ebene, einmal)
@@ -130,17 +164,20 @@ function auditSite(site) {
 
   // kaputte interne Links (dedupe über alle Seiten, gedeckelt)
   const allLinks = [...new Set(pages.flatMap(p => p.internalLinks || []))].slice(0, MAX_LINKCHECK);
-  let checked = 0;
+  let checked = 0, unchecked = 0;
+  const notMeasured = [];
   for (const u of allLinks) {
     let code = L.curlStatus(u, { head: true });
     if (code === 405 || code === 501) code = L.curlStatus(u, { head: false });  // HEAD verboten -> GET
+    if (code == null) { unchecked++; continue; }        // Timeout/DNS/TLS: nicht gemessen, nicht "ok"
     checked++;
-    if (code != null && code >= 400) siteFindings.push({ sev: 'hoch', was: `interner Link kaputt (HTTP ${code})`, fix: 'Link korrigieren oder entfernen; ggf. 301 auf Ziel.', url: u });
+    if (code >= 400) siteFindings.push({ sev: 'hoch', was: `interner Link kaputt (HTTP ${code})`, fix: 'Link korrigieren oder entfernen; ggf. 301 auf Ziel.', url: u });
   }
 
+  if (unchecked) notMeasured.push(`${unchecked} interne Link(s) nicht prüfbar (Timeout/DNS/TLS)`);
   const allFindings = [...siteFindings, ...pages.flatMap(p => (p.findings || []).length ? p.findings : (p.error ? [{ sev: 'hoch', was: `Seite nicht abrufbar: ${p.error}`, fix: 'Erreichbarkeit prüfen.', url: p.url }] : []))];
   allFindings.sort((a, b) => SEV[b.sev] - SEV[a.sev]);
-  return { site, host, pages: pages.length, links_checked: checked, findings: allFindings };
+  return { site, host, pages: pages.length, links_checked: checked, findings: allFindings, notMeasured };
 }
 
 function ampel(findings) {
@@ -166,6 +203,7 @@ function writeReport(res) {
     lines.push('');
   }
   if (!res.findings.length) lines.push('_Keine technischen Mängel gefunden._', '');
+  if ((res.notMeasured || []).length) lines.push('## Nicht gemessen', '', ...res.notMeasured.map(n => `- ${n}`), '');
   lines.push('_Automatischer Audit (seo-audit, token-frei). Nur Lesezugriff, nichts verändert._', '');
   fs.writeFileSync(f, lines.join('\n'));
   return path.relative(L.BASE, f).split(path.sep).join('/');
@@ -195,4 +233,8 @@ function main() {
   process.exit(0);
 }
 
-try { main(); } catch (e) { fail(String(e && e.stack || e)); }
+if (require.main === module) {
+  try { main(); } catch (e) { fail(String(e && e.stack || e)); }
+} else {
+  module.exports = { auditSite, normUrl, isHtmlResource };
+}
