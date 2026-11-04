@@ -59,3 +59,7 @@ node --test bin/agents/seo-audit.test.js                           # PSI/GSC/geo
 ## Später (nicht umgesetzt)
 
 Öffnungszeiten Schema vs. Text, sameAs-Erreichbarkeit, Faktenkonsistenz über Seiten/llms.txt, HSTS/CSP/Cache-Header, TTFB, Lighthouse-CLI, GSC Marken-/Nicht-Marken-Anteil, IndexNow.
+
+## Bekannte Grenze: Redirects auf fremde Hosts
+
+Leitet eine Seite auf einen anderen Host um, meldet seo-audit.js nur "leitet auf fremden Host um" und prüft das Ziel nicht (keine fremden Titel/Canonicals im Bericht). Der Zielinhalt wird dabei dennoch einmal abgerufen und verworfen; `geo_audit.py` folgt Redirects (nur http/https, höchstens 5 Hops) auch auf fremde Hosts und wertet sie als Erreichbarkeit der geprüften URL.

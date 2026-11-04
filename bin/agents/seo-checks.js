@@ -85,13 +85,21 @@ function runGeo(url, { baseDir, slug, dry }) {
     }
     const res = JSON.parse(fs.readFileSync(jsonOut, 'utf8'));
     const out = mapGeoResult(res);
-    if (save) {                                         // atomar ersetzen; JSON vorher pruefen
-      JSON.parse(fs.readFileSync(tmpBase, 'utf8'));
-      fs.mkdirSync(baseDir, { recursive: true });
-      fs.copyFileSync(tmpBase, baseline + '.tmp');
-      fs.renameSync(baseline + '.tmp', baseline);
+    let saveFailed = false;
+    if (save) {                                         // atomar ersetzen; JSON vorher pruefen; Fehler kippt den Audit nicht
+      const tmpName = `${baseline}.${process.pid}.tmp`;
+      try {
+        JSON.parse(fs.readFileSync(tmpBase, 'utf8'));
+        fs.mkdirSync(baseDir, { recursive: true });
+        fs.copyFileSync(tmpBase, tmpName);
+        fs.renameSync(tmpName, baseline);
+      } catch (e) {
+        saveFailed = true;
+        notes.push('Baseline nicht gespeichert: ' + String(e.message || e).slice(0, 100));
+        try { fs.unlinkSync(tmpName); } catch (e2) {}
+      }
     }
-    const txt = compare ? 'Drift-Vergleich gegen Baseline' : refresh && !dry ? 'Baseline erneuert (SEO_BASELINE_REFRESH, kein Drift-Vergleich)' : save ? 'Baseline neu angelegt (Drift ab nächstem Lauf)' : 'keine Baseline (Dry-Run)';
+    const txt = compare ? 'Drift-Vergleich gegen Baseline' : saveFailed ? 'Baseline nicht angelegt' : refresh && !dry ? 'Baseline erneuert (SEO_BASELINE_REFRESH, kein Drift-Vergleich)' : save ? 'Baseline neu angelegt (Drift ab nächstem Lauf)' : 'keine Baseline (Dry-Run)';
     out.measurements.push({ text: [txt, ...notes].join('; '), label: 'gemessen' });
     if (!compare) out.notMeasured.push('Drift-Vergleich: in diesem Lauf nicht möglich (Baseline neu/erneuert/Dry-Run)');
     return out;
