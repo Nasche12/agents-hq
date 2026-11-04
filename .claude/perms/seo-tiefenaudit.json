@@ -10,6 +10,7 @@
       "WebFetch",
       "WebSearch",
       "Write(seo/monat-*/*.md)",
+      "Edit(seo/monat-*/*.md)",
       "Bash(date +%Y-%m)",
       "Bash(date +%Y-%m-%d)"
     ],
