@@ -49,13 +49,36 @@ function links(html, baseUrl) {
   while ((m = re.exec(html))) {
     const raw = (m[1] || m[2] || m[3] || '').trim();
     if (!raw || raw.startsWith('#') || /^(mailto:|tel:|javascript:|data:)/i.test(raw)) continue;
-    try { out.push(new URL(raw, baseUrl).href.split('#')[0]); } catch (e) {}
+    const n = normUrl(raw, baseUrl); if (n) out.push(n);
   }
   return out;
+}
+/* URL-Normalisierung: Host lowercase + leerer Pfad = "/" (macht new URL), ohne #Fragment.
+   Trailing-Slash anderer Pfade bleibt unangetastet. */
+function normUrl(raw, base) {
+  try { const u = new URL(raw, base); u.hash = ''; return u.href; } catch (e) { return null; }
+}
+
+/* Nicht-HTML-Ressourcen (PDF, Bilder, ...) bekommen keine Seiten-Checks. Content-Type zaehlt,
+   die Dateiendung nur als Fallback, wenn der Server keinen Content-Type liefert. */
+const NON_HTML_EXT = /\.(pdf|jpe?g|png|gif|webp|avif|svg|ico|bmp|mp4|webm|mov|mp3|wav|zip|gz|rar|7z|docx?|xlsx?|pptx?|csv|json|xml|txt|css|js|mjs|woff2?|ttf|otf)$/i;
+function isHtmlResource(ct, url) {
+  if (ct) return /^(text\/html|application\/xhtml\+xml)\b/i.test(ct);
+  try { return !NON_HTML_EXT.test(new URL(url).pathname); } catch (e) { return true; }
+}
+function probe(url) {                                   // Statuscode + Content-Type der Endziel-URL
+  const r = L.run('curl', ['-sS', '-o', process.platform === 'win32' ? 'NUL' : '/dev/null',
+    '-w', '%{http_code} %{content_type}', '-L', '--max-time', '20', url], { timeoutMs: 26000 });
+  const p = r.out.trim().split(/\s+/);
+  const http = parseInt(p[0], 10);
+  return { http: Number.isFinite(http) && http > 0 ? http : null, ct: (p[1] || '').toLowerCase().replace(/;$/, ''), err: r.err.trim().slice(0, 200) };
 }
 
 /* Eine Seite abrufen + prüfen; gibt {url, bytes, findings[], title, internalLinks[]} */
 function auditPage(url, host) {
+  const pr = probe(url);
+  if (pr.http == null) return { url, error: pr.err || 'nicht abrufbar', findings: [], internalLinks: [], title: null };
+  if (!isHtmlResource(pr.ct, url)) return { url, bytes: 0, findings: [], title: null, internalLinks: [], nonHtml: pr.ct || 'unbekannt' };
   const b = L.curlBody(url);
   if (!b.ok && !b.body) return { url, error: b.err || 'nicht abrufbar', findings: [], internalLinks: [], title: null };
   const html = b.body || '';
@@ -100,13 +123,13 @@ function auditPage(url, host) {
 }
 
 function auditSite(site) {
-  const start = site.url;
+  const start = normUrl(site.url);
   let host; try { host = new URL(start).hostname; } catch (e) { return { site, error: 'ungültige URL' }; }
   A.log(`audit ${site.name} …`);
 
   const home = auditPage(start, host);
   const pages = [home];
-  const seen = new Set([start.split('#')[0]]);
+  const seen = new Set([start]);
   for (const u of (home.internalLinks || [])) {
     if (pages.length >= MAX_PAGES) break;
     if (seen.has(u)) continue;
@@ -195,4 +218,8 @@ function main() {
   process.exit(0);
 }
 
-try { main(); } catch (e) { fail(String(e && e.stack || e)); }
+if (require.main === module) {
+  try { main(); } catch (e) { fail(String(e && e.stack || e)); }
+} else {
+  module.exports = { auditSite, normUrl, isHtmlResource };
+}
