@@ -11,13 +11,16 @@ const X = require('./seo-checks');
 /* curl laeuft synchron (spawnSync) -> Testserver muss in eigenem Prozess laufen. */
 const HOME = `<!doctype html><html lang="de"><head><title>Beispielseite fuer den SEO-Audit Test</title>
 <meta name="description" content="${'x'.repeat(80)}"><link rel="canonical" href="/"></head>
-<body><h1>Hallo</h1><a href="/">slash</a><a href="/#top">frag</a><a href="/cv/a.pdf">pdf</a><a href="/lade">lade</a></body></html>`;
+<body><h1>Hallo</h1><a href="/">slash</a><a href="/#top">frag</a><a href="/cv/a.pdf">pdf</a><a href="/lade">lade</a><a href="">leer</a><a href=''>leer2</a>
+<a href="/gone">gone</a><a href="/hang">hang</a><a href="http://127.0.0.1:1/fremd">fremderport</a></body></html>`;
 const LADE = '<!doctype html><html><head><title>Ladeseite fuer den SEO-Audit Test hier</title></head><body><h1>x</h1><p>wird geladen ...</p></body></html>';
 const SERVER = `
 const http = require('http'); const HOME = ${JSON.stringify(HOME)}; const LADE = ${JSON.stringify(LADE)};
 http.createServer((q, r) => {
   if (q.url === '/cv/a.pdf') { r.writeHead(200, { 'content-type': 'application/pdf' }); return r.end('%PDF-1.4'); }
   if (q.url === '/lade') { r.writeHead(200, { 'content-type': 'text/html' }); return r.end(LADE); }
+  if (q.url === '/gone') { r.writeHead(404, { 'content-type': 'text/html' }); return r.end('<html><body>nicht gefunden</body></html>'); }
+  if (q.url === '/hang') { q.socket.destroy(); return; }
   if (q.url === '/') { r.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); return r.end(HOME); }
   r.writeHead(404); r.end();
 }).listen(0, '127.0.0.1', function () { console.log(this.address().port); });`;
@@ -51,6 +54,11 @@ test('auditSite (Mocks): PDF ohne Seiten-Befunde, Platzhalter + Schema + nicht g
     assert.ok(res.notMeasured.length > 0);               // IP-Host: HTTPS-Checks nicht messbar
     assert.strictEqual(ampel(res.findings, res.notMeasured), '🔴 rot');
     assert.match(renderReport(res), /## Nicht gemessen/);
+    assert.ok(!res.findings.some(f => /%22/.test(f.url)));                                  // M2: href="" / href=''
+    assert.ok(!res.findings.some(f => f.url.endsWith('/gone') && !/kaputt/.test(f.was)));   // M3: nur "Link kaputt", keine Seiten-Checks
+    assert.ok(res.findings.some(f => f.url.endsWith('/gone') && /HTTP 404/.test(f.was)));
+    assert.ok(!res.findings.some(f => f.url.includes('127.0.0.1:1/')));                     // M6: anderer Port = andere Site
+    assert.ok(res.notMeasured.some(n => /nicht prüfbar/.test(n)));                          // M4: /hang (Abbruch) = nicht gemessen
   } finally { child.kill(); }
 });
 
