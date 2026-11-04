@@ -40,11 +40,16 @@ PERM_ARGS=(--permission-mode dontAsk)
 [ -f "$PERM_FILE" ] && PERM_ARGS+=(--settings "$PERM_FILE")
 # Die eigenen HQ-Helfer (Status/Discord) muss JEDER Lauf aufrufen duerfen. Sie laufen mit
 # absolutem Pfad, daher hier zur Laufzeit erlauben (merged on top der Settings-Allowlist).
-PERM_ARGS+=(--allowedTools "Bash($BASE/bin/status-update.sh *)" "Bash($BASE/bin/discord.py *)")
+# seo-tiefenaudit liest untrusted Webinhalt: nur Posts in #reports (Kanalname fest, kein --attach).
+DPAT="$BASE/bin/discord.py *"; [ "$AGENT" = seo-tiefenaudit ] && DPAT="$BASE/bin/discord.py post reports *"
+PERM_ARGS+=(--allowedTools "Bash($BASE/bin/status-update.sh *)" "Bash($DPAT)")
 
 # ---- Hänge-Schutz: harte Obergrenze pro Lauf (Default 30 min) ----------------
 # Ohne Timeout bleibt ein hängender claude/MCP ewig 'running' und blockiert den Agent.
 # timeout schickt erst TERM, nach 30 s KILL. Fehlt 'timeout', läuft es ungebremst (mit Hinweis).
+# Pro Agent via schedule.json "timeout_min" (z. B. seo-tiefenaudit 40); sonst HQ_RUN_TIMEOUT / 1800 s.
+TMIN="$("$NODE" "$HQ" cfg "$SCHED" "$AGENT" timeout_min 2>/dev/null)"
+case "$TMIN" in ''|*[!0-9]*) ;; *) HQ_RUN_TIMEOUT=$((TMIN * 60)) ;; esac
 TIMEOUT_PFX=""
 if _TB="$(command -v timeout 2>/dev/null)"; then TIMEOUT_PFX="$_TB -k 30 ${HQ_RUN_TIMEOUT:-1800}"
 else echo "run-agent: 'timeout' nicht gefunden – Lauf ohne Hänge-Schutz" >&2; fi
@@ -60,7 +65,7 @@ case "$AGENT" in
   uptime-waechter)     ALIAS=uptime ;;
   website-guardian)    ALIAS=guardian ;;
   seo-audit)           ALIAS=seo ;;
-  seo-tiefenaudit)     ALIAS=seo-tiefenaudit ;;
+  seo-tiefenaudit)     ALIAS=tiefenaudit ;;
   backup-auditor)      ALIAS=backup ;;
   rechnungssteller)    ALIAS=rechnung ;;
   server-waechter)     ALIAS=server ;;

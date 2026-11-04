@@ -1,17 +1,18 @@
 {
-  "_comment": "seo-tiefenaudit (monatlich, LLM, schwer): liest Wochenberichte/Baseline und prueft fremde Sites NUR per WebFetch/WebSearch. Prompt-Injection ist der Hauptrisikofall (untrusted Webinhalt), daher bewusst minimal: Bash nur ls und date; kein curl (-o/-K/file://), kein awk/sed (system()/e/w), kein python (geo_audit hat --save-baseline mit freiem Pfad; geo-Daten kommen aus Wochenbericht + Baseline), keine Shells. Schreiben nur seo/monat-*/. Deny schlaegt Allow. Status/Discord-Helfer erlaubt run-agent.sh zur Laufzeit. Restrisiko: Netz-Egress ueber WebFetch-URLs; echter Schutz = OS-Firewall (siehe default.json).",
+  "_comment": "seo-tiefenaudit (monatlich, LLM, schwer): liest Wochenberichte/Baseline und prueft fremde Sites NUR per WebFetch/WebSearch. Prompt-Injection ist der Hauptrisikofall (untrusted Webinhalt), daher bewusst minimal: Bash nur ls und date; kein curl (-o/-K/file://), kein awk/sed (system()/e/w), kein python (geo_audit hat --save-baseline mit freiem Pfad; geo-Daten kommen aus Wochenbericht + Baseline), keine Shells. Schreiben nur seo/monat-*/. Deny schlaegt Allow. Status/Discord-Helfer erlaubt run-agent.sh zur Laufzeit. Restrisiko: Netz-Egress ueber WebFetch-URLs; echter Schutz = OS-Firewall (siehe default.json). Lesen nur config/sites.json, seo/** und den Skill (Read-Regeln gelten best effort auch fuer Grep/Glob). Absolute Pfade in deny mit //-Form, ~ = Home. Discord: run-agent.sh erlaubt fuer diesen Agent nur 'discord.py post reports *'; --attach ist zusaetzlich gedenied und in discord.py auf Report-Roots begrenzt.",
   "permissions": {
     "defaultMode": "dontAsk",
     "allow": [
-      "Read",
-      "Glob",
-      "Grep",
+      "Read(config/sites.json)",
+      "Read(seo/**)",
+      "Read(.claude/skills/seo-aeo-geo/**)",
       "WebFetch",
       "WebSearch",
-      "Write(seo/monat-*/**)",
-      "Edit(seo/monat-*/**)",
-      "Bash(ls:*)",
-      "Bash(date:*)"
+      "Write(seo/monat-*/*.md)",
+      "Edit(seo/monat-*/*.md)",
+      "Bash(ls -d seo/monat-*)",
+      "Bash(date +%Y-%m)",
+      "Bash(date +%Y-%m-%d)"
     ],
     "deny": [
       "Bash(sudo:*)",
@@ -71,7 +72,14 @@
       "Read(**/.env*)",
       "Read(config/**/*credential*)",
       "Read(**/*.pem)",
-      "Read(~/.ssh/**)"
+      "Read(~/.ssh/**)",
+      "Read(//proc/**)",
+      "Read(//root/**)",
+      "Read(//etc/**)",
+      "Read(//home/**)",
+      "Read(~/.claude/**)",
+      "Read(~/.claude.json)",
+      "Bash(*--attach*)"
     ]
   }
 }

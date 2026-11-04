@@ -115,7 +115,24 @@ def _multipart(fields, filename, filedata):
     return "multipart/form-data; boundary=" + boundary, b"".join(parts)
 
 
+# --attach nur aus den Report-Roots (wie REPORT_ROOTS in dashboard/server.js); verhindert, dass ein
+# prompt-injizierter Agent beliebige Dateien (.env, Keys) nach Discord schickt. Pfad per realpath
+# aufgeloest (Symlinks/..). Zusaetzliche Wurzeln: HQ_ATTACH_EXTRA (Pfade, durch os.pathsep getrennt).
+ATTACH_ROOTS = ["reports", "content", "belege", "uptime", "guardian", "seo", "rechnungen",
+                "server", "backup", "mail", "video", "influencer"]
+
+
+def attach_allowed(path):
+    base = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+    roots = [os.path.join(base, r) for r in ATTACH_ROOTS]
+    roots += [r for r in os.environ.get("HQ_ATTACH_EXTRA", "").split(os.pathsep) if r]
+    real = os.path.realpath(path)
+    return any(real == os.path.realpath(r) or real.startswith(os.path.realpath(r) + os.sep) for r in roots)
+
+
 def cmd_post(token, gid, name_or_id, text, attach):
+    if attach and not attach_allowed(attach):
+        die(f"--attach nur aus Report-Ordnern erlaubt ({', '.join(ATTACH_ROOTS)}): {attach}")
     cid = resolve_channel(token, gid, name_or_id)
     if attach:
         if not os.path.isfile(attach):

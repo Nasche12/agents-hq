@@ -76,9 +76,10 @@
       "enabled": true,
       "schwer": true,
       "model": "sonnet",
+      "timeout_min": 40,
       "channel": "reports",
       "quiet": false,
-      "_hinweis": "MONATLICHER LLM-Tiefenaudit (SEO/AEO/GEO, Content-Rubrik, Entity/NAP, Off-site), kostet Tokens (geschaetzt ca. 0,6-1,5 USD pro Lauf bei 3 Sites, siehe docs/SEO-AUDIT.md). Laeuft am ersten Mittwoch um 07:00, nach dem woechentlichen seo-audit (06:00), auf dessen Bericht er aufbaut. schwer=true -> Start erst nach /ja in #freigaben; ohne Antwort passiert nichts, verpasst der Server das 120-min-Fenster, faellt der Monat aus (manuell: /run seo-tiefenaudit). Ergaenzt den token-freien seo-audit, ersetzt ihn nicht. Keine GSC/MCP im Cron."
+      "_hinweis": "MONATLICHER LLM-Tiefenaudit (SEO/AEO/GEO, Content-Rubrik, Entity/NAP, Off-site), kostet Tokens (geschaetzt ca. 0,6-1,5 USD pro Lauf bei 3 Sites, siehe docs/SEO-AUDIT.md). Laeuft am ersten Mittwoch um 07:00, nach dem woechentlichen seo-audit (06:00), auf dessen Bericht er aufbaut. schwer=true -> Start erst nach /ja in #freigaben; ohne Antwort passiert nichts, verpasst der Server das 120-min-Fenster, faellt der Monat aus (manuell: /run tiefenaudit). Ergaenzt den token-freien seo-audit, ersetzt ihn nicht. Keine GSC/MCP im Cron. Slash-Menue: discord-register.py muss nach dem Deploy einmal auf dem Server laufen, sonst ist /ja und /run tiefenaudit nicht waehlbar. timeout_min=40 liegt bewusst unter dem Watchdog (HQ_STUCK_MINUTES 45)."
     },
     "rechnungssteller": {
       "cadence": "auf Abruf",

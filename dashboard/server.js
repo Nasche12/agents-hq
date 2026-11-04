@@ -572,7 +572,12 @@ const server = http.createServer((req, res) => {
     const abs = safeFile(u.searchParams.get('p'));
     if (!abs) return send(res, 404, { error: 'nicht gefunden' });
     const type = MIME[path.extname(abs).toLowerCase()] || 'application/octet-stream';
-    return send(res, 200, fs.readFileSync(abs), type);
+    const body = fs.readFileSync(abs);
+    if (type.startsWith('text/html')) {            // Agent-Output ist untrusted: HTML nur sandboxed ausliefern (kein Script, eigene Origin)
+      res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store', 'Content-Security-Policy': 'sandbox', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(body);
+    }
+    return send(res, 200, body, type);
   }
 
   /* ---------- statisch ---------- */
@@ -775,7 +780,7 @@ function verifyDiscord(raw, sig, ts, pubHex) {
 /* Agent-ID -> kurzer Slash-Wert (Auswahl im /-Menue, siehe discord-register.py) */
 const CHOICE = {
   wochenreport: 'report', 'belege-buchhaltung': 'belege', 'content-recherche': 'content',
-  'uptime-waechter': 'uptime', 'seo-audit': 'seo', rechnungssteller: 'rechnung',
+  'uptime-waechter': 'uptime', 'seo-audit': 'seo', 'seo-tiefenaudit': 'tiefenaudit', rechnungssteller: 'rechnung',
   'server-waechter': 'server', 'mail-assistent': 'mail', 'video-producent': 'video',
   'ki-influencer': 'influencer'
 };

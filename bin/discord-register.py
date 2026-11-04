@@ -28,6 +28,7 @@ AGENT_CHOICES = [
     {"name": "content",  "value": "content"},
     {"name": "uptime",   "value": "uptime"},
     {"name": "seo",      "value": "seo"},
+    {"name": "tiefenaudit", "value": "tiefenaudit"},
     {"name": "rechnung", "value": "rechnung"},
     {"name": "server",     "value": "server"},
     {"name": "mail",       "value": "mail"},
