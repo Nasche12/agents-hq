@@ -10,6 +10,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 const { monthlyDue } = require('./cadence');
+const { fileHeaders } = require('./filehdr');
 
 const BASE = path.resolve(__dirname, '..');
 const WEB = __dirname;
@@ -572,8 +573,8 @@ const server = http.createServer((req, res) => {
     const abs = safeFile(u.searchParams.get('p'));
     if (!abs) return send(res, 404, { error: 'nicht gefunden' });
     const type = MIME[path.extname(abs).toLowerCase()] || 'application/octet-stream';
-    // Agent-Output ist untrusted: JEDE Datei (html, svg, ...) sandboxed + ohne MIME-Sniffing ausliefern
-    res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store', 'Content-Security-Policy': 'sandbox', 'X-Content-Type-Options': 'nosniff' });
+    // Agent-Output ist untrusted: sandboxed + nosniff (PDF ohne Sandbox, siehe filehdr.js)
+    res.writeHead(200, fileHeaders(type));
     return res.end(fs.readFileSync(abs));
   }
 
