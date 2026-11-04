@@ -24,8 +24,8 @@ const AGENT_CHOICES = new Set([...pyReg.slice(pyReg.indexOf('AGENT_CHOICES = [')
   .matchAll(/"value":\s*"([\w-]+)"/g)].map(m => m[1]));
 const AGENTS = new Set([...objBody(server, /const AGENTS = \{/).matchAll(/^\s*'([\w-]+)':/gm)].map(m => m[1]));
 
-/* Bekannte Luecke, nicht Teil dieses PR (separat nachziehen); Eintrag entfernen, sobald behoben. */
-const KNOWN_GAPS = new Set(['trading-forscher']);
+/* Bekannte Luecken (Agent-IDs), die noch nicht waehlbar sind; leer = alles konsistent. */
+const KNOWN_GAPS = new Set([]);
 
 const needing = Object.entries(sched).filter(([id, c]) => c.enabled && c.schwer && !KNOWN_GAPS.has(id)).map(([id]) => id);
 

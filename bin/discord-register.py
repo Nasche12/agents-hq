@@ -34,6 +34,7 @@ AGENT_CHOICES = [
     {"name": "mail",       "value": "mail"},
     {"name": "video",      "value": "video"},
     {"name": "influencer", "value": "influencer"},
+    {"name": "forscher",   "value": "forscher"},
 ]
 
 

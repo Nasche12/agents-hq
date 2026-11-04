@@ -72,6 +72,7 @@ case "$AGENT" in
   mail-assistent)      ALIAS=mail ;;
   video-producent)     ALIAS=video ;;
   ki-influencer)       ALIAS=influencer ;;
+  trading-forscher)    ALIAS=forscher ;;
   *)                   ALIAS="$AGENT" ;;
 esac
 dpost() { # dpost <kanal> <text> – nur wenn Bot konfiguriert; Fehler schlucken (Python nur hier nötig)

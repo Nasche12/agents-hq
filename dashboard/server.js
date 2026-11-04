@@ -658,7 +658,8 @@ const ALIAS = {
   guardian: 'website-guardian', website: 'website-guardian',
   backup: 'backup-auditor', backups: 'backup-auditor', sicherung: 'backup-auditor',
   tiefenaudit: 'seo-tiefenaudit', seo: 'seo-audit', audit: 'seo-audit', rechnung: 'rechnungssteller', rechnungen: 'rechnungssteller',
-  influencer: 'ki-influencer', persona: 'ki-influencer'
+  influencer: 'ki-influencer', persona: 'ki-influencer',
+  forscher: 'trading-forscher'
 };
 function matchAgent(s) {
   s = (s || '').toLowerCase().trim();
@@ -780,7 +781,7 @@ const CHOICE = {
   wochenreport: 'report', 'belege-buchhaltung': 'belege', 'content-recherche': 'content',
   'uptime-waechter': 'uptime', 'seo-audit': 'seo', 'seo-tiefenaudit': 'tiefenaudit', rechnungssteller: 'rechnung',
   'server-waechter': 'server', 'mail-assistent': 'mail', 'video-producent': 'video',
-  'ki-influencer': 'influencer'
+  'ki-influencer': 'influencer', 'trading-forscher': 'forscher'
 };
 const SLASH_HELP = [
   '🤖 **HQ-Slash-Commands**',

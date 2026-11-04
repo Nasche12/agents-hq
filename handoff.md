@@ -1,5 +1,15 @@
 # Handoff – Agent HQ
 
+## Session 2026-11-04 (2): Rechte-Haertung vor Deploy (PR #4, gestapelt auf #3)
+
+- **Entscheidung (Sebastian):** Haertung VOR dem Deploy.
+- **Perms:** Syntax laut Doku: `//pfad` absolut, `~/` Home, `/pfad` relativ zur Settings-Datei. Alle `Edit/Write(/etc|/root|/usr|/bin|/boot/**)` in allen `.claude/perms/*.json` auf `//` umgestellt. `/var` entfernt (BASE kann unter /var/www liegen, `//var` wuerde alles blockieren).
+- **default.json:** Write/Edit nur noch in Output-Ordnern (reports, belege, rechnungen, master, mail, content/videos, content/influencer, trading, config/rechnung.json, config/schedule.json, news_risk.json, candidates.json); Secret-Reads gesperrt; kritische Pfade gedenied.
+- **seo-audit.json (LLM-Modus):** auf Niveau seo-tiefenaudit (kein curl/sed/awk/cat, nur date, Write seo/**/*.md).
+- **trading-forscher** in AGENT_CHOICES (`forscher`), CHOICE, ALIAS und run-agent.sh; KNOWN_GAPS leer.
+- **Test:** `dashboard/perms-paths.test.js`. Nach Deploy einmal `bin/discord-register.py` ausfuehren (neuer Slash-Wert).
+- **Offen:** Review-Verdict; Write-Regeln gelten nicht fuer Shell-Umleitungen (Bash bleibt offen in default.json).
+
 ## Session 2026-11-04: SEO-Audit ehrlich machen + monatlicher Tiefen-Audit
 
 - **Anlass:** Der Discord-Bot meldete den SEO-Audit KW45. Sebastian: Der Audit soll mehrere SEO-Skills nutzen und ehrlich sein, „SEO ist auf allen Webseiten schlecht“.

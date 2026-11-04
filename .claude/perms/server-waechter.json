@@ -97,14 +97,12 @@
       "Bash(iptables:*)",
       "Bash(ufw:*)",
       "Bash(nft:*)",
-      "Edit(/etc/**)",
-      "Write(/etc/**)",
-      "Edit(/root/**)",
-      "Write(/root/**)",
-      "Edit(/usr/**)",
-      "Write(/usr/**)",
-      "Edit(/var/**)",
-      "Write(/var/**)"
+      "Edit(//etc/**)",
+      "Write(//etc/**)",
+      "Edit(//root/**)",
+      "Write(//root/**)",
+      "Edit(//usr/**)",
+      "Write(//usr/**)"
     ]
   }
 }
