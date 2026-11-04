@@ -1,5 +1,5 @@
 {
-  "_comment": "Fallback-Profil fuer Worker-Agents ohne eigenes Profil (wochenreport, belege-buchhaltung, rechnungssteller, mail-assistent, video-producent, ki-influencer, kommandant, markt-waechter, trading-forscher). Die untrusted-Input-Agents (content-recherche, seo-audit, seo-tiefenaudit, uptime-waechter, website-guardian) haben je ein ENGERES eigenes Profil. dontAsk laeuft headless; Deny schlaegt Allow. Pfadsyntax: //pfad = absolut, ~/pfad = Home, /pfad = relativ zur Settings-Datei, pfad = relativ zum cwd (BASE). Schreiben (Write/Edit) nur in die Output-Ordner der Agents laut .claude/agents/<id>.md (Liste in allow); alles andere verweigert dontAsk, kritische Pfade (.env, config, bin, dashboard, .claude, Systemverzeichnisse, Home) sind zusaetzlich gedenied (config/** ist nicht pauschal gedenied, weil rechnungssteller config/rechnung.json und kommandant config/schedule.json schreiben; dort gilt die enge Allow-Liste, config/server.json und config/backups.json sind gesperrt). Secret-Reads (.env, ~/.ssh, ~/.claude, /proc, *.pem) gesperrt. EHRLICHE GRENZE: Bash ist weit offen und curl bleibt erlaubt (uptime/measure/discord brauchen es) -> Deny-Liste ist KEIN vollstaendiger Exfil-Schutz und Write-Regeln gelten nicht fuer Shell-Umleitungen. Echter Egress-Schutz = OS-Firewall (nftables-Allowlist). //var bewusst nicht gedenied (BASE kann unter /var/www liegen).",
+  "_comment": "Fallback-Profil fuer Worker-Agents ohne eigenes Profil (wochenreport, belege-buchhaltung, rechnungssteller, mail-assistent, video-producent, ki-influencer, kommandant, markt-waechter, trading-forscher). Die untrusted-Input-Agents (content-recherche, seo-audit, seo-tiefenaudit, uptime-waechter, website-guardian) haben je ein ENGERES eigenes Profil. dontAsk laeuft headless; Deny schlaegt Allow. Pfadsyntax: //pfad = absolut, ~/pfad = Home, /pfad = relativ zur Settings-Datei, pfad = relativ zum cwd (BASE). Schreiben (Write/Edit) nur in die Output-Ordner der Agents laut .claude/agents/<id>.md (Liste in allow); alles andere verweigert dontAsk, kritische Pfade (.env, config, bin, dashboard, .claude, Systemverzeichnisse, Home) sind zusaetzlich gedenied (config/** ist nicht pauschal gedenied, weil rechnungssteller config/rechnung.json und kommandant config/schedule.json schreiben; dort gilt die enge Allow-Liste, config/server.json und config/backups.json sind gesperrt). Secret-Reads (.env, ~/.ssh, ~/.claude, /proc, *.pem) gesperrt. EHRLICHE GRENZE: Bash ist weit offen und curl bleibt erlaubt (uptime/measure/discord brauchen es) -> Deny-Liste ist KEIN vollstaendiger Exfil-Schutz und Write-Regeln gelten nicht fuer Shell-Umleitungen. Echter Egress-Schutz = OS-Firewall (nftables-Allowlist). //var bewusst nicht gedenied (BASE kann unter /var/www liegen). ACHTUNG: kein Deny auf ~/** oder ~/* -- auf dem Server liegt BASE im Home des Service-Users (/var/www/vhosts/naschberger.info/agents.naschberger.info), das wuerde alle Writes still sperren; darum nur gezielte Home-Dateien.",
   "permissions": {
     "defaultMode": "dontAsk",
     "allow": [
@@ -113,8 +113,6 @@
       "Write(//boot/**)",
       "Edit(//sbin/**)",
       "Write(//sbin/**)",
-      "Edit(~/**)",
-      "Write(~/**)",
       "Edit(.env)",
       "Write(.env)",
       "Edit(**/.env*)",
@@ -137,7 +135,19 @@
       "Read(~/.claude/**)",
       "Read(~/.claude.json)",
       "Read(~/.ssh/**)",
-      "Read(**/*.pem)"
+      "Read(**/*.pem)",
+      "Edit(~/.claude/**)",
+      "Write(~/.claude/**)",
+      "Edit(~/.claude.json)",
+      "Write(~/.claude.json)",
+      "Edit(~/.ssh/**)",
+      "Write(~/.ssh/**)",
+      "Edit(~/.bashrc)",
+      "Write(~/.bashrc)",
+      "Edit(~/.profile)",
+      "Write(~/.profile)",
+      "Edit(~/.config/**)",
+      "Write(~/.config/**)"
     ]
   }
 }

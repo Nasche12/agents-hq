@@ -28,7 +28,7 @@ test('default.json: kein pauschales Write/Edit, Secrets gesperrt', () => {
   const p = load('default.json');
   assert.ok(!p.allow.includes('Write') && !p.allow.includes('Edit'), 'pauschales Write/Edit');
   for (const r of ['Read(.env)', 'Read(**/.env*)', 'Read(//proc/**)', 'Read(~/.claude/**)', 'Read(~/.claude.json)',
-    'Read(~/.ssh/**)', 'Read(**/*.pem)', 'Write(//etc/**)', 'Edit(//etc/**)', 'Write(//root/**)', 'Write(~/**)']) {
+    'Read(~/.ssh/**)', 'Read(**/*.pem)', 'Write(//etc/**)', 'Edit(//etc/**)', 'Write(//root/**)', 'Write(~/.ssh/**)', 'Write(~/.claude/**)']) {
     assert.ok(p.deny.includes(r), `default.json deny fehlt ${r}`);
   }
 });
@@ -40,3 +40,25 @@ test('seo-audit.json: keine weiten Bash-Rechte (LLM-Modus)', () => {
   }
   assert.ok(p.deny.includes('Bash(curl:*)') && p.deny.includes('Bash(*>*)'));
 });
+
+/* Server-Realitaet: BASE liegt im Home des Service-Users. Kein Deny darf Allow-Schreibpfade unter BASE treffen. */
+const esc = s => s.replace(/[.+^$()|{}[\]\\?]/g, '\\$&');
+const rx = g => new RegExp('^' + g.split('**/').map(x => x.split('**').map(y => y.split('*')
+  .map(esc).join('[^/]*')).join('.*')).join('(?:.*/)?') + '$');
+const HOME = '/var/www/vhosts/fake', BASE = HOME + '/agents.naschberger.info';
+const abs = pat => pat.startsWith('~/') ? HOME + pat.slice(1) : pat.startsWith('//') ? pat.slice(1)
+  : pat.startsWith('/') ? BASE + pat : BASE + '/' + pat.replace(/^\.\//, '');
+const SAMPLES = ['trading-bot/state/news_risk.json', 'master/lage.md', 'config/schedule.json', 'seo/monat-2026-12/x.md',
+  'reports/2026-KW45/report.md', 'belege/daten.js'];
+for (const f of files) {
+  test(`${f}: kein Deny trifft Schreibpfade unter BASE (BASE im Home)`, () => {
+    const p = load(f);
+    const wr = (p.allow || []).map(r => /^(?:Write|Edit)\((.*)\)$/.exec(r)).filter(Boolean).map(m => m[1]);
+    const dn = (p.deny || []).map(r => /^(?:Write|Edit)\((.*)\)$/.exec(r)).filter(Boolean).map(m => m[1]);
+    for (const s of SAMPLES) {
+      const full = BASE + '/' + s;
+      if (!wr.some(a => rx(abs(a)).test(full))) continue;   // vom Profil gar nicht erlaubt
+      for (const d of dn) assert.ok(!rx(abs(d)).test(full), `${f}: Deny "${d}" sperrt erlaubten Pfad ${s}`);
+    }
+  });
+}
