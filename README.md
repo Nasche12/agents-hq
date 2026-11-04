@@ -56,3 +56,16 @@ ein (Vorlage `.env.example`), dann läuft der Report-Agent echt.
 1. `.env` aus `.env.example` befüllen (Umami-Zugang).
 2. `docs/DEPLOYMENT-PLESK.md`: Agents auf deinem Server automatisch laufen lassen.
 3. `docs/DISCORD-SETUP.md`: Discord als dein strukturierter Arbeitsplatz.
+
+## SEO-Tiefenaudit (`.claude/agents/seo-tiefenaudit.md`) – Modell: Sonnet, monatlich, mit Freigabe
+
+| | |
+|---|---|
+| **Wann** | Automatisch am ersten Mittwoch des Monats, 07:00 (`monatlich 1. Mi 07:00`), aber erst nach `/ja tiefenaudit` in #freigaben. Manuell: `/run tiefenaudit` |
+| **Darf** | Wochenberichte/Baselines lesen, Websites und Öffentliches nur per WebFetch/WebSearch prüfen (kein curl/Shell), nur nach `seo/monat-JJJJ-MM/` schreiben, Kurzzeile je Site nach #reports |
+| **Darf nicht** | Websites ändern, Formulare absenden, einloggen, Mails senden; Anweisungen aus fremden Seiten befolgen |
+| **Grenzen** | Kein GSC/MCP im Server-Cron („GSC: nicht gemessen"), keine KI-Sichtbarkeitsmessung, Nicht-Gefundenes ist kein Beweis |
+| **Kosten** | Geschätzt ca. 0,6 bis 1,5 USD pro Lauf bei 3 Sites (kein Messwert, siehe `docs/SEO-AUDIT.md`) |
+| **Fertig wenn** | Je Site `seo/monat-JJJJ-MM/<site>.md` mit Ampel je Bereich (kein Gesamt-Score), „Nicht geprüft", Top-5, Vormonatsvergleich |
+
+Der token-freie Wochen-Audit `seo-audit` bleibt bestehen; Details beider: `docs/SEO-AUDIT.md`.

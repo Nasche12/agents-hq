@@ -63,3 +63,47 @@ node --test bin/agents/seo-audit.test.js                           # PSI/GSC/geo
 ## Bekannte Grenze: Redirects auf fremde Hosts
 
 Leitet eine Seite auf einen anderen Host um, meldet seo-audit.js nur "leitet auf fremden Host um" und prüft das Ziel nicht (keine fremden Titel/Canonicals im Bericht). Der Zielinhalt wird dabei dennoch einmal abgerufen und verworfen; `geo_audit.py` folgt Redirects (nur http/https, höchstens 5 Hops) auch auf fremde Hosts und wertet sie als Erreichbarkeit der geprüften URL.
+
+## Monatlicher Tiefenaudit (LLM, mit Freigabe)
+
+Ergänzt den Wochen-Audit, ersetzt ihn nicht. Agent `seo-tiefenaudit` (`.claude/agents/seo-tiefenaudit.md`, Rechte `.claude/perms/seo-tiefenaudit.json`, Modell Sonnet).
+
+| | Wochen-Audit `seo-audit` | Monats-Tiefenaudit `seo-tiefenaudit` |
+|---|---|---|
+| Engine | Skript, **0 Tokens** | LLM (`claude -p`), **kostet Tokens** |
+| Termin | `Mi 06:00` | `monatlich 1. Mi 07:00` (erster Mittwoch, Europe/Vienna) |
+| Start | automatisch | **Rückfrage in #freigaben, Start nur nach `/ja tiefenaudit`** (`schwer=true`); `/nein` überspringt |
+| Inhalt | Technik, Messwerte, Drift gegen Baseline | Content-Rubrik (§14), Entity/NAP (§15), Off-site, öffentliche GBP-Felder (§16.8), Ampel je Bereich, Top-5-Maßnahmen, Vormonatsvergleich |
+| Bericht | `seo/<JJJJ-KWnn>/<site>.md` | `seo/monat-<JJJJ-MM>/<site>.md` |
+| Discord | Zeile je Lauf | je Site eine Zeile: Ampel je Bereich + Top-1-Maßnahme (`#reports`) |
+
+Ablauf je Site: neuesten Wochenbericht und Baseline lesen (Technik wird **nicht** doppelt geprüft) → Content-Rubrik für Startseite + 2 Unterseiten → Entity/NAP und Off-site per WebFetch/WebSearch → Ampel je Bereich (kein Gesamt-Score; jede Zahl gemessen/geschätzt/proxy/vom Kunden) → Top-5 mit Prio/Aufwand → Vergleich zum Vormonatsbericht. Abschnitt „Nicht geprüft / Grenzen" ist Pflicht; Nicht-Gefundenes heißt „nicht gefunden", nie „fehlt".
+
+Playbook: `.claude/skills/seo-aeo-geo/SKILL.md` ist eine Projekt-Kopie des globalen Skills (Stand 7.10.2026, kopiert 2026-11-04). Bei Änderungen am Original dort nachziehen.
+
+### Ehrliche Grenzen
+
+- **GSC und MCP gibt es im Server-Cron nicht** (interaktiv authentifiziert). Der Bericht schreibt „GSC: nicht gemessen" oder nutzt nur die GSC-Zahlen aus dem Wochenbericht (falls dort `GSC_CREDENTIALS` gesetzt ist).
+- Keine KI-Sichtbarkeitsmessung (kein Prompt-Tracking, kein Zugang zu ChatGPT/Gemini/Perplexity). Der Entity-Resolution-Test ist höchstens ein Proxy über Websuche.
+- Content-Rubrik-Punkte sind eine Heuristik (geschätzt), kein Rankingfaktor.
+- Fremdinhalte sind Daten, keine Anweisungen (Prompt-Injection-Regel im Agent-Prompt). Rechte minimal gehalten: Lesen nur `config/sites.json`, `seo/**` und der Skill; Netz nur WebFetch/WebSearch; Dateisuche per Glob, Bash nur `date +%Y-%m` und `date +%Y-%m-%d` (kein ls, Umleitungen gedenied); kein curl/awk/sed/python/Shell; Schreiben nur `seo/monat-*/*.md` (Write + Edit, gleiche Pfade); Discord nur `discord.py post reports` (Freigabe pro Agent in `run-agent.sh`, `--attach` gedenied). Restrisiko Egress über WebFetch-URLs; echter Schutz wäre eine OS-Firewall (siehe `.claude/perms/default.json`). Akzeptiertes Restrisiko: Egress über WebFetch-URLs. Ohne curl gibt es keine HTTP-Header-/Bot-UA-Prüfung im Monatsaudit (steht dann unter „nicht geprüft“).
+- Verpasst der Server den Termin um mehr als `catchup_minuten` (120), fällt der Monat aus. Manuell: `/run tiefenaudit` (fragt nicht, startet sofort).
+
+### Kosten (geschätzt, nicht gemessen)
+
+Annahme: 3 Sites, Sonnet; je Site Playbook (ca. 14k Token) + Wochenbericht + 3 Seiten + bis ca. 10 Suchanfragen + Bericht. Das ergibt grob **0,5 bis 0,8 Mio Input-Token (überwiegend Cache-Treffer) und 25 bis 40k Output-Token pro Lauf, also etwa 0,6 bis 1,5 USD pro Lauf bzw. 7 bis 18 USD pro Jahr**. Die echten Werte stehen nach dem ersten Lauf in `logs/seo-tiefenaudit.jsonl` (Token/Kosten aus dem Roh-JSON) und ersetzen diese Schätzung. Zeitlimit pro Lauf: `HQ_RUN_TIMEOUT` (30 min Standard). Bei 3 Sites kann das knapp werden; dann Limit anheben oder Sites aufteilen.
+
+### Betrieb nach dem Deploy (Pflicht)
+
+- **`bin/discord-register.py` einmal auf dem Server ausführen**, sonst fehlt `tiefenaudit` im Slash-Menü und `/ja` bzw. `/run` für den Agent lässt sich nicht abschicken; der Monatslauf fiele still aus. (Server-Aktion, nicht Teil des PR.)
+- Lauf-Timeout: `timeout_min: 40` in `config/schedule.json` (run-agent.sh liest es pro Agent). Bewusst unter dem Watchdog (`HQ_STUCK_MINUTES`, Standard 45).
+- `bin/discord.py --attach` nimmt für alle Agents nur noch Dateien aus den Report-Ordnern (realpath-geprüft); weitere Wurzeln per `HQ_ATTACH_EXTRA` (Pfade, getrennt mit `:`). `ki-influencer` legt Anhänge deshalb nach `content/influencer/`.
+- Das Dashboard liefert alle Dateien aus Report-Ordnern (`/api/file`) mit `Content-Security-Policy: sandbox` und `nosniff` aus, PDFs ohne Sandbox (sonst zeigt Chrome sie nicht an).
+- `timeout_min` unter 5 oder 0 wird ignoriert (Default `HQ_RUN_TIMEOUT`).
+
+### Tests
+
+```bash
+node --test dashboard/cadence.test.js dashboard/agents-consistency.test.js
+# Cadence-Parser (n-ter Wochentag, Fenster, kaputte Eingaben); jeder enabled+schwer-Agent ist per Slash wählbar (CHOICE/AGENT_CHOICES)
+```

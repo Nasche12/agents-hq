@@ -34,6 +34,7 @@ const AGENTS_CFG=[
  {id:'uptime-waechter',   name:'Uptime-Wächter',      short:'UPTIME',   cat:'monitoring',accent:'#5bd9a0',root:'uptime',    icon:'🛡️',role:'Uptime-Monitoring'},
  {id:'website-guardian',  name:'Website-Guardian',    short:'GUARDIAN', cat:'monitoring',accent:'#6ee7ff',root:'guardian',  icon:'🔬',role:'Website-Tiefencheck'},
  {id:'seo-audit',         name:'SEO-Audit',           short:'SEO',      cat:'monitoring',accent:'#7cc4ff',root:'seo',       icon:'🔎',role:'SEO-Audit'},
+ {id:'seo-tiefenaudit',  name:'SEO-Tiefenaudit',     short:'SEO-T',    cat:'monitoring',accent:'#9ad7ff',root:'seo',       icon:'🧭',role:'Monatlicher SEO/AEO/GEO-Tiefenaudit'},
  {id:'server-waechter',   name:'Server-Wächter',      short:'SERVER',   cat:'monitoring',accent:'#8f9bd0',root:'server',    icon:'🐧',role:'Linux server monitoring'},
  {id:'backup-auditor',    name:'Backup-Auditor',      short:'BACKUP',   cat:'monitoring',accent:'#c7f2a4',root:'backup',    icon:'💾',role:'Backup-Prüfung'},
  {id:'mail-assistent',    name:'Mail-Assistent',      short:'MAIL',     cat:'office',    accent:'#54c8e0',root:'mail',      icon:'✉️',role:'Inbox-Triage'}
@@ -2394,7 +2395,7 @@ function select(id){openAgent(id);}
 
 /* ---- Dokumente: jeder Bot schreibt in einen Report-Root; Dateien direkt oeffnbar ---- */
 const AGENT_ROOT={ 'wochenreport':'reports','content-recherche':'content','belege-buchhaltung':'belege',
- 'uptime-waechter':'uptime','seo-audit':'seo','rechnungssteller':'rechnungen','server-waechter':'server',
+ 'uptime-waechter':'uptime','seo-audit':'seo','seo-tiefenaudit':'seo','rechnungssteller':'rechnungen','server-waechter':'server',
  'mail-assistent':'mail','video-producent':'video','ki-influencer':'influencer' };
 let REPORTS=null;                     // Cache der /api/reports-Liste
 const fileHref=rel=>'/api/file?p='+encodeURIComponent(rel);

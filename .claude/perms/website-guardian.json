@@ -34,7 +34,7 @@
       "Bash(wget:*)", "Bash(nc:*)", "Bash(ncat:*)", "Bash(netcat:*)", "Bash(socat:*)",
       "Bash(ssh:*)", "Bash(scp:*)", "Bash(sftp:*)", "Bash(telnet:*)", "Bash(ftp:*)", "Bash(rsync:*)",
       "Bash(node:*)", "Bash(python:*)", "Bash(python3:*)", "Bash(perl:*)", "Bash(ruby:*)", "Bash(php:*)",
-      "Edit(/etc/**)", "Write(/etc/**)", "Edit(/root/**)", "Write(/root/**)", "Write(/usr/**)", "Write(/var/**)"
+      "Edit(//etc/**)", "Write(//etc/**)", "Edit(//root/**)", "Write(//root/**)", "Write(//usr/**)"
     ]
   }
 }

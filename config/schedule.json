@@ -1,5 +1,5 @@
 {
-  "_hinweis": "Zentraler Zeitplan aller Agents. Zeitbasis = 'zeitzone' (der Scheduler in server.js rechnet zeitzonen-fest via Intl, unabhaengig von der Server-TZ). cadence: 'Fr 08:00' (Wochentag+Uhrzeit) | '06:00' (taeglich) | 'alle 60 min' (Intervall, an der Uhr ausgerichtet) | 'auf Abruf'. engine: 'script' -> token-freies Node-Skript (bin/agents/<id>.js) statt claude -p (0 Tokens); ohne engine -> LLM (kostet Tokens). schwer=true -> Auto-Start nur nach Rueckfrage in #freigaben (/ja bzw. /nein). enabled=false -> kein Termin. channel = Themen-Kanal fuer knappe Einzeiler. quiet=true -> Routine-Erfolge nicht posten, nur Probleme. catchup_minuten = Nachhol-Fenster: verpasste Wochentag/Uhrzeit-Laeufe feuern nur, wenn der Server innerhalb dieser Zeit nach der Planzeit laeuft.",
+  "_hinweis": "Zentraler Zeitplan aller Agents. Zeitbasis = 'zeitzone' (der Scheduler in server.js rechnet zeitzonen-fest via Intl, unabhaengig von der Server-TZ). cadence: 'Fr 08:00' (Wochentag+Uhrzeit) | '06:00' (taeglich) | 'alle 60 min' (Intervall, an der Uhr ausgerichtet) | 'auf Abruf' | 'monatlich 1. Mi 07:00' (n-ter Wochentag des Monats, n=1-4, Mo/Di/Mi/Do/Fr/Sa/So; 1. Mi = Tag 1-7; kaputte Monats-Cadence feuert nie). engine: 'script' -> token-freies Node-Skript (bin/agents/<id>.js) statt claude -p (0 Tokens); ohne engine -> LLM (kostet Tokens). schwer=true -> Auto-Start nur nach Rueckfrage in #freigaben (/ja bzw. /nein). enabled=false -> kein Termin. channel = Themen-Kanal fuer knappe Einzeiler. quiet=true -> Routine-Erfolge nicht posten, nur Probleme. catchup_minuten = Nachhol-Fenster: verpasste Wochentag/Uhrzeit- und Monats-Laeufe feuern nur, wenn der Server innerhalb dieser Zeit nach der Planzeit laeuft.",
   "_status": "Token-FREIE Monitore laufen automatisch (engine=script -> 0 Tokens): uptime-waechter (alle 15 min), server-waechter (alle 60 min), seo-audit (Mi), website-guardian (So). backup-auditor ist token-frei, aber enabled=false bis config/backups.json Ziele hat. Alle KOSTENPFLICHTIGEN LLM-Agents bleiben enabled=false (on demand).",
   "zeitzone": "Europe/Vienna",
   "catchup_minuten": 120,
@@ -70,6 +70,16 @@
       "schwer": false,
       "channel": "reports",
       "quiet": false
+    },
+    "seo-tiefenaudit": {
+      "cadence": "monatlich 1. Mi 07:00",
+      "enabled": true,
+      "schwer": true,
+      "model": "sonnet",
+      "timeout_min": 40,
+      "channel": "reports",
+      "quiet": false,
+      "_hinweis": "MONATLICHER LLM-Tiefenaudit (SEO/AEO/GEO, Content-Rubrik, Entity/NAP, Off-site), kostet Tokens (geschaetzt ca. 0,6-1,5 USD pro Lauf bei 3 Sites, siehe docs/SEO-AUDIT.md). Laeuft am ersten Mittwoch um 07:00, nach dem woechentlichen seo-audit (06:00), auf dessen Bericht er aufbaut. schwer=true -> Start erst nach /ja in #freigaben; ohne Antwort passiert nichts, verpasst der Server das 120-min-Fenster, faellt der Monat aus (manuell: /run tiefenaudit). Ergaenzt den token-freien seo-audit, ersetzt ihn nicht. Keine GSC/MCP im Cron. Slash-Menue: discord-register.py muss nach dem Deploy einmal auf dem Server laufen, sonst ist /ja und /run tiefenaudit nicht waehlbar. timeout_min=40 liegt bewusst unter dem Watchdog (HQ_STUCK_MINUTES 45)."
     },
     "rechnungssteller": {
       "cadence": "auf Abruf",
