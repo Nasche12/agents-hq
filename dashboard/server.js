@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
+const { monthlyDue } = require('./cadence');
 
 const BASE = path.resolve(__dirname, '..');
 const WEB = __dirname;
@@ -54,6 +55,7 @@ const AGENTS = {
   'server-waechter': 'Nutze den Subagent server-waechter und prüfe jetzt READ-ONLY die Server-Gesundheit (config/server.json). Nichts ändern, nur melden.',
   'markt-waechter': 'Nutze den Subagent markt-waechter und stufe die aktuelle Marktlage auf 0-3 ein. Schreibe AUSSCHLIESSLICH nach trading-bot/state/news_risk.json im Format {"ts","level","summary","reasons","sources"} (ts = aktuelle UTC-Zeit mit Z, level = Ganzzahl 0-3). Keine Order, kein Symbol, keine Richtung.',
   'trading-forscher': 'Nutze den Subagent trading-forscher und mach die wöchentliche Selbstverbesserung des Trading-Bots (Evidenz + Forensik lesen, 1-5 Hypothesen, token-frei bewerten lassen). Nur Vorschläge; über die Allowlist urteilt der Optimizer.',
+  'seo-tiefenaudit': 'Nutze den Subagent seo-tiefenaudit und mach den monatlichen SEO/AEO/GEO-Tiefenaudit aller Sites aus config/sites.json (nur lesen, nichts an den Websites ändern).',
   'trading-lernlauf': 'token-freier Lernlauf (engine=script) -- dieser Prompt wird nicht genutzt.',
   'mail-assistent': 'Nutze den Subagent mail-assistent und triagiere den Gmail-Posteingang: sortieren, zusammenfassen, Antwort-Entwürfe anlegen. Nichts versenden.',
   'video-producent': 'Nutze den Subagent video-producent und erzeuge EIN Kurzvideo (9:16) aus der obersten offenen Content-Idee und liefere es mit Caption nach #content. Nicht selbst auf Social posten.',
@@ -652,7 +654,7 @@ const ALIAS = {
   uptime: 'uptime-waechter', erreichbarkeit: 'uptime-waechter', monitoring: 'uptime-waechter',
   guardian: 'website-guardian', website: 'website-guardian',
   backup: 'backup-auditor', backups: 'backup-auditor', sicherung: 'backup-auditor',
-  seo: 'seo-audit', audit: 'seo-audit', rechnung: 'rechnungssteller', rechnungen: 'rechnungssteller',
+  tiefenaudit: 'seo-tiefenaudit', seo: 'seo-audit', audit: 'seo-audit', rechnung: 'rechnungssteller', rechnungen: 'rechnungssteller',
   influencer: 'ki-influencer', persona: 'ki-influencer'
 };
 function matchAgent(s) {
@@ -905,6 +907,11 @@ function chanOf(id, sched) { return (sched[id] && sched[id].channel) || D.log; }
 function due(id, cad, z, catchup) {
   cad = (cad || '').toLowerCase().trim();
   if (!cad || cad.includes('abruf')) return false;
+  const mon = monthlyDue(cad, z, catchup);                                           // 'monatlich 1. Mi 07:00'
+  if (mon !== null) {
+    if (!mon || fires[id] === z.date) return false;
+    fires[id] = z.date; saveFires(); return true;
+  }
   let m;
   if (m = cad.match(/alle\s+(\d+)\s*(min|minuten|h|std|stunde|stunden)/)) {        // Intervall, an der Uhr ausgerichtet
     const ivMin = (+m[1]) * (m[2][0] === 'h' || m[2][0] === 's' ? 60 : 1);

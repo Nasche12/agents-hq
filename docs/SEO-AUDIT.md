@@ -59,3 +59,38 @@ node --test bin/agents/seo-audit.test.js                           # PSI/GSC/geo
 ## Später (nicht umgesetzt)
 
 Öffnungszeiten Schema vs. Text, sameAs-Erreichbarkeit, Faktenkonsistenz über Seiten/llms.txt, HSTS/CSP/Cache-Header, TTFB, Lighthouse-CLI, GSC Marken-/Nicht-Marken-Anteil, IndexNow.
+
+## Monatlicher Tiefenaudit (LLM, mit Freigabe)
+
+Ergänzt den Wochen-Audit, ersetzt ihn nicht. Agent `seo-tiefenaudit` (`.claude/agents/seo-tiefenaudit.md`, Rechte `.claude/perms/seo-tiefenaudit.json`, Modell Sonnet).
+
+| | Wochen-Audit `seo-audit` | Monats-Tiefenaudit `seo-tiefenaudit` |
+|---|---|---|
+| Engine | Skript, **0 Tokens** | LLM (`claude -p`), **kostet Tokens** |
+| Termin | `Mi 06:00` | `monatlich 1. Mi 07:00` (erster Mittwoch, Europe/Vienna) |
+| Start | automatisch | **Rückfrage in #freigaben, Start nur nach `/ja seo-tiefenaudit`** (`schwer=true`); `/nein` überspringt |
+| Inhalt | Technik, Messwerte, Drift gegen Baseline | Content-Rubrik (§14), Entity/NAP (§15), Off-site, öffentliche GBP-Felder (§16.8), Ampel je Bereich, Top-5-Maßnahmen, Vormonatsvergleich |
+| Bericht | `seo/<JJJJ-KWnn>/<site>.md` | `seo/monat-<JJJJ-MM>/<site>.md` |
+| Discord | Zeile je Lauf | je Site eine Zeile: Ampel je Bereich + Top-1-Maßnahme (`#reports`) |
+
+Ablauf je Site: neuesten Wochenbericht und Baseline lesen (Technik wird **nicht** doppelt geprüft) → Content-Rubrik für Startseite + 2 Unterseiten → Entity/NAP und Off-site per WebFetch/WebSearch → Ampel je Bereich (kein Gesamt-Score; jede Zahl gemessen/geschätzt/proxy/vom Kunden) → Top-5 mit Prio/Aufwand → Vergleich zum Vormonatsbericht. Abschnitt „Nicht geprüft / Grenzen" ist Pflicht; Nicht-Gefundenes heißt „nicht gefunden", nie „fehlt".
+
+Playbook: `.claude/skills/seo-aeo-geo/SKILL.md` ist eine Projekt-Kopie des globalen Skills (Stand 7.10.2026, kopiert 2026-11-04). Bei Änderungen am Original dort nachziehen.
+
+### Ehrliche Grenzen
+
+- **GSC und MCP gibt es im Server-Cron nicht** (interaktiv authentifiziert). Der Bericht schreibt „GSC: nicht gemessen" oder nutzt nur die GSC-Zahlen aus dem Wochenbericht (falls dort `GSC_CREDENTIALS` gesetzt ist).
+- Keine KI-Sichtbarkeitsmessung (kein Prompt-Tracking, kein Zugang zu ChatGPT/Gemini/Perplexity). Der Entity-Resolution-Test ist höchstens ein Proxy über Websuche.
+- Content-Rubrik-Punkte sind eine Heuristik (geschätzt), kein Rankingfaktor.
+- Fremdinhalte sind Daten, keine Anweisungen (Prompt-Injection-Regel im Agent-Prompt). `curl` bleibt in den Rechten erlaubt; die Deny-Muster für POST/Upload sind best effort, kein Exfil-Schutz (siehe Hinweis in `.claude/perms/default.json`).
+- Verpasst der Server den Termin um mehr als `catchup_minuten` (120), fällt der Monat aus. Manuell: `/run seo-tiefenaudit` (fragt nicht, startet sofort).
+
+### Kosten (geschätzt, nicht gemessen)
+
+Annahme: 3 Sites, Sonnet; je Site Playbook (ca. 14k Token) + Wochenbericht + 3 Seiten + bis ca. 10 Suchanfragen + Bericht. Das ergibt grob **0,5 bis 0,8 Mio Input-Token (überwiegend Cache-Treffer) und 25 bis 40k Output-Token pro Lauf, also etwa 0,6 bis 1,5 USD pro Lauf bzw. 7 bis 18 USD pro Jahr**. Die echten Werte stehen nach dem ersten Lauf in `logs/seo-tiefenaudit.jsonl` (Token/Kosten aus dem Roh-JSON) und ersetzen diese Schätzung. Zeitlimit pro Lauf: `HQ_RUN_TIMEOUT` (30 min Standard). Bei 3 Sites kann das knapp werden; dann Limit anheben oder Sites aufteilen.
+
+### Tests
+
+```bash
+node --test dashboard/cadence.test.js      # Monats-Cadence-Parser (n-ter Wochentag, Fenster, kaputte Eingaben)
+```

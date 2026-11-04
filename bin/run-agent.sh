@@ -60,6 +60,7 @@ case "$AGENT" in
   uptime-waechter)     ALIAS=uptime ;;
   website-guardian)    ALIAS=guardian ;;
   seo-audit)           ALIAS=seo ;;
+  seo-tiefenaudit)     ALIAS=seo-tiefenaudit ;;
   backup-auditor)      ALIAS=backup ;;
   rechnungssteller)    ALIAS=rechnung ;;
   server-waechter)     ALIAS=server ;;
