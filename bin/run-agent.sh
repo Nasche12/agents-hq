@@ -49,7 +49,7 @@ PERM_ARGS+=(--allowedTools "Bash($BASE/bin/status-update.sh *)" "Bash($DPAT)")
 # timeout schickt erst TERM, nach 30 s KILL. Fehlt 'timeout', läuft es ungebremst (mit Hinweis).
 # Pro Agent via schedule.json "timeout_min" (z. B. seo-tiefenaudit 40); sonst HQ_RUN_TIMEOUT / 1800 s.
 TMIN="$("$NODE" "$HQ" cfg "$SCHED" "$AGENT" timeout_min 2>/dev/null)"
-case "$TMIN" in ''|*[!0-9]*) ;; *) HQ_RUN_TIMEOUT=$((TMIN * 60)) ;; esac
+case "$TMIN" in ''|*[!0-9]*) ;; *) [ "$TMIN" -ge 5 ] && HQ_RUN_TIMEOUT=$((TMIN * 60)) ;; esac   # 0 oder <5 min -> Default
 TIMEOUT_PFX=""
 if _TB="$(command -v timeout 2>/dev/null)"; then TIMEOUT_PFX="$_TB -k 30 ${HQ_RUN_TIMEOUT:-1800}"
 else echo "run-agent: 'timeout' nicht gefunden – Lauf ohne Hänge-Schutz" >&2; fi

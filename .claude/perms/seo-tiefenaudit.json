@@ -1,16 +1,15 @@
 {
-  "_comment": "seo-tiefenaudit (monatlich, LLM, schwer): liest Wochenberichte/Baseline und prueft fremde Sites NUR per WebFetch/WebSearch. Prompt-Injection ist der Hauptrisikofall (untrusted Webinhalt), daher bewusst minimal: Bash nur ls und date; kein curl (-o/-K/file://), kein awk/sed (system()/e/w), kein python (geo_audit hat --save-baseline mit freiem Pfad; geo-Daten kommen aus Wochenbericht + Baseline), keine Shells. Schreiben nur seo/monat-*/. Deny schlaegt Allow. Status/Discord-Helfer erlaubt run-agent.sh zur Laufzeit. Restrisiko: Netz-Egress ueber WebFetch-URLs; echter Schutz = OS-Firewall (siehe default.json). Lesen nur config/sites.json, seo/** und den Skill (Read-Regeln gelten best effort auch fuer Grep/Glob). Absolute Pfade in deny mit //-Form, ~ = Home. Discord: run-agent.sh erlaubt fuer diesen Agent nur 'discord.py post reports *'; --attach ist zusaetzlich gedenied und in discord.py auf Report-Roots begrenzt.",
+  "_comment": "seo-tiefenaudit (monatlich, LLM, schwer): liest Wochenberichte/Baseline und prueft fremde Sites NUR per WebFetch/WebSearch. Prompt-Injection ist der Hauptrisikofall (untrusted Webinhalt), daher bewusst minimal: Bash nur ls und date; kein curl (-o/-K/file://), kein awk/sed (system()/e/w), kein python (geo_audit hat --save-baseline mit freiem Pfad; geo-Daten kommen aus Wochenbericht + Baseline), keine Shells. Schreiben nur seo/monat-*/. Deny schlaegt Allow. Status/Discord-Helfer erlaubt run-agent.sh zur Laufzeit. Restrisiko: Netz-Egress ueber WebFetch-URLs; echter Schutz = OS-Firewall (siehe default.json). Lesen nur config/sites.json, seo/** und den Skill (Read-Regeln gelten best effort auch fuer Grep/Glob). Absolute Pfade in deny mit //-Form, ~ = Home. Discord: run-agent.sh erlaubt fuer diesen Agent nur 'discord.py post reports *'; --attach ist zusaetzlich gedenied und in discord.py auf Report-Roots begrenzt. Runde 2: Glob statt ls (kein Bash-ls, da * auch Umleitungen matcht), kein Edit, Bash(*>*) gedenied; //var bewusst nicht gedenied (BASE kann unter /var/www liegen).",
   "permissions": {
     "defaultMode": "dontAsk",
     "allow": [
       "Read(config/sites.json)",
       "Read(seo/**)",
       "Read(.claude/skills/seo-aeo-geo/**)",
+      "Glob",
       "WebFetch",
       "WebSearch",
       "Write(seo/monat-*/*.md)",
-      "Edit(seo/monat-*/*.md)",
-      "Bash(ls -d seo/monat-*)",
       "Bash(date +%Y-%m)",
       "Bash(date +%Y-%m-%d)"
     ],
@@ -79,7 +78,15 @@
       "Read(//home/**)",
       "Read(~/.claude/**)",
       "Read(~/.claude.json)",
-      "Bash(*--attach*)"
+      "Bash(*--attach*)",
+      "Bash(*>*)",
+      "Read(mail/**)",
+      "Read(belege/**)",
+      "Read(rechnungen/**)",
+      "Read(logs/**)",
+      "Read(config/server.json)",
+      "Read(config/backups.json)",
+      "Read(.env)"
     ]
   }
 }

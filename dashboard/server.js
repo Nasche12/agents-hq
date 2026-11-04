@@ -572,12 +572,9 @@ const server = http.createServer((req, res) => {
     const abs = safeFile(u.searchParams.get('p'));
     if (!abs) return send(res, 404, { error: 'nicht gefunden' });
     const type = MIME[path.extname(abs).toLowerCase()] || 'application/octet-stream';
-    const body = fs.readFileSync(abs);
-    if (type.startsWith('text/html')) {            // Agent-Output ist untrusted: HTML nur sandboxed ausliefern (kein Script, eigene Origin)
-      res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store', 'Content-Security-Policy': 'sandbox', 'X-Content-Type-Options': 'nosniff' });
-      return res.end(body);
-    }
-    return send(res, 200, body, type);
+    // Agent-Output ist untrusted: JEDE Datei (html, svg, ...) sandboxed + ohne MIME-Sniffing ausliefern
+    res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store', 'Content-Security-Policy': 'sandbox', 'X-Content-Type-Options': 'nosniff' });
+    return res.end(fs.readFileSync(abs));
   }
 
   /* ---------- statisch ---------- */
