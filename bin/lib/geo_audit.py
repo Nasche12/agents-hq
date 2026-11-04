@@ -1,5 +1,5 @@
 # Herkunft: Kopie von ~/.claude/skills/seo-geo-tools/scripts/geo_audit.py (Skill seo-geo-tools, Stand 2026-10-07, v1.1).
-# Lokale Haertung (agents-hq, Opus-Review H1): fetch() nur http/https; Sitemap-/Seiten-URLs nur Site-Host oder www-Variante (same_site). Sonst unveraendert. Aufruf aus bin/agents/seo-audit.js (python3 -I, stdlib, >= 3.9).
+# Lokale Haertung (agents-hq, Opus-Review H1/M-A/M-B): Opener nur HTTP(S), Schema in jedem Redirect-Hop, fetch() nur http/https; Sitemap-/Seiten-URLs nur Site-Host oder www-Variante (same_site). Sonst unveraendert. Aufruf aus bin/agents/seo-audit.js (python3 -I, stdlib, >= 3.9).
 #!/usr/bin/env python3
 """
 geo_audit.py - dependency-free SEO/AEO/GEO quick audit (Python stdlib only, 3.9+).
@@ -68,14 +68,37 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 _ctx = ssl.create_default_context()
-_opener = urllib.request.build_opener(NoRedirect, urllib.request.HTTPSHandler(context=_ctx))
+# Eigener Opener NUR mit HTTP(S): build_opener() haette File-/FTP-/Data-Handler (file:// per Redirect lesbar).
+_opener = urllib.request.OpenerDirector()
+for _h in (urllib.request.HTTPHandler(), urllib.request.HTTPSHandler(context=_ctx), urllib.request.HTTPDefaultErrorHandler(),
+           urllib.request.HTTPErrorProcessor(), NoRedirect()):
+    _opener.add_handler(_h)
+
+
+def _port(p) -> int:
+    return p.port or (443 if p.scheme == "https" else 80)
 
 
 def same_site(url: str, origin: str) -> bool:
-    """Only http(s) and the site host (or its www variant): sitemap entries are untrusted input."""
-    a, b = urllib.parse.urlparse(url), urllib.parse.urlparse(origin)
-    strip = lambda h: (h or "").lower().removeprefix("www.")
-    return a.scheme in ("http", "https") and a.scheme == b.scheme and a.port == b.port and strip(a.hostname) == strip(b.hostname)
+    """Only http(s), same scheme+port and the site host (or its www variant): sitemap entries are untrusted input."""
+    try:
+        a, b = urllib.parse.urlparse(url), urllib.parse.urlparse(origin)
+        strip = lambda h: (h or "").lower().removeprefix("www.")
+        return (a.scheme in ("http", "https") and a.scheme == b.scheme and _port(a) == _port(b)
+                and strip(a.hostname) == strip(b.hostname) != "")
+    except ValueError:  # broken port etc.
+        return False
+
+
+def same_host(url: str, origin: str) -> bool:
+    """Like same_site, but http and https of the same host are both fine (robots.txt Sitemap lines)."""
+    try:
+        a, b = urllib.parse.urlparse(url), urllib.parse.urlparse(origin)
+        strip = lambda h: (h or "").lower().removeprefix("www.")
+        ok_port = a.port is None or a.port == b.port or (a.port == (443 if a.scheme == "https" else 80))
+        return a.scheme in ("http", "https") and ok_port and strip(a.hostname) == strip(b.hostname) != ""
+    except ValueError:
+        return False
 
 
 def fetch(url: str, ua: str = DEFAULT_UA, follow: bool = True, max_redirects: int = 5, timeout: int = 20):
@@ -104,6 +127,9 @@ def fetch(url: str, ua: str = DEFAULT_UA, follow: bool = True, max_redirects: in
         if status in (301, 302, 303, 307, 308) and follow and headers.get("Location"):
             chain.append((status, cur))
             cur = urllib.parse.urljoin(cur, headers["Location"])
+            if urllib.parse.urlparse(cur).scheme not in ("http", "https"):
+                return {"status": None, "url": cur, "headers": {}, "body": b"", "redirects": chain,
+                        "error": "blocked redirect scheme", "ms": int((time.time() - t0) * 1000)}
             continue
         if headers.get("Content-Encoding", "").lower() == "gzip":
             try:
@@ -513,10 +539,15 @@ def check_robots(origin: str, rep: Report):
 
 def check_sitemap(origin: str, sitemaps: list, rep: Report, limit_children: int = 5):
     urls, lastmods, checked = [], [], []
-    queue = list(sitemaps) or [origin + "/sitemap.xml"]
+    queue = [x for x in sitemaps if same_host(x, origin)]
+    if sitemaps and not queue:
+        rep.add("medium", "Sitemap", "robots.txt Sitemap entries rejected (foreign host/scheme)", ", ".join(sitemaps)[:200],
+                "Sitemap lines must point to the own host; falling back to /sitemap.xml", origin)
+    queue = queue or [origin + "/sitemap.xml"]
+    raw_locs = []
     while queue and len(checked) < limit_children + 1:
         sm = queue.pop(0)
-        if not same_site(sm, origin):
+        if not same_host(sm, origin):
             continue
         checked.append(sm)
         r = fetch(sm)
@@ -531,24 +562,41 @@ def check_sitemap(origin: str, sitemaps: list, rep: Report, limit_children: int 
             continue
         ns = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9"}
         if root.tag.endswith("sitemapindex"):
-            queue.extend(loc.text.strip() for loc in root.findall("s:sitemap/s:loc", ns) if loc.text and same_site(loc.text.strip(), origin))
+            queue.extend(loc.text.strip() for loc in root.findall("s:sitemap/s:loc", ns) if loc.text and same_host(loc.text.strip(), origin))
         for u in root.findall("s:url", ns):
             loc = u.find("s:loc", ns)
             lm = u.find("s:lastmod", ns)
-            if loc is not None and loc.text and same_site(loc.text.strip(), origin):
-                urls.append(loc.text.strip())
-                lastmods.append(lm.text.strip() if lm is not None and lm.text else None)
-    info = {"checked": checked, "url_count": len(urls)}
+            if loc is not None and loc.text:
+                raw_locs.append(loc.text.strip())
+                if same_site(loc.text.strip(), origin):  # only these are fetched / audited
+                    urls.append(loc.text.strip())
+                    lastmods.append(lm.text.strip() if lm is not None and lm.text else None)
+    info = {"checked": checked, "url_count": len(urls), "raw_url_count": len(raw_locs)}
+    # counted on the RAW list (before same_site filtering): foreign hosts / other schemes must not vanish silently
+    foreign = []
+    insecure = []
+    for u in raw_locs:
+        try:
+            pu, po = urllib.parse.urlparse(u), urllib.parse.urlparse(origin)
+            if pu.scheme in ("http", "https") and same_host(u, origin):
+                if pu.scheme != po.scheme:
+                    insecure.append(u)
+            else:
+                foreign.append(u)
+        except ValueError:
+            foreign.append(u)
+    if foreign:
+        rep.add("high", "Sitemap", f"{len(foreign)} URLs on a different host", foreign[0],
+                "List canonical-host URLs only", origin)
+    if insecure:
+        rep.add("medium", "Sitemap", f"{len(insecure)} URLs with a different scheme than the site (not audited)", insecure[0],
+                "List canonical https:// URLs only", origin)
     if urls:
         with_lm = [x for x in lastmods if x]
         info["lastmod_share"] = round(len(with_lm) / len(urls), 2)
         if with_lm and len(set(with_lm)) == 1 and len(with_lm) > 5:
             rep.add("medium", "Sitemap", "All lastmod values identical", with_lm[0],
                     "Set lastmod only on real content changes, otherwise Google ignores it", origin)
-        foreign = [u for u in urls if urllib.parse.urlparse(u).netloc != urllib.parse.urlparse(origin).netloc]
-        if foreign:
-            rep.add("high", "Sitemap", f"{len(foreign)} URLs on a different host", foreign[0],
-                    "List canonical-host URLs only", origin)
     return urls, info
 
 

@@ -60,6 +60,10 @@ node --test bin/agents/seo-audit.test.js                           # PSI/GSC/geo
 
 Öffnungszeiten Schema vs. Text, sameAs-Erreichbarkeit, Faktenkonsistenz über Seiten/llms.txt, HSTS/CSP/Cache-Header, TTFB, Lighthouse-CLI, GSC Marken-/Nicht-Marken-Anteil, IndexNow.
 
+## Bekannte Grenze: Redirects auf fremde Hosts
+
+Leitet eine Seite auf einen anderen Host um, meldet seo-audit.js nur "leitet auf fremden Host um" und prüft das Ziel nicht (keine fremden Titel/Canonicals im Bericht). Der Zielinhalt wird dabei dennoch einmal abgerufen und verworfen; `geo_audit.py` folgt Redirects (nur http/https, höchstens 5 Hops) auch auf fremde Hosts und wertet sie als Erreichbarkeit der geprüften URL.
+
 ## Monatlicher Tiefenaudit (LLM, mit Freigabe)
 
 Ergänzt den Wochen-Audit, ersetzt ihn nicht. Agent `seo-tiefenaudit` (`.claude/agents/seo-tiefenaudit.md`, Rechte `.claude/perms/seo-tiefenaudit.json`, Modell Sonnet).
@@ -82,7 +86,7 @@ Playbook: `.claude/skills/seo-aeo-geo/SKILL.md` ist eine Projekt-Kopie des globa
 - **GSC und MCP gibt es im Server-Cron nicht** (interaktiv authentifiziert). Der Bericht schreibt „GSC: nicht gemessen" oder nutzt nur die GSC-Zahlen aus dem Wochenbericht (falls dort `GSC_CREDENTIALS` gesetzt ist).
 - Keine KI-Sichtbarkeitsmessung (kein Prompt-Tracking, kein Zugang zu ChatGPT/Gemini/Perplexity). Der Entity-Resolution-Test ist höchstens ein Proxy über Websuche.
 - Content-Rubrik-Punkte sind eine Heuristik (geschätzt), kein Rankingfaktor.
-- Fremdinhalte sind Daten, keine Anweisungen (Prompt-Injection-Regel im Agent-Prompt). Rechte minimal gehalten: Lesen nur `config/sites.json`, `seo/**` und der Skill; Netz nur WebFetch/WebSearch; Dateisuche per Glob, Bash nur `date +%Y-%m` und `date +%Y-%m-%d` (kein ls, Umleitungen gedenied); kein curl/awk/sed/python/Shell; Schreiben nur `seo/monat-*/*.md` (Write, kein Edit); Discord nur `discord.py post reports` (Freigabe pro Agent in `run-agent.sh`, `--attach` gedenied). Restrisiko Egress über WebFetch-URLs; echter Schutz wäre eine OS-Firewall (siehe `.claude/perms/default.json`). Akzeptiertes Restrisiko: Egress über WebFetch-URLs. Ohne curl gibt es keine HTTP-Header-/Bot-UA-Prüfung im Monatsaudit (steht dann unter „nicht geprüft“).
+- Fremdinhalte sind Daten, keine Anweisungen (Prompt-Injection-Regel im Agent-Prompt). Rechte minimal gehalten: Lesen nur `config/sites.json`, `seo/**` und der Skill; Netz nur WebFetch/WebSearch; Dateisuche per Glob, Bash nur `date +%Y-%m` und `date +%Y-%m-%d` (kein ls, Umleitungen gedenied); kein curl/awk/sed/python/Shell; Schreiben nur `seo/monat-*/*.md` (Write + Edit, gleiche Pfade); Discord nur `discord.py post reports` (Freigabe pro Agent in `run-agent.sh`, `--attach` gedenied). Restrisiko Egress über WebFetch-URLs; echter Schutz wäre eine OS-Firewall (siehe `.claude/perms/default.json`). Akzeptiertes Restrisiko: Egress über WebFetch-URLs. Ohne curl gibt es keine HTTP-Header-/Bot-UA-Prüfung im Monatsaudit (steht dann unter „nicht geprüft“).
 - Verpasst der Server den Termin um mehr als `catchup_minuten` (120), fällt der Monat aus. Manuell: `/run tiefenaudit` (fragt nicht, startet sofort).
 
 ### Kosten (geschätzt, nicht gemessen)
@@ -94,7 +98,7 @@ Annahme: 3 Sites, Sonnet; je Site Playbook (ca. 14k Token) + Wochenbericht + 3 S
 - **`bin/discord-register.py` einmal auf dem Server ausführen**, sonst fehlt `tiefenaudit` im Slash-Menü und `/ja` bzw. `/run` für den Agent lässt sich nicht abschicken; der Monatslauf fiele still aus. (Server-Aktion, nicht Teil des PR.)
 - Lauf-Timeout: `timeout_min: 40` in `config/schedule.json` (run-agent.sh liest es pro Agent). Bewusst unter dem Watchdog (`HQ_STUCK_MINUTES`, Standard 45).
 - `bin/discord.py --attach` nimmt für alle Agents nur noch Dateien aus den Report-Ordnern (realpath-geprüft); weitere Wurzeln per `HQ_ATTACH_EXTRA` (Pfade, getrennt mit `:`). `ki-influencer` legt Anhänge deshalb nach `content/influencer/`.
-- Das Dashboard liefert alle Dateien aus Report-Ordnern (`/api/file`) mit `Content-Security-Policy: sandbox` und `nosniff`.
+- Das Dashboard liefert alle Dateien aus Report-Ordnern (`/api/file`) mit `Content-Security-Policy: sandbox` und `nosniff` aus, PDFs ohne Sandbox (sonst zeigt Chrome sie nicht an).
 - `timeout_min` unter 5 oder 0 wird ignoriert (Default `HQ_RUN_TIMEOUT`).
 
 ### Tests

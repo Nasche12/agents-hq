@@ -4,7 +4,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const { auditSite, normUrl, isHtmlResource, ampel, renderReport, sitemapUrls, orphanKey, sameSite } = require('./seo-audit');
 const L = require('./lib');
 const X = require('./seo-checks');
@@ -22,6 +22,7 @@ http.createServer((q, r) => {
   if (q.url === '/lade') { r.writeHead(200, { 'content-type': 'text/html' }); return r.end(LADE); }
   if (q.url === '/gone') { r.writeHead(404, { 'content-type': 'text/html' }); return r.end('<html><body>nicht gefunden</body></html>'); }
   if (q.url === '/hang') { q.socket.destroy(); return; }
+  if (q.url === '/redir') { r.writeHead(302, { location: 'http://localhost:' + q.socket.localPort + '/' }); return r.end(); }
   if (q.url === '/robots.txt') {   // untrusted: Option-Injection, file://, fremder Host, fremder Port
     r.writeHead(200, { 'content-type': 'text/plain' });
     return r.end('User-agent: *\\nSitemap: -K' + process.env.SEO_TEST_CFG + '\\nSitemap: file:///etc/passwd\\nSitemap: http://' + q.headers.host + '/sitemap.xml\\n');
@@ -254,6 +255,60 @@ test('M5: defekte Baseline -> .corrupt + neu; REFRESH ohne --compare; atomar (nu
       assert.ok(r2.measurements.some(m => /Baseline erneuert/.test(m.text)));
       assert.ok(!r2.measurements.some(m => /Drift-Vergleich gegen/.test(m.text)));
     } finally { delete process.env.SEO_BASELINE_REFRESH; }
+  });
+});
+
+test('L-E: Redirect auf fremden Host -> nur Befund, keine Seiten-Checks des Ziels', async () => {
+  await withServer(async port => {
+    const res = auditSite({ name: 't', url: `http://127.0.0.1:${port}/redir` }, MOCK);
+    assert.ok(res.findings.some(f => f.sev === 'hoch' && /leitet auf fremden Host um/.test(f.was)));
+    assert.ok(!res.findings.some(f => /Title|Meta-Description|canonical|<h1>/.test(f.was)));
+  });
+});
+
+test('L-D: ohne Restbudget (>= 300 s) laeuft geo nicht, Status "Zeitbudget"', async () => {
+  await withServer(async port => {
+    const code = `const a = require(${JSON.stringify(path.join(__dirname, 'seo-audit.js'))});
+      const E = () => ({ findings: [], measurements: [], notMeasured: [] });
+      let geoCalled = false;
+      const r = a.auditSite({ name: 't', url: 'http://127.0.0.1:${port}' }, { geo: () => { geoCalled = true; return E(); }, psi: E, gsc: E });
+      console.log('JSON' + JSON.stringify({ geoCalled, nm: r.notMeasured }));`;
+    const r = spawnSync(process.execPath, ['-e', code], { encoding: 'utf8', timeout: 60000, env: { ...process.env, SEO_BUDGET_MS: '1000', SEO_DRY_RUN: '1' } });
+    const o = JSON.parse(r.stdout.split('\n').find(l => l.startsWith('JSON')).slice(4));
+    assert.strictEqual(o.geoCalled, false);
+    assert.ok(o.nm.some(n => /Zeitbudget/.test(n)));
+  });
+});
+
+test('M-A/M-B/L-A/L-B: geo_audit.py Redirect auf file://, Sitemap-Zaehlung vor Filter, same_site-Randfaelle (nur mit Python)', t => {
+  const py = process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+  if (!L.run(py, ['--version']).ok) return t.skip('kein Python');
+  const r = L.run(py, ['-I', path.join(__dirname, 'fixtures', 'geo_harness.py'), path.join(__dirname, '..', 'lib', 'geo_audit.py')]);
+  assert.strictEqual(r.code, 0, r.err);
+  const o = JSON.parse(r.out.trim().split('\n').pop());
+  assert.strictEqual(o.redir.error, 'blocked redirect scheme');           // M-A: 302 -> file://
+  assert.strictEqual(o.redir.body, 0);
+  assert.ok(!o.handlers.some(h => /File|FTP|Data/.test(h)));
+  // L-A (kaputter Port) / L-B (Default-Port) / Gross-Schreibung / Host-Suffix-Trick
+  assert.deepStrictEqual(o.same_site, [false, false, true, false, true, false, true, false]);
+  assert.deepStrictEqual(o.same_host, [true, true, false, false, false]);   // robots: http+https desselben Hosts ok
+  // M-B: fremde/andere Schemata werden auf der Rohliste gezaehlt und gemeldet, nur same_site wird ausgewertet
+  assert.deepStrictEqual(o.sm1.urls, ['https://site.at/a']);
+  assert.ok(o.sm1.issues.some(i => /^2 URLs on a different host/.test(i)));
+  assert.ok(o.sm1.issues.some(i => /different scheme/.test(i)));
+  // Alle robots-Sitemaps gefiltert -> Fallback auf /sitemap.xml + Meldung
+  assert.ok(o.sm2.issues.some(i => /rejected/.test(i)));
+  assert.deepStrictEqual(o.sm2.calls, ['https://site.at/sitemap.xml']);
+});
+
+test('L-C: Baseline-Speichern scheitert -> Notiz, kein Abbruch (nur mit Python)', async t => {
+  const py = process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+  if (!L.run(py, ['--version']).ok) return t.skip('kein Python');
+  await withServer(async port => {
+    const blocker = path.join(TMPD, 'iststdatei'); fs.writeFileSync(blocker, 'x');
+    const r = X.runGeo(`http://127.0.0.1:${port}/`, { baseDir: blocker, slug: 'z', dry: false });
+    assert.ok(!r.geoFailed);
+    assert.ok(r.measurements.some(m => /nicht gespeichert/.test(m.text)));
   });
 });
 

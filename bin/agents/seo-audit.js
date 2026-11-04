@@ -21,6 +21,7 @@ const BASELINE_DIR = process.env.SEO_BASELINE_DIR || path.join(L.BASE, 'seo', 'b
 const BUDGET_MS = parseInt(process.env.SEO_BUDGET_MS, 10) || 1500000;
 const DEADLINE = Date.now() + BUDGET_MS;
 const over = () => Date.now() > DEADLINE;
+const GEO_MIN_MS = 300000;                              // geo_audit.py darf bis 300 s laufen: nur starten, wenn das Budget reicht
 const SEV = { kritisch: 4, hoch: 3, mittel: 2, niedrig: 1 };
 const SEV_NAME = { kritisch: 'Kritisch', hoch: 'Hoch', mittel: 'Mittel', niedrig: 'Niedrig' };
 
@@ -82,17 +83,24 @@ function sameSite(a, b) {
     return x.protocol === y.protocol && x.port === y.port && h(x) === h(y);
   } catch (e) { return false; }
 }
+/* Redirect-Ziel gilt als eigene Site, wenn der Host gleich ist (www egal; Schema/Port duerfen wechseln, z. B. http -> https). */
+function sameHostRedirect(eff, url) {
+  try { const h = u => new URL(u).hostname.replace(/^www[.]/, '').toLowerCase(); return h(eff) === h(url); } catch (e) { return false; }
+}
 function probe(url) {                                // Statuscode + Content-Type der Endziel-URL
   const r = L.run('curl', ['-sS', '-o', process.platform === 'win32' ? 'NUL' : '/dev/null',
-    '-w', '%{http_code} %{content_type}', '-L', '--max-time', '20', ...L.SAFE_CURL, '--', url], { timeoutMs: 26000 });
+    '-w', '%{http_code} %{url_effective} %{content_type}', '-L', '--max-time', '20', ...L.SAFE_CURL, '--', url], { timeoutMs: 26000 });
   const p = r.out.trim().split(/\s+/);
   const http = parseInt(p[0], 10);
-  return { http: Number.isFinite(http) && http > 0 ? http : null, ct: (p[1] || '').toLowerCase().replace(/;$/, ''), err: r.err.trim().slice(0, 200) };
+  return { http: Number.isFinite(http) && http > 0 ? http : null, eff: p[1] || url, ct: (p[2] || '').toLowerCase().replace(/;$/, ''), err: r.err.trim().slice(0, 200) };
 }
 
 /* Eine Seite abrufen + prüfen; gibt {url, bytes, findings[], title, internalLinks[]} */
 function auditPage(url, host, keepHtml) {
   const pr = probe(url);
+  if (!sameHostRedirect(pr.eff, url)) {                  // Ziel fremd: keine Seiten-Checks, keine fremden Titel/Canonicals im Bericht
+    return { url, findings: [{ sev: keepHtml ? 'hoch' : 'mittel', was: `leitet auf fremden Host um (${pr.eff})`, fix: 'Weiterleitung prüfen; ein Redirect auf eine andere Domain ist selten gewollt.', url, label: 'gemessen' }], internalLinks: [], title: null, bytes: 0, foreignRedirect: pr.eff };
+  }
   if (pr.http == null) return { url, error: pr.err || 'nicht abrufbar', findings: [], internalLinks: [], title: null };
   if (pr.http >= 400) return { url, error: 'HTTP ' + pr.http, findings: [], internalLinks: [], title: null };   // keine Seiten-Checks an Fehlerseiten
   if (!isHtmlResource(pr.ct, url)) return { url, bytes: 0, findings: [], title: null, internalLinks: [], nonHtml: pr.ct || 'unbekannt' };
@@ -212,7 +220,7 @@ function auditSite(site, deps = {}) {
   const pages = [home];
   const seen = new Set([start]);
   for (const u of (home.internalLinks || [])) {
-    if (pages.length >= MAX_PAGES) break;
+    if (pages.length >= MAX_PAGES || over()) break;
     if (seen.has(u)) continue;
     seen.add(u);
     const p = auditPage(u, host);
@@ -238,7 +246,7 @@ function auditSite(site, deps = {}) {
   const take = r => { siteFindings.push(...r.findings); measurements.push(...r.measurements); notMeasured.push(...r.notMeasured); };
 
   // 1) geo_audit.py: robots/KI-Bots, WAF, noindex, SPA, JSON-LD, Soft-404, Sitemap, Drift
-  const geo = over() ? { findings: [], measurements: [], notMeasured: ['geo_audit.py (KI-Bots, WAF, noindex, Schema, Drift): nicht gemessen (Zeitbudget)'] }
+  const geo = (DEADLINE - Date.now() < GEO_MIN_MS) ? { findings: [], measurements: [], notMeasured: ['geo_audit.py (KI-Bots, WAF, noindex, Schema, Drift): nicht gemessen (Zeitbudget)'] }
     : d.geo(start, { baseDir: BASELINE_DIR, slug: L.slug(host), dry: DRY });
   take(geo);
   // Doppelmeldungen: hat geo_audit "Rendering" (zu wenig Roh-HTML) fuer eine URL gemeldet, entfaellt unser SPA-/Duenn-Befund dort
